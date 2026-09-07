@@ -209,8 +209,8 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
     sourceResumeUpdatedAt: 'v1',
     evaluationSignature: 'S1',
     persistedEvaluationSignature: 'S1',
-    evaluation: { overallScore: 60 },
-    persistedEvaluation: { overallScore: 60 },
+    evaluation: { overallScore: 60, scoringVersion: 'coverage_consensus_v2' },
+    persistedEvaluation: { overallScore: 60, scoringVersion: 'coverage_consensus_v2' },
     isJDAnalysisOutdated: false,
     isEvaluationOutdated: false,
     hasResumeVersionConflict: false,
@@ -223,6 +223,14 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
     canStart: true,
     disabledReason: null,
   });
+  assert.equal(resolveResumeOptimizationStartAvailability({
+    ...ready, evaluation: { ...ready.evaluation, scoringVersion: undefined },
+    persistedEvaluation: { ...ready.persistedEvaluation, scoringVersion: undefined },
+  }).canStart, false, 'legacy scoring rules require a fresh baseline');
+  assert.equal(resolveResumeOptimizationStartAvailability({
+    ...ready, evaluation: { ...ready.evaluation, scoringVersion: 'coverage_consensus_v1' },
+    persistedEvaluation: { ...ready.persistedEvaluation, scoringVersion: 'coverage_consensus_v1' },
+  }).canStart, false, 'reports from before duration-unit calibration require a fresh baseline');
   assert.equal(resolveResumeOptimizationStartAvailability({ ...ready, enabled: false }).canStart, false);
   assert.equal(resolveResumeOptimizationStartAvailability({
     ...ready,

@@ -1,0 +1,14 @@
+{
+  "created_at": "2026-09-06T09:17:43.966702+00:00",
+  "baseline_repeats": 3,
+  "post_repeats": 3,
+  "optimization_repeats": 2,
+  "selection": "first successful baseline, never highest score; first successful optimization, never best gain",
+  "blinding": "opaque IDs; tier/defect keys never sent to evaluator/planner; judge sees shuffled texts without scores or before/after labels",
+  "stability_total_range_max": 5,
+  "stability_dimension_range_max": 10,
+  "defect_detection_target": "each preset actionable defect detected in all successful baseline repeats",
+  "repair_target": "preset repairable defects absent after both independent optimization attempts",
+  "facts": "synthetic, never real-world verified",
+  "boundaries": "real production evaluation/planner/answer/semantic services and billing; service-level candidate assembly is not HTTP apply/finalize acceptance"
+}

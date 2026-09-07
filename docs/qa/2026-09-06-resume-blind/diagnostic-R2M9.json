@@ -1,0 +1,206 @@
+{
+  "ok": false,
+  "causes": [
+    {
+      "type": "OptimizationAnswerRewriteNormalizationError",
+      "message": "answer rewrite response violates the optimization contract"
+    },
+    {
+      "type": "OptimizationPlanNormalizationError",
+      "message": "answer rewrite changed an affected change identity or source value"
+    }
+  ],
+  "seconds": 14.06,
+  "observed_responses": [
+    {
+      "request_label": "resume_optimization_plan",
+      "response": {
+        "changes": [
+          {
+            "changeId": "CHG_001",
+            "issueIds": [
+              "ISSUE_003"
+            ],
+            "dimension": "内容可读",
+            "moduleType": "experience_star",
+            "moduleId": "1839743b-e6c9-5182-8d3c-887927e32c73",
+            "fieldPath": "star.a",
+            "actionKind": "rewrite_now",
+            "scope": "general",
+            "beforeValue": "访谈客户，分析漏斗，编写PRD并协调交付",
+            "generalValue": "访谈客户，分析漏斗，编写PRD并协调交付。",
+            "targetedValue": "访谈客户，分析漏斗，编写PRD并协调交付。",
+            "sourceRefs": [
+              "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a"
+            ],
+            "introducedTerms": [],
+            "rationale": "补齐句末中文句号，提升内容可读性并保持事实完全一致。",
+            "expectedScoreGain": 5,
+            "defaultSelected": true
+          },
+          {
+            "changeId": "CHG_002",
+            "issueIds": [
+              "ISSUE_001"
+            ],
+            "dimension": "逻辑清晰",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "当前来源缺少足够上下文以支持无损改写，保持原样。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_003",
+            "issueIds": [
+              "ISSUE_002"
+            ],
+            "dimension": "STAR应用",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "缺少必要事实补充，保持现有STAR结构不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_004",
+            "issueIds": [
+              "ISSUE_004"
+            ],
+            "dimension": "内容完整",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "基础信息完整度属于只读项或暂无新增输入，保持不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_005",
+            "issueIds": [
+              "ISSUE_005"
+            ],
+            "dimension": "专业表达",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "无明确外部事实支持进一步术语扩展，维持原表达。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_006",
+            "issueIds": [
+              "ISSUE_006"
+            ],
+            "dimension": "成果量化",
+            "moduleType": "experience_star",
+            "moduleId": "1839743b-e6c9-5182-8d3c-887927e32c73",
+            "fieldPath": "star.r",
+            "actionKind": "ask_user",
+            "scope": "general",
+            "beforeValue": "改版已上线并通过验收。",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/r"
+            ],
+            "introducedTerms": [],
+            "rationale": "通过向用户询问改版上线的具体量化业务结果（如入驻转化率、时长缩短等），以提升成果量化维度得分。",
+            "expectedScoreGain": 15,
+            "defaultSelected": true
+          }
+        ],
+        "questions": [
+          {
+            "questionId": "QST_001",
+            "moduleId": "1839743b-e6c9-5182-8d3c-887927e32c73",
+            "fieldPath": "star.r",
+            "text": "企业入驻改版上线后，具体的业务量化成果是什么？",
+            "reason": "量化结果能够直观证明改版价值，显著提升成果量化维度的评分与竞争力。",
+            "answerType": "single_choice_with_text",
+            "choices": [
+              {
+                "value": "conversion_improved",
+                "label": "入驻转化率/配置成功率提升（如提升20%以上）"
+              },
+              {
+                "value": "time_reduced",
+                "label": "入驻配置耗时缩短（如平均耗时减少50%）"
+              },
+              {
+                "value": "ticket_reduced",
+                "label": "入驻相关咨询与客诉量显著下降"
+              },
+              {
+                "value": "custom",
+                "label": "其他具体指标数据（请在文本框补充）"
+              }
+            ],
+            "affectsChangeIds": [
+              "CHG_006"
+            ],
+            "priority": 1
+          }
+        ]
+      }
+    },
+    {
+      "request_label": "resume_optimization_answer",
+      "response": {
+        "changes": [
+          {
+            "changeId": "CHANGE_001",
+            "issueIds": [
+              "ISSUE_006"
+            ],
+            "dimension": "成果量化",
+            "moduleType": "experience_star",
+            "moduleId": "1839743b-e6c9-5182-8d3c-887927e32c73",
+            "fieldPath": "star.r",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "改版已上线并通过验收。",
+            "generalValue": "改版已上线并通过验收。",
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "用户确认没有额外可补充的数据，按真实性原则保持原表述不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "seconds": 5.83,
+  "value": {
+    "documents": [
+      {
+        "id": "167a0c83",
+        "clarity": 5,
+        "specificity": 4,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容完全基于来源，表述清晰，STAR各部分均有对应且补齐了句末标点。"
+      },
+      {
+        "id": "62451518",
+        "clarity": 5,
+        "specificity": 4,
+        "groundedness": 5,
+        "defects": [
+          "经历中的行动(Action)部分末尾缺少句号"
+        ],
+        "unsupportedClaims": [],
+        "reason": "内容真实且完全来源于事实，但经历中Action字段末尾缺少句末标点。"
+      }
+    ],
+    "preferredId": "167a0c83"
+  }
+}

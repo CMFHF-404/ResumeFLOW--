@@ -1,0 +1,6 @@
+[
+  {
+    "type": "OptimizationPlanNormalizationError",
+    "message": "personal-summary refs must use the summary or a selected experience"
+  }
+]

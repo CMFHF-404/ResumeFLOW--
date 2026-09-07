@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import asyncio
 import json
 import re
 import unicodedata
@@ -23,6 +24,8 @@ from .schemas import (
     OptimizationChange,
     OptimizationModuleType,
     OptimizationPlan,
+    OptimizationQuestionChoice,
+    RESUME_EVALUATION_DIMENSION_NAMES,
 )
 
 
@@ -31,6 +34,14 @@ _ALLOWED_SOURCE_ROOTS = (
     "/selectedSourceExperiences",
     "/userAnswers",
 )
+
+
+async def _bounded_model_call(*args: Any, **kwargs: Any) -> Any:
+    try:
+        async with asyncio.timeout(90):
+            return await _call_llm(*args, **kwargs)
+    except TimeoutError as exc:
+        raise runtime_budget.AiRuntimeTimeoutError("Optimization model stage timed out") from exc
 _DIRECT_IDENTIFIER_KEYS = frozenset(
     {"name", "email", "phone", "linkedin", "location"}
 )
@@ -147,10 +158,104 @@ _ANSWER_REWRITE_RESPONSE_SCHEMA = _strict_object_schema(
         "changes": {
             "type": "array",
             "minItems": 1,
-            "items": _ANSWER_REWRITE_CHANGE_RESPONSE_SCHEMA,
+            "items": _strict_object_schema({
+                key: value
+                for key, value in _ANSWER_REWRITE_CHANGE_RESPONSE_SCHEMA["properties"].items()
+                if key in {"changeId", "actionKind", "generalValue", "targetedValue", "sourceRefs", "introducedTerms", "rationale", "expectedScoreGain"}
+            }),
         }
     }
 )
+
+_PLAN_CHANGE_SCHEMA = deepcopy(_ANSWER_REWRITE_CHANGE_RESPONSE_SCHEMA)
+_PLAN_CHANGE_SCHEMA["properties"]["moduleType"]["enum"] = [
+    "experience_star", "personal_summary", "skills_order", "section_order",
+]
+_PLAN_CHANGE_SCHEMA["properties"]["actionKind"]["enum"] = [
+    "rewrite_now", "ask_user", "leave_unchanged",
+]
+for _candidate_key in ("beforeValue", "generalValue", "targetedValue"):
+    _PLAN_CHANGE_SCHEMA["properties"][_candidate_key] = {
+        "anyOf": [{"type": "string"}, {"type": "null"}, _STRING_ARRAY_SCHEMA],
+    }
+_PLAN_RESPONSE_SCHEMA = _strict_object_schema({
+    "changes": {"type": "array", "items": _PLAN_CHANGE_SCHEMA},
+    "questions": {"type": "array", "maxItems": 5, "items": _strict_object_schema({
+        "questionId": {"type": "string"}, "moduleId": {"type": "string"},
+        "fieldPath": {"type": "string"}, "text": {"type": "string"},
+        "reason": {"type": "string"},
+        "answerType": {"type": "string", "enum": ["single_choice_with_text"]},
+        "choices": {"type": "array", "items": _strict_object_schema({
+            "value": {"type": "string"}, "label": {"type": "string"},
+        })},
+        "affectsChangeIds": _STRING_ARRAY_SCHEMA,
+        "priority": {"type": "integer", "minimum": 0},
+    })},
+})
+
+
+def _answer_patch_schema(source_documents: Mapping[str, Any], change_ids: Sequence[str]) -> dict[str, Any]:
+    schema=deepcopy(_ANSWER_REWRITE_RESPONSE_SCHEMA)
+    refs=[]
+    def visit(value: Any, pointer: str, key: str="") -> None:
+        if isinstance(value, Mapping):
+            for child,nested in value.items():
+                if child in {"id","state","source_version_id","master_experience_id"}:
+                    continue
+                token=str(child).replace("~","~0").replace("/","~1")
+                visit(nested,pointer+"/"+token,str(child))
+        elif isinstance(value,list):
+            for index,nested in enumerate(value):visit(nested,pointer+"/"+str(index),key)
+        elif isinstance(value,str) and value.strip():
+            refs.append(pointer)
+    visit(source_documents,"")
+    props=schema["properties"]["changes"]["items"]["properties"]
+    props["changeId"]["enum"]=list(change_ids)
+    if refs:
+        # deepcopy preserves shared references inside the schema. Detach this
+        # field before narrowing it so introducedTerms remains ordinary text.
+        props["sourceRefs"] = deepcopy(props["sourceRefs"])
+        props["sourceRefs"]["items"]["enum"] = refs
+    return schema
+
+
+def _bind_identical_owned_sources(raw: Any, context: FrozenOptimizationContext) -> None:
+    """Repair a pointer typo only when the target owns the exact same leaf text.
+
+    Never borrow another experience's facts, resolve bank contents, or move answers.
+    The ordinary strict scope and semantic checks still run on the bound pointer.
+    """
+    from .safety import resolve_source_ref
+    if not isinstance(raw,dict) or not isinstance(raw.get("changes"),list):
+        return
+    selected=set(context.selected_master_experience_ids)
+    documents=context.source_documents
+    for change in raw["changes"]:
+        if not isinstance(change,dict) or change.get("moduleType",change.get("module_type"))!="experience_star":
+            continue
+        target=change.get("moduleId",change.get("module_id"))
+        if not isinstance(target,str) or target not in selected:
+            continue
+        if "sourceRefs" in change and "source_refs" in change:
+            continue
+        key="sourceRefs" if "sourceRefs" in change else "source_refs"
+        refs=change.get(key)
+        if not isinstance(refs,list):continue
+        for index,ref in enumerate(refs):
+            if not isinstance(ref,str):continue
+            parts=ref.split("/")
+            position=3 if parts[:3]==["","currentResume","experiences"] else 2 if parts[:2]==["","selectedSourceExperiences"] else None
+            if position is None or len(parts)<=position+1 or parts[position] not in selected or parts[position]==target:
+                continue
+            own_parts=list(parts);own_parts[position]=target.replace("~","~0").replace("/","~1")
+            own_ref="/".join(own_parts)
+            try:
+                source=resolve_source_ref(documents,ref)
+                own=resolve_source_ref(documents,own_ref)
+            except (ValueError,KeyError,IndexError,TypeError):
+                continue
+            if isinstance(source,str) and source.strip() and source==own:
+                refs[index]=own_ref
 
 
 class OptimizationAnswerRewriteNormalizationError(OptimizationPlanNormalizationError):
@@ -1103,12 +1208,13 @@ def _messages(*, system_prompt: str, payload: Mapping[str, Any]) -> list[dict[st
 async def plan_resume_optimization(
     context: FrozenOptimizationContext,
 ) -> OptimizationPlan:
+    known_issue_dimensions = _known_issue_dimensions(context.evaluation)
     issue_alias_to_original = {
         alias: issue_id
         for issue_id, alias in _planner_issue_id_aliases(context.evaluation).items()
     }
     model_payload = _minimized_planner_model_payload(context)
-    raw = await _call_llm(
+    raw = await _bounded_model_call(
         _messages(
             system_prompt=OPTIMIZATION_SYSTEM_PROMPT,
             payload={
@@ -1123,11 +1229,24 @@ async def plan_resume_optimization(
         json_mode=True,
         request_label="resume_optimization_plan",
         gemini_thinking_level="low",
+        gemini_stream=True,
+        gemini_response_json_schema=_PLAN_RESPONSE_SCHEMA,
     )
     raw = _restore_planner_issue_ids(raw, issue_alias_to_original)
+    _bind_identical_owned_sources(raw,context)
+    if isinstance(raw, dict) and isinstance(raw.get("changes"), list):
+        for change in raw["changes"]:
+            if not isinstance(change, dict):
+                continue
+            ids = change.get("issueIds", change.get("issue_ids"))
+            if (isinstance(ids, list) and ids
+                    and all(isinstance(i, str) and i in known_issue_dimensions for i in ids)):
+                dimensions = {known_issue_dimensions[i] for i in ids}
+                if len(dimensions) == 1 and change.get("dimension") in RESUME_EVALUATION_DIMENSION_NAMES:
+                    change["dimension"] = next(iter(dimensions))
     plan = normalize_optimization_plan(
         raw,
-        known_issue_dimensions=_known_issue_dimensions(context.evaluation),
+        known_issue_dimensions=known_issue_dimensions,
         selected_master_ids=set(context.selected_master_experience_ids),
         selected_skill_ids=_selected_skill_ids(context),
         current_section_order=_current_section_order(context),
@@ -1138,6 +1257,13 @@ async def plan_resume_optimization(
             answer_change_ids={},
         ),
     )
+    # Choices are UI controls, not model-generated claims awaiting confirmation.
+    # Free text remains available, but unsupported example achievements cannot be
+    # accepted by clicking a suggested answer.
+    for question in plan.questions:
+        question.choices = [
+            OptimizationQuestionChoice(value="no_data", label="暂无可确认的信息"),
+        ]
     return _protect_private_target_changes(plan, context)
 
 
@@ -1252,7 +1378,23 @@ async def rewrite_answered_modules(
     for change in affected_changes:
         frozen_before = _frozen_mutable_text_value(context, change)
         private_original = _private_target_original_value(context, change)
-        if private_original is not None:
+        has_answered_fact = any(
+            answer.state.value == "answered"
+            and change.change_id in questions_by_id[question_id].affects_change_ids
+            for question_id, answer in answers_by_question.items()
+        )
+        if not has_answered_fact:
+            # Absence of new facts is a local state transition, not a generation
+            # task. Preserve identity and never turn no_data into evidence.
+            locally_protected_changes.append(change.model_copy(deep=True, update={
+                "action_kind": OptimizationAction.LEAVE_UNCHANGED,
+                "general_value": None, "targeted_value": None,
+                "source_refs": [], "introduced_terms": [],
+                "rationale": "未补充可确认的事实，保留原文。",
+                "expected_score_gain": 0, "safety_status": "pending",
+                "safety_findings": [], "semantic_review": None,
+            }))
+        elif private_original is not None:
             locally_protected_changes.append(
                 _local_leave_unchanged_change(
                     change,
@@ -1355,7 +1497,7 @@ async def rewrite_answered_modules(
         "allowedSourceRoots": list(_ALLOWED_SOURCE_ROOTS),
     }
     try:
-        raw = await _call_llm(
+        raw = await _bounded_model_call(
             _messages(
                 system_prompt=ANSWER_REWRITE_SYSTEM_PROMPT,
                 payload=payload,
@@ -1364,7 +1506,7 @@ async def rewrite_answered_modules(
             request_label="resume_optimization_answer",
             gemini_thinking_level="low",
             gemini_stream=True,
-            gemini_response_json_schema=_ANSWER_REWRITE_RESPONSE_SCHEMA,
+            gemini_response_json_schema=_answer_patch_schema(model_source_documents,list(change_aliases.values())),
         )
         raw = _restore_user_answer_source_refs(raw, question_alias_to_original)
         raw = _restore_planner_change_ids(raw, change_alias_to_original)

@@ -1,4 +1,6 @@
 import copy
+import json
+from pathlib import Path
 import unittest
 from semantic_review_test_support import with_supported_review
 
@@ -150,6 +152,12 @@ class SourceResolutionTests(unittest.TestCase):
 
 
 class RequiredSafetyMatrixTests(unittest.TestCase):
+    def test_reflow_matches_shared_frontend_cases(self):
+        fixture = Path(__file__).resolve().parents[1] / "tests/fixtures/resumeOptimizationReflow.json"
+        for case in json.loads(fixture.read_text(encoding="utf-8")):
+            with self.subTest(before=case["before"]):
+                self.assertEqual(preserves_rich_text_structure(case["before"], case["after"]), case["allowed"])
+
     def assertBlocked(self, change: OptimizationChange, documents: dict, *, questions=None):
         changes, summary = _verify(change, documents, questions=questions)
         self.assertEqual(changes[0].safety_status, "blocked")
@@ -332,6 +340,20 @@ class RequiredSafetyMatrixTests(unittest.TestCase):
         for before, candidate in cases:
             with self.subTest(before=before, candidate=candidate):
                 self.assertFalse(preserves_rich_text_structure(before, candidate))
+
+    def test_plain_complete_sentences_can_reflow_without_relaxing_protected_markup(self) -> None:
+        self.assertTrue(preserves_rich_text_structure(
+            "完成调研。<br>完成交付。<br>完成验收",
+            "完成调研并交付。<br>完成验收。",
+        ))
+        self.assertFalse(preserves_rich_text_structure("第一行<br>第二行","第一行第二行"))
+        self.assertFalse(preserves_rich_text_structure(
+            '<strong>调研</strong>。<br>完成验收。', '调研并完成验收。',
+        ))
+        self.assertFalse(preserves_rich_text_structure(
+            '<a href="https://example.com/a">项目</a>。<br>完成验收。',
+            '<a href="https://example.com/b">项目</a>。完成验收。',
+        ))
 
     def test_requires_existing_list_tree_and_valid_list_content_model(self) -> None:
         cases = (

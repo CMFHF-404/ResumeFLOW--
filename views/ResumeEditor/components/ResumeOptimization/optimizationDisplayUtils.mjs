@@ -1172,10 +1172,22 @@ const hasTerminalActionPunctuation = (value) => {
     : ACTION_TRAILING_PUNCTUATION.test(body);
 };
 
+const reflowCompletePlainSentences = (value, tokens) => {
+  // Match the server's exception for complete prose separated only by <br>.
+  // Keep links, emphasis, block/list markup and incomplete fragments strict.
+  if (scanHtmlLexicalItems(value).some((item) => item.kind === 'tag' && item.tag !== 'br')
+    || buildProtectedBindings(value, tokens).length) return null;
+  const parts = value.split(/<br\b[^>]*>/giu);
+  if (parts.slice(0, -1).some((part) => (
+    !/[。！？!?\.；;]$/u.test(stripRichTextToText(part).trimEnd())
+  ))) return null;
+  return parts.join(' ');
+};
+
 export const hasPreservedResumeOptimizationRichText = (beforeValue, targetedValue) => {
   if (typeof beforeValue !== 'string' || typeof targetedValue !== 'string') return true;
-  const beforeTokens = scanRichHtmlTokens(beforeValue);
-  const targetedTokens = scanRichHtmlTokens(targetedValue);
+  let beforeTokens = scanRichHtmlTokens(beforeValue);
+  let targetedTokens = scanRichHtmlTokens(targetedValue);
   if (
     !beforeTokens
     || !targetedTokens
@@ -1185,6 +1197,15 @@ export const hasPreservedResumeOptimizationRichText = (beforeValue, targetedValu
     || !hasValidRichHtmlListContentModel(targetedValue, targetedTokens)
     || !hasNonEmptyRichTextVisibleContent(targetedValue, targetedTokens)
   ) return false;
+  const reflowedBefore = reflowCompletePlainSentences(beforeValue, beforeTokens);
+  const reflowedTargeted = reflowCompletePlainSentences(targetedValue, targetedTokens);
+  if (reflowedBefore !== null && reflowedTargeted !== null) {
+    beforeValue = reflowedBefore;
+    targetedValue = reflowedTargeted;
+    beforeTokens = scanRichHtmlTokens(beforeValue);
+    targetedTokens = scanRichHtmlTokens(targetedValue);
+    if (!beforeTokens || !targetedTokens) return false;
+  }
   const before = buildRichTextSignature(beforeValue, beforeTokens);
   const targeted = buildRichTextSignature(targetedValue, targetedTokens);
   return isOrderedSubset(before.tagSequence, targeted.tagSequence)

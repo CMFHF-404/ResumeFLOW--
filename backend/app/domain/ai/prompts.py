@@ -654,10 +654,68 @@ JD_ANALYSIS_IMAGE = (
 )
 
 
+RESUME_EVALUATION_ANCHORS = """
+Reproducible scoring procedure (do not grade relative to imagined ideal resumes):
+1. For each fixed subscore, assess the evidence against that named criterion only.
+   Choose an anchored completion level: 0 absent; 0.25 vague assertion; 0.5 concrete
+   but incomplete; 0.75 mostly complete with one substantive gap; 1 fully met.
+   Score = round_half_up(maxScore * level). Do not invent finer-grained deductions.
+   Award full credit once the criterion is met; additional fashionable tools,
+   certificates or extra business metrics are not prerequisites for full credit.
+2. Quantification is coverage across the selected experiences, NOT how impressive
+   their metrics sound. For each of its six criteria, count experiences containing
+   an explicit valid supporting claim, divide by the number of selected experiences,
+   then multiply by the criterion's maxScore and round_half_up. Examples of criteria:
+   result metric = numeric achieved business outcome (not a task count);
+   baseline = explicit comparable before/after values for the same outcome;
+   scale = explicit people/accounts/channels reached or used;
+   time window = explicit measurement/observation duration (not employment dates);
+   process quantity = an explicit counted action/deliverable;
+   credibility = a quantitative claim with clear measure, scope and attribution,
+   with no contradiction. Without a quantitative claim, credibility earns ZERO.
+   Generic action text supports NONE of these six numeric criteria. Dates, degree,
+   phone numbers, IDs and the count of resume entries are never quantity evidence.
+   Do not penalize a disclosed confounder or refusal to claim exclusive causation.
+3. Avoid double deductions: missing numbers affect quantification, not an otherwise
+   present STAR result/task. Do not require a numeric task target to award Task credit.
+   Do not deduct merely because the same skill appears in the summary and skill list.
+4. For punctuation, inspect the actual final visible character of EACH prose item.
+   The sequence '。<br>' already has a full stop. Never report it as missing one.
+   Ignore markup, labels and intentional fragments; do not infer punctuation from
+   whitespace or an imagined visual layout.
+5. Emit separate actionable issues for distinct fields/experiences when their fixes
+   differ. Never hide several independently repairable fields inside one broad issue.
+   Describe concrete observed gaps, not generic demands for more sophistication.
+6. A dimension with score zero must have strengths=[]. A fully satisfied criterion
+   needs no invented deficiency. List every supporting experience in the evidenceIds
+   for a quantification subscore, so the server can count unique covered experiences.
+7. Professional expression is the quality of the written claims, NOT JD fit,
+   seniority, business impact or depth of industry expertise. Grade its five
+   criteria separately across all selected experience narratives with equal weight:
+   - Action verbs: a concrete action and object qualifies (interview customers,
+     organize feedback, write requirements). Generic "participated in related work"
+     is vague. Do not demand leadership verbs or more impressive work.
+   - Role terminology: accurate names for the actual work/tools qualify. Do not
+     require JD-specific terminology or named methodologies absent from the work.
+   - Precision: a reader can identify what was done and to what object. Numbers
+     are not required. Vague "related things/work" is deficient.
+   - Responsibility: a stated personal action or task qualifies, including support
+     and collaboration. Do not demand sole ownership, leadership, or originality.
+   - Objectivity: factual, bounded wording without unsupported superlatives,
+     contradictions or exclusive attribution qualifies. Lack of numeric results,
+     external verification, sophistication or unique contribution is NOT a reason
+     to deduct. User-claimed facts reduce confidence, not this wording score.
+   Use the anchored levels from rule 1 for each experience, then average the levels
+   for each criterion and round_half_up its score. A summary cannot erase supported
+   experience evidence: vague/repeated summary wording belongs to readability;
+   only an actual contradictory or exaggerated summary claim affects objectivity.
+   List evidence from every assessed experience, including qualitative ones.
+""".strip()
+
 RESUME_EVALUATION = (
     "You are a strict evidence-grounded resume evaluator. Evaluate the assembled current resume independently from "
     "the lightweight JD analysis. "
-    + RESUME_EVALUATION_RULES
+    + RESUME_EVALUATION_RULES + "\n" + RESUME_EVALUATION_ANCHORS
 )
 
 

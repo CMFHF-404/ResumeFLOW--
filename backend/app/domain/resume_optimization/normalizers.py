@@ -948,7 +948,8 @@ def _validate_source_refs(
                     and segments[1] == "experiences"
                     and segments[2] in selected_master_ids
                 )
-                if not (is_summary or is_selected_experience):
+                is_selected_skills = segments[1:2] == ["skills"]
+                if not (is_summary or is_selected_experience or is_selected_skills):
                     _fail("personal-summary refs must use the summary or a selected experience")
             elif change.module_type == OptimizationModuleType.SKILLS_ORDER:
                 if segments[1:2] != ["skills"]:
@@ -1064,6 +1065,15 @@ def _normalize_change(
     source_context: _SourceValidationContext | None,
 ) -> OptimizationChange:
     value = _alias_object(raw, aliases=_CHANGE_KEYS, path=f"changes[{index}]")
+    # These two addresses name unique current-resume collections. Canonicalize
+    # only the documented resume alias; unknown IDs and mismatched fields still
+    # fail below, and the full selected-ID permutation is still checked.
+    if isinstance(value.get("module_id"), str) and value["module_id"] in {"current_resume", "resume"}:
+        address = (value.get("module_type"), value.get("field_path"))
+        if address == ("skills_order", "skills.order"):
+            value["module_id"] = "skills"
+        elif address == ("section_order", "section_order"):
+            value["module_id"] = "sections"
     raw_id = value.pop("change_id", None)
     if raw_id is not None and (not isinstance(raw_id, str) or not raw_id.strip()):
         _fail(f"changes[{index}].changeId must be a non-empty string when provided")
@@ -1354,6 +1364,29 @@ def normalize_answered_optimization_changes(
     if not isinstance(raw, Mapping) or set(raw) != {"changes"}:
         _fail("answer rewrite must return only a changes object")
     expected_by_id = {change.change_id: change for change in expected_changes}
+    if not isinstance(raw["changes"], list):
+        _fail("answer changes must be an array")
+    completed_changes=[]
+    for index, item in enumerate(raw["changes"]):
+        proposal=_alias_object(item,aliases=_CHANGE_KEYS,path=f"changes[{index}]")
+        cid=proposal.get("change_id")
+        if not isinstance(cid,str) or cid not in expected_by_id:
+            _fail("answer proposal must identify an affected change")
+        is_patch=not any(key in proposal for key in {
+            "module_type","module_id","field_path","issue_ids","before_value",
+            "dimension","scope","default_selected",
+        })
+        if is_patch:
+            if proposal.get("action_kind")=="rewrite":
+                proposal["action_kind"]="rewrite_now"
+            if (proposal.get("action_kind")=="rewrite_now"
+                    and isinstance(proposal.get("general_value"),str)
+                    and proposal.get("targeted_value") is None):
+                proposal["targeted_value"]=proposal["general_value"]
+        # Identity, beforeValue and selection state are server-owned. Legacy
+        # full replies still undergo the unchanged strict identity checks below.
+        original=expected_by_id[cid].model_dump(mode="json")
+        completed_changes.append({**{key:original[key] for key in set(_CHANGE_KEYS.values())},**proposal})
     expected_issue_ids = {
         issue_id for change in expected_changes for issue_id in change.issue_ids
     }
@@ -1365,7 +1398,7 @@ def normalize_answered_optimization_changes(
         for issue_id in expected_issue_ids
     }
     plan = normalize_optimization_plan(
-        {"changes": raw["changes"], "questions": []},
+        {"changes": completed_changes, "questions": []},
         known_issue_dimensions=local_issue_dimensions,
         selected_master_ids=selected_master_ids,
         selected_skill_ids=selected_skill_ids,

@@ -82,6 +82,7 @@ const SAFE_PUBLIC_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.free
   resume_optimization_apply_invalid: '优化方案或应用选择无效，请刷新后重试。',
   resume_optimization_apply_conflict: '当前优化方案状态不允许再次应用。',
   resume_optimization_evaluation_pending: '复评结果尚未就绪或已过期，请重新生成六维评估后重试。',
+  resume_optimization_scoring_version_changed: '评分规则已更新，无法比较旧基线。请撤销本次优化，重新评分后生成新方案。',
   resume_optimization_rescore_in_progress: '该优化记录正在复评，请稍后刷新。',
   resume_optimization_rescore_claim_lost: '本次复评租约已失效，请刷新后重试。',
   resume_optimization_content_conflict: '简历内容已在优化后发生变化，请刷新后再操作。',

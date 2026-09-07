@@ -35,6 +35,201 @@ class EvaluationSemanticBoundaryTests(unittest.TestCase):
 
 
 class SemanticReviewTests(unittest.IsolatedAsyncioTestCase):
+    def _mixed_fallback_plan(self):
+        docs = _documents(current_a="Supported first action", current_b="Supported second action",
+                          selected_a="Supported first action")
+        plan = OptimizationPlan(changes=[
+            _change(before_value="Supported first action", general_value="Supported first action.",
+                    targeted_value="Supported first action."),
+            _change(change_id="CHG_B", issue_ids=["I2"], module_id="exp-b",
+                    before_value="Supported second action", general_value="Supported second action.",
+                    targeted_value="Led international team.",
+                    source_refs=["/currentResume/experiences/exp-b/star/a"]),
+        ])
+        first_review = {"reviews": [
+            {"id": "CHANGE_1", "verdict": "supported", "reason": "Supported"},
+            {"id": "CHANGE_2", "verdict": "unsupported", "reason": "Added ownership"},
+        ]}
+        return docs, plan, first_review
+
+    async def test_optional_fallback_failure_preserves_first_review_and_receipts(self):
+        from app.domain.ai import runtime_budget
+        from app.domain.ai.public_errors import AiProviderPayloadError, AiProviderUnavailableError
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        from app.domain.resume_optimization.safety import semantic_review_hash
+        for failure in ({"reviews": []}, {"reviews": [{"id": "CHANGE_1", "verdict": "invalid"}]},
+                        AiProviderPayloadError("invalid payload"), AiProviderUnavailableError("unavailable"),
+                        TimeoutError(), runtime_budget.AiRuntimeTimeoutError("local timeout")):
+            with self.subTest(failure=failure):
+                docs, plan, first_review = self._mixed_fallback_plan()
+                original = plan.model_dump(mode="json")
+                model = AsyncMock(side_effect=[first_review, failure])
+                with patch("app.domain.resume_optimization.semantic_review._call_llm", model):
+                    reviewed = await review_plan_semantics(plan=plan, source_documents=docs)
+                self.assertEqual(model.await_count, 2)
+                self.assertEqual(plan.model_dump(mode="json"), original)
+                for before, after in zip(plan.changes, reviewed.changes):
+                    self.assertEqual(after.general_value, before.general_value)
+                    self.assertEqual(after.targeted_value, before.targeted_value)
+                    self.assertEqual(after.semantic_review.input_hash, semantic_review_hash(after, docs))
+                self.assertEqual([c.semantic_review.verdict for c in reviewed.changes],
+                                 ["supported", "unsupported"])
+                checked, _ = verify_plan_changes(plan=reviewed, source_documents=docs)
+                self.assertEqual([c.safety_status for c in checked], ["allowed", "blocked"])
+
+    async def test_optional_fallback_does_not_swallow_cancellation_or_accounting_errors(self):
+        from app.domain.ai import runtime_budget
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        for failure in (asyncio.CancelledError(), runtime_budget.AiUsageAccountingError("accounting"),
+                        runtime_budget.AiUsagePayloadError("usage payload"),
+                        runtime_budget.AiRuntimeBudgetExceeded("budget")):
+            with self.subTest(failure=type(failure).__name__):
+                docs, plan, first_review = self._mixed_fallback_plan()
+                model = AsyncMock(side_effect=[first_review, failure])
+                with patch("app.domain.resume_optimization.semantic_review._call_llm", model):
+                    with self.assertRaises(type(failure)):
+                        await review_plan_semantics(plan=plan, source_documents=docs)
+                self.assertEqual(model.await_count, 2)
+
+    async def test_optional_fallback_cannot_outlive_the_shared_deadline(self):
+        from app.domain.ai import runtime_budget
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        docs, plan, first_review = self._mixed_fallback_plan()
+        calls = 0
+
+        async def model(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return first_review
+            await asyncio.Future()
+
+        with patch("app.domain.resume_optimization.semantic_review._call_llm", side_effect=model):
+            with self.assertRaises(runtime_budget.AiRuntimeTimeoutError):
+                await runtime_budget.run_with_total_timeout(
+                    review_plan_semantics(plan=plan, source_documents=docs),
+                    budget=runtime_budget.AiRuntimeBudget(stream_total_timeout_seconds=0.1),
+                )
+        self.assertEqual(calls, 2)
+
+    async def test_summary_feedback_repair_requires_fresh_review_and_keeps_sources(self):
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        from app.domain.resume_optimization.safety import semantic_review_hash
+        docs=_documents(selected_a='参与支付页面改版<!--私密隐藏文字-->')
+        change=_change(module_type='personal_summary', module_id='current_resume',
+            field_path='personal_summary', before_value=docs['currentResume']['personal_summary'],
+            general_value='统领支付团队', targeted_value='统领支付团队',
+            source_refs=['/selectedSourceExperiences/exp-a/star/a'])
+        plan=OptimizationPlan(changes=[change])
+        for verdict in ('supported','unsupported','uncertain'):
+            model=AsyncMock(side_effect=[
+                {'reviews':[{'id':'CHANGE_1','verdict':'unsupported','reason':'没有领导职责证据'}]},
+                {'changes':[{'id':'CHANGE_1','value':'参与支付页面的改版'}]},
+                {'reviews':[{'id':'CHANGE_1','verdict':verdict,'reason':'复核来源'}]},
+            ])
+            with patch('app.domain.resume_optimization.semantic_review._call_llm',model):
+                reviewed=await review_plan_semantics(plan=plan,source_documents=docs)
+            checked,_=verify_plan_changes(plan=reviewed,source_documents=docs)
+            self.assertEqual(model.await_count,3)
+            self.assertEqual(checked[0].source_refs,change.source_refs)
+            self.assertNotIn('私密隐藏文字',str(model.await_args_list[1]))
+            if verdict=='supported':
+                self.assertEqual(checked[0].safety_status,'allowed')
+                self.assertEqual(checked[0].general_value,'参与支付页面的改版')
+                self.assertEqual(checked[0].semantic_review.input_hash,semantic_review_hash(checked[0],docs))
+            else:
+                self.assertEqual(checked[0].safety_status,'blocked')
+                self.assertEqual(checked[0].general_value,'统领支付团队')
+        self.assertIsNone(plan.changes[0].semantic_review)
+
+    async def test_summary_repair_receives_safe_rich_text_and_rechecks_its_binding(self):
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        from app.domain.resume_optimization.safety import semantic_review_hash
+        before = ('<a href="https://example.com/portfolio?x=1&amp;y=2" title="PRIVATE_ATTRIBUTE">'
+                  '支付页面</a>的<strong>改版</strong>经验<!--PRIVATE_COMMENT-->')
+        rejected = before + '，统领支付团队'
+        repaired = ('参与<a href="https://example.com/portfolio?x=1&amp;y=2">'
+                    '支付页面</a>的<strong>改版</strong>。')
+        for candidate, verdict, allowed in (
+            (repaired, 'supported', True),
+            (repaired, 'unsupported', False),
+            (repaired.replace('example.com/portfolio', 'example.com/other'), 'supported', False),
+            (repaired.replace('<strong>', '').replace('</strong>', ''), 'supported', False),
+        ):
+            with self.subTest(candidate=candidate, verdict=verdict):
+                docs = _documents(selected_a='参与支付页面改版<!--PRIVATE_SOURCE-->')
+                docs['currentResume']['personal_summary'] = before
+                change = _change(module_type='personal_summary', module_id='current_resume',
+                                 field_path='personal_summary', before_value=before,
+                                 general_value=rejected, targeted_value=rejected,
+                                 source_refs=['/selectedSourceExperiences/exp-a/star/a'])
+                model = AsyncMock(side_effect=[
+                    {'reviews': [{'id': 'CHANGE_1', 'verdict': 'unsupported', 'reason': '没有领导职责证据'}]},
+                    {'changes': [{'id': 'CHANGE_1', 'value': candidate}]},
+                    {'reviews': [{'id': 'CHANGE_1', 'verdict': verdict, 'reason': '复核来源'}]},
+                ])
+                with patch('app.domain.resume_optimization.semantic_review._call_llm', model):
+                    result = await review_plan_semantics(plan=OptimizationPlan(changes=[change]), source_documents=docs)
+                payload = json.loads(model.await_args_list[1].args[0][1]['content'])
+                template = payload['changes'][0]['beforeRichText']
+                self.assertIn('href="https://example.com/portfolio?x=1&amp;y=2"', template)
+                self.assertIn('<strong>改版</strong>', template)
+                self.assertNotIn('PRIVATE_', json.dumps(payload))
+                checked, _ = verify_plan_changes(plan=result, source_documents=docs)
+                self.assertEqual(checked[0].safety_status, 'allowed' if allowed else 'blocked')
+                if allowed:
+                    self.assertEqual(result.changes[0].general_value, repaired)
+                    self.assertEqual(result.changes[0].source_refs, change.source_refs)
+                    self.assertEqual(result.changes[0].semantic_review.input_hash,
+                                     semantic_review_hash(result.changes[0], docs))
+                self.assertIsNone(change.semantic_review)
+
+    async def test_summary_repair_never_bypasses_invalid_numeric_output_or_cancellation(self):
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        docs=_documents()
+        change=_change(module_type='personal_summary',module_id='current_resume',
+            field_path='personal_summary',before_value=docs['currentResume']['personal_summary'],
+            general_value='统领支付团队',targeted_value='统领支付团队')
+        rejection={'reviews':[{'id':'CHANGE_1','verdict':'unsupported','reason':'责任夸大'}]}
+        for repair in ({'changes':[{'id':'CHANGE_1','value':'提高30%'}]},
+                       {'changes':[{'id':'wrong','value':'参与支付改版'}]},
+                       {'reviews':[]},TimeoutError()):
+            model=AsyncMock(side_effect=[rejection,repair])
+            with patch('app.domain.resume_optimization.semantic_review._call_llm',model):
+                result=await review_plan_semantics(plan=OptimizationPlan(changes=[change]),source_documents=docs)
+            self.assertEqual(verify_plan_changes(plan=result,source_documents=docs)[0][0].safety_status,'blocked')
+            self.assertEqual(model.await_count,2)
+        with patch('app.domain.resume_optimization.semantic_review._call_llm',AsyncMock(side_effect=[rejection,asyncio.CancelledError()])):
+            with self.assertRaises(asyncio.CancelledError):
+                await review_plan_semantics(plan=OptimizationPlan(changes=[change]),source_documents=docs)
+
+    async def test_bad_targeted_variant_cannot_poison_independently_supported_general(self):
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        change=_change(general_value="参与支付页面的改版",targeted_value="主导国际支付平台改造")
+        transport=AsyncMock(side_effect=[
+            {"reviews":[{"id":"CHANGE_1","verdict":"unsupported","reason":"定向版本夸大职责"}]},
+            {"reviews":[{"id":"CHANGE_1","verdict":"supported","reason":"通用版本有来源支持"}]},
+        ])
+        with patch("app.domain.resume_optimization.semantic_review._call_llm",transport):
+            result=await review_plan_semantics(plan=OptimizationPlan(changes=[change]),source_documents=_documents())
+        recovered=result.changes[0]
+        self.assertEqual(recovered.general_value,recovered.targeted_value)
+        self.assertEqual(recovered.semantic_review.verdict,"supported")
+        self.assertEqual(change.targeted_value,"主导国际支付平台改造")
+        checked,_=verify_plan_changes(plan=result,source_documents=_documents())
+        self.assertEqual(checked[0].safety_status,"allowed")
+        self.assertEqual(transport.await_count,2)
+
+    async def test_unsupported_general_is_not_approved_by_fallback(self):
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        change=_change(general_value="主导支付团队",targeted_value="主导国际支付团队")
+        transport=AsyncMock(return_value={"reviews":[{"id":"CHANGE_1","verdict":"unsupported","reason":"无职责依据"}]})
+        with patch("app.domain.resume_optimization.semantic_review._call_llm",transport):
+            result=await review_plan_semantics(plan=OptimizationPlan(changes=[change]),source_documents=_documents())
+        checked,_=verify_plan_changes(plan=result,source_documents=_documents())
+        self.assertEqual(checked[0].safety_status,"blocked")
+        self.assertEqual(transport.await_count,2)
+
     async def test_answer_review_contract_failures_preserve_retryable_draft(self):
         import test_resume_optimization_orchestrator as fixtures
         from app.domain.resume_optimization import orchestrator

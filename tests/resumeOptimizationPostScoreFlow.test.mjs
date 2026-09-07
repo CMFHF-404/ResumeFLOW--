@@ -99,8 +99,8 @@ const buildMountedHookHarness = async () => {
           useResumeOptimizationFlow,
         } from './views/ResumeEditor/hooks/useResumeOptimizationFlow';
 
-        const sourceEvaluation = { overallScore: 70, dimensions: [] };
-        const postEvaluation = { overallScore: 88, dimensions: [] };
+        const sourceEvaluation = { overallScore: 70, dimensions: [], scoringVersion: 'coverage_consensus_v2' };
+        const postEvaluation = { overallScore: 88, dimensions: [], scoringVersion: 'coverage_consensus_v2' };
         const plan = {
           changes: [{
             changeId: 'change-a',

@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
 EVALUATION_VERSION = "resume_flow_v1"
+SCORING_VERSION = "coverage_consensus_v2"
 EVALUATION_SCOPE = "full_resume"
 
 DIMENSION_SUBSCORES: Tuple[Tuple[str, Tuple[Tuple[str, int], ...]], ...] = (
@@ -929,6 +930,10 @@ def normalize_resume_evaluation(
         "topPriorities": _normalize_priorities(evaluation.get("topPriorities"), issue_ids, issue_remapped),
         "jdMatch": jd_match,
     }
+    if "scoringVersion" in evaluation:
+        normalized["scoringVersion"] = _require_string(
+            evaluation["scoringVersion"], "resumeEvaluation.scoringVersion"
+        )
     _validate_content_completeness_integrity(normalized, fact_metadata)
     return normalized
 

@@ -22,7 +22,7 @@ from ...constants import ALLOWED_OVERRIDE_KEYS
 from ...database import AsyncSessionFactory
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ...utils.time_utils import utc_now_aware
-from ..ai.resume_evaluation import DIMENSION_NAMES, normalize_resume_evaluation
+from ..ai.resume_evaluation import DIMENSION_NAMES, SCORING_VERSION, normalize_resume_evaluation
 from ..resume.models import Resume, ResumeExperienceLink
 from ..resume.resume_service import _mark_resume_analysis_outdated
 from .models import ResumeOptimizationRun
@@ -151,6 +151,12 @@ class OptimizationFinalizePendingError(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__(self.public_message)
+
+
+class OptimizationScoringVersionMismatchError(OptimizationFinalizePendingError):
+    code = "resume_optimization_scoring_version_changed"
+    public_message = "评分规则已更新，无法比较旧基线。请撤销本次优化，重新评分后生成新方案。"
+    retryable = False
 
 
 class OptimizationContentConflictError(RuntimeError):
@@ -1476,6 +1482,8 @@ async def apply_resume_optimization(
 
         try:
             snapshot = _validated_snapshot(run)
+            if snapshot.get("evaluation", {}).get("scoringVersion") != SCORING_VERSION:
+                raise OptimizationApplyStaleError()
         except OptimizationApplyStaleError:
             await persist_stale()
             raise
@@ -3211,6 +3219,9 @@ def _post_evaluation_summary(
     before: Mapping[str, Any],
     after: Mapping[str, Any],
 ) -> dict[str, Any]:
+    if (before.get("scoringVersion") != SCORING_VERSION
+            or after.get("scoringVersion") != SCORING_VERSION):
+        raise OptimizationScoringVersionMismatchError()
     before_dimensions = {
         item["dimension"]: item
         for item in before.get("dimensions", [])
@@ -4141,21 +4152,27 @@ async def finalize_run_from_persisted_evaluation(
             )
         except (
             _PersistedEvaluationPending,
+            OptimizationScoringVersionMismatchError,
             OptimizationApplyValidationError,
             ValidationError,
             TypeError,
             ValueError,
-        ):
+        ) as exc:
             require_status_transition(
                 ResumeOptimizationStatus.RESCORING,
                 ResumeOptimizationStatus.APPLIED,
             )
             run.status = ResumeOptimizationStatus.APPLIED.value
             run.error_json = _safe_finalize_error()
+            if isinstance(exc, OptimizationScoringVersionMismatchError):
+                run.error_json = {"code": exc.code, "message": exc.public_message,
+                                  "statusCode": exc.status_code, "retryable": False}
             run.updated_at = _timestamp_like(run.updated_at, utc_now_aware())
             session.add(run)
             await session.flush()
             await session.commit()
+            if isinstance(exc, OptimizationScoringVersionMismatchError):
+                raise
             raise OptimizationFinalizePendingError()
 
         require_status_transition(

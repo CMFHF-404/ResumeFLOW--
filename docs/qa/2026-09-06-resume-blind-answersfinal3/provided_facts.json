@@ -1,0 +1,319 @@
+{
+  "ok": true,
+  "seconds": 16.69,
+  "value": {
+    "changes": [
+      {
+        "change_id": "CHG_001",
+        "issue_ids": [
+          "ISSUE_READ_002"
+        ],
+        "dimension": "内容可读",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+        "general_value": "具备产品经理专业工作经验，掌握SQL、Excel及需求分析与PRD技能。",
+        "targeted_value": "具备产品经理专业工作经验，掌握SQL、Excel及需求分析与PRD技能。",
+        "source_refs": [
+          "/currentResume/personal_summary",
+          "/currentResume/skills/0/name",
+          "/currentResume/skills/1/name",
+          "/currentResume/skills/2/name",
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/title"
+        ],
+        "introduced_terms": [
+          "具备",
+          "掌握",
+          "技能"
+        ],
+        "rationale": "移除个人优势中的主观夸大与高频重复词汇，基于已有岗位及已掌握的技能客观重构个人总结。 定向版本未通过审核，已采用重新审核通过的通用版本。",
+        "expected_score_gain": 15,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "05cbf80b353306a60b18c6a4613ead21aeb5e476ceb7d0cc68eb6e0f35bb9e8c",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容与提供的产品经理背景、各项专业技能及产品工作经历来源一致。"
+        }
+      },
+      {
+        "change_id": "CHG_002",
+        "issue_ids": [
+          "ISSUE_LOGIC_003"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/personal_summary"
+        ],
+        "introduced_terms": [],
+        "rationale": "已在CHG_001中对个人总结进行客观重构与降噪，此逻辑清晰维度问题不再重复修改。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_003",
+        "issue_ids": [
+          "RUBRIC_EXAGGERATED_CLAIM"
+        ],
+        "dimension": "专业表达",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/personal_summary"
+        ],
+        "introduced_terms": [],
+        "rationale": "已在CHG_001中处理个人总结中的表述规范问题，避免同字段重复变更。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_004",
+        "issue_ids": [
+          "ISSUE_LOGIC_001",
+          "ISSUE_LOGIC_002"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "经历行动描述缺乏具体事实细节，将在STAR及专业表达维度通过问答补充后统一优化。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_005",
+        "issue_ids": [
+          "ISSUE_STAR_001",
+          "ISSUE_STAR_002"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": "访谈5名管理员，整理反馈，编写配置指引并配合完成验收。",
+        "targeted_value": "访谈5名管理员，整理反馈，编写配置指引并配合完成验收。",
+        "source_refs": [
+          "/userAnswers/QST_001/value"
+        ],
+        "introduced_terms": [
+          "访谈",
+          "管理员",
+          "配置指引",
+          "验收"
+        ],
+        "rationale": "根据用户提供的信息，将行动补充为具体的访谈管理员、整理反馈及编写配置指引与配合验收工作。",
+        "expected_score_gain": 26,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "4b1299109d21c04e838d6fe7b03f2fb6d3e21d7ea935a6dbdd44580c55697969",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "两版本内容与提供的来源完全一致。"
+        }
+      },
+      {
+        "change_id": "CHG_006",
+        "issue_ids": [
+          "ISSUE_STAR_003"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.r",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "",
+        "general_value": "配置指引已交付并通过验收。",
+        "targeted_value": "配置指引已交付并通过验收。",
+        "source_refs": [
+          "/userAnswers/QST_002/value"
+        ],
+        "introduced_terms": [
+          "配置指引",
+          "交付",
+          "验收"
+        ],
+        "rationale": "补充已交付并通过验收的成果产出。",
+        "expected_score_gain": 25,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "0c5446b40b79ed573e1ece84556d4e589ebf74426e38c1ed2a378cb3e3af92e7",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "交付并通过验收的内容在来源中有明确支持。"
+        }
+      },
+      {
+        "change_id": "CHG_007",
+        "issue_ids": [
+          "ISSUE_READ_001"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "该字段的可读性与信息密度依赖问答补充具体动作事实，统一由CHG_005问答驱动。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_008",
+        "issue_ids": [
+          "ISSUE_EXP_001",
+          "ISSUE_EXP_002"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "专业动词及责任边界的优化将在获取真实工作细节后进行，避免同字段产生冲突变更。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_009",
+        "issue_ids": [
+          "ISSUE_QUANT_001"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.r",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "",
+        "general_value": "配置指引已交付并通过验收。",
+        "targeted_value": "配置指引已交付并通过验收。",
+        "source_refs": [
+          "/userAnswers/QST_003/value"
+        ],
+        "introduced_terms": [
+          "配置指引",
+          "交付",
+          "验收"
+        ],
+        "rationale": "补充项目交付并通过验收的实际结果。",
+        "expected_score_gain": 30,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "5d29d8d0577fd8b25d665d988b687c440b65e950ae117c8d5af70ac383e76da6",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "交付并通过验收的内容在来源中有明确支持。"
+        }
+      },
+      {
+        "change_id": "CHG_010",
+        "issue_ids": [
+          "RUBRIC_内容完整_0",
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "求职意向与基础字段补充等首发暂不支持的模块通过只读哨兵安全留空处理。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHG_001",
+        "CHG_005",
+        "CHG_006",
+        "CHG_009"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHG_002",
+        "CHG_003",
+        "CHG_004",
+        "CHG_007",
+        "CHG_008",
+        "CHG_010"
+      ],
+      "findings": []
+    }
+  }
+}

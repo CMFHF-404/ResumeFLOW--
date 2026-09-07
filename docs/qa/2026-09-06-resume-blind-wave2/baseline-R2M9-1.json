@@ -1,0 +1,104 @@
+{
+  "ok": false,
+  "seconds": 90.44,
+  "error_type": "AiProviderUnavailableError",
+  "message": "Service call failed; inspect local diagnostic log",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 102,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1395,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1337,
+      "function": "_run_with_total_timeout"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1385,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1379,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1365,
+      "function": "_analyze_resume_evaluation_once"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1299,
+      "function": "_finalize_with_one_repair"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 481,
+      "function": "_repair_resume_evaluation"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2843,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2001,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1893,
+      "function": "_stream_gemini_json_response_once"
+    }
+  ],
+  "cause_type": "HTTPStatusError"
+}

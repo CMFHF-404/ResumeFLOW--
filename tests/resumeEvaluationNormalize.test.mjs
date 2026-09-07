@@ -15,6 +15,18 @@ const importNormalizer = async () => {
   return import(`data:text/javascript;base64,${encoded}`);
 };
 
+test('scoring revision is retained without inventing a revision for historical reports', async () => {
+  const { normalizeResumeEvaluation } = await importNormalizer();
+  const old = buildEvaluation();
+  assert.equal(normalizeResumeEvaluation(old).scoringVersion, undefined);
+  assert.equal(normalizeResumeEvaluation({ ...old, scoringVersion: 'coverage_consensus_v1' }).scoringVersion,
+    'coverage_consensus_v1');
+  assert.equal(normalizeResumeEvaluation({ ...old, scoring_version: 'older_rules' }).scoringVersion, 'older_rules');
+  for (const scoringVersion of [null, '', 3, {}]) {
+    assert.equal(normalizeResumeEvaluation({ ...old, scoringVersion }), undefined);
+  }
+});
+
 const rubric = [
   ['逻辑清晰', [['信息顺序', 25], ['因果关系', 30], ['信息层级', 20], ['一致性与聚焦', 25]]],
   ['STAR应用', [['Situation情境', 15], ['Task任务', 15], ['Action行动', 35], ['Result结果', 35]]],

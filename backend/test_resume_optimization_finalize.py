@@ -271,6 +271,7 @@ def _evaluation(
         )
     return {
         "evaluationVersion": "resume_flow_v1",
+        "scoringVersion": "coverage_consensus_v2",
         "evaluationScope": "full_resume",
         "overallScore": round(sum(scores) / len(scores)),
         "targetRole": "产品经理",
@@ -463,6 +464,36 @@ def _revert_request(expected) -> ResumeOptimizationRevertRequest:
 
 
 class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_already_applied_legacy_baseline_requires_revert_instead_of_retrying_scores(self):
+        run, resume, link = await _applied_fixture()
+        run.before_snapshot["evaluation"].pop("scoringVersion")
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        run.after_snapshot["rollback_before_signature"] = apply_service._rollback_before_signature(
+            run_id=run.id, resume_id=run.resume_id, source_snapshot_hash=run.source_snapshot_hash,
+            applied_change_ids=list(run.accepted_change_ids), before=run.after_snapshot["before"])
+        _install_persisted_post_evaluation(run, resume, evaluation=_post_evaluation())
+        with self.assertRaises(apply_service.OptimizationScoringVersionMismatchError):
+            await apply_service.finalize_run_from_persisted_evaluation(
+                session=_finalize_session(run, resume, link), user_id=USER_ID,
+                run_id=str(RUN_ID), payload=_finalize_request())
+        self.assertEqual(run.status, ResumeOptimizationStatus.APPLIED.value)
+        self.assertFalse(run.error_json["retryable"])
+        self.assertIn("撤销", run.error_json["message"])
+        self.assertFalse(run.post_evaluation_json)
+
+    def test_mixed_or_missing_scoring_versions_cannot_produce_score_delta(self):
+        for version in (None, "previous_rules", "coverage_consensus_v1"):
+            for side in ("before", "after"):
+                with self.subTest(version=version, side=side):
+                    evaluations = {"before": _source_evaluation(), "after": _post_evaluation()}
+                    if version is None:
+                        evaluations[side].pop("scoringVersion")
+                    else:
+                        evaluations[side]["scoringVersion"] = version
+                    with self.assertRaises(apply_service.OptimizationScoringVersionMismatchError):
+                        apply_service._post_evaluation_summary(run=None, resume=None,
+                            evaluation_signature="test", **evaluations)
+
     async def test_implicit_archived_selection_survives_post_apply_operations(self) -> None:
         for selection_mode in ("missing_field", "missing_selection"):
             for operation in ("resume", "claim", "finalize", "revert"):

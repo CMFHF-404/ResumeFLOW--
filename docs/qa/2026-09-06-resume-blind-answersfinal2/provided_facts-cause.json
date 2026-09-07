@@ -1,0 +1,23 @@
+[
+  {
+    "type": "OptimizationAnswerRewriteNormalizationError",
+    "message": "answer rewrite response violates the optimization contract"
+  },
+  {
+    "type": "OptimizationPlanNormalizationError",
+    "message": "changes[0] violates the optimization contract"
+  },
+  {
+    "type": "ValidationError",
+    "message": "omitted",
+    "fields": [
+      {
+        "loc": [
+          "action_kind"
+        ],
+        "type": "enum",
+        "msg": "Input should be 'rewrite_now', 'ask_user', 'suggest_from_bank' or 'leave_unchanged'"
+      }
+    ]
+  }
+]

@@ -1,0 +1,57 @@
+[
+  {
+    "id": "F01",
+    "finding": "同一低质量文本的成果量化得分为20、0、0；无数量的行动套话被授予过程数量10分和数据可信度10分",
+    "evidence": [
+      "baseline-R7K2-1.json",
+      "baseline-R7K2-2.json",
+      "baseline-R7K2-3.json"
+    ],
+    "kind": "scoring_semantics_and_stability"
+  },
+  {
+    "id": "F02",
+    "finding": "高质量对照的成果量化得分为96、100、80，极差20",
+    "evidence": [
+      "baseline-R8P4-1.json",
+      "baseline-R8P4-2.json",
+      "baseline-R8P4-3.json"
+    ],
+    "kind": "dimension_stability"
+  },
+  {
+    "id": "F03",
+    "finding": "高质量对照第3次报告误报br前缺少句号，但其引用证据原文已有句号",
+    "evidence": [
+      "baseline-R8P4-3.json",
+      "fixtures.json"
+    ],
+    "kind": "false_positive"
+  },
+  {
+    "id": "F04",
+    "finding": "no_data回答改写产生无value后缀的sourceRefs，以及改动应固定的defaultSelected，使整批回答失败",
+    "evidence": [
+      "diagnostic-R7K2.json",
+      "diagnostic-R2M9.json"
+    ],
+    "kind": "answer_contract_failure"
+  },
+  {
+    "id": "F05",
+    "finding": "规划输出skills_order/moduleId=current_resume，服务端仅接受skills，导致整份方案校验失败",
+    "evidence": [
+      "diagnostic-R8P4.json",
+      "diagnostic-R3V6.json"
+    ],
+    "kind": "planner_contract_failure"
+  },
+  {
+    "id": "F06",
+    "finding": "低证据提问选项包含无来源的4小时到10分钟和80%以上指标；并未写入简历，但存在诱导用户确认虚构数字的风险",
+    "evidence": [
+      "diagnostic-R7K2.json"
+    ],
+    "kind": "unsupported_question_suggestions"
+  }
+]

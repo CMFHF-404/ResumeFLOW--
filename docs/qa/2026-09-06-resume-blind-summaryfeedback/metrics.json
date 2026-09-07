@@ -1,0 +1,21 @@
+{
+  "changed_algorithm_files": [
+    "app\\domain\\resume_optimization\\semantic_review.py"
+  ],
+  "baseline": [
+    63,
+    62,
+    59
+  ],
+  "post": [
+    100,
+    100,
+    100
+  ],
+  "mean_delta": 38.666666666666664,
+  "replays_success": 2,
+  "replay_attempts": 2,
+  "fresh_success": 1,
+  "fresh_attempts": 2,
+  "limitations": "model core services; not browser or HTTP apply acceptance"
+}

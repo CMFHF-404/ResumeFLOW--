@@ -20,7 +20,7 @@ from ..experience.experience_service import (
     NotFoundError as ExperienceNotFoundError,
     get_version_for_user,
 )
-from ..ai.resume_evaluation import normalize_resume_evaluation
+from ..ai.resume_evaluation import SCORING_VERSION, normalize_resume_evaluation
 from ..resume.resume_service import (
     NotFoundError as ResumeNotFoundError,
     get_resume_detail,
@@ -831,11 +831,13 @@ def _normalize_persisted_evaluation(
             or not math.isfinite(float(confidence))
         ):
             raise ValueError("normalized evaluation confidence is not finite")
-        return normalized
     except (TypeError, ValueError) as exc:
         raise OptimizationEvaluationInvalidError(
             "The persisted six-dimensional evaluation failed integrity checks"
         ) from exc
+    if normalized.get("scoringVersion") != SCORING_VERSION:
+        raise OptimizationContextStaleError("评分规则已更新，请重新生成六维报告后再优化。")
+    return normalized
 
 
 def _parse_analysis_text(value: str) -> Mapping[str, Any]:

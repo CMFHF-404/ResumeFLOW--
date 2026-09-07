@@ -1,0 +1,402 @@
+{
+  "ok": false,
+  "causes": [
+    {
+      "type": "OptimizationAnswerRewriteNormalizationError",
+      "message": "answer rewrite response violates the optimization contract"
+    },
+    {
+      "type": "OptimizationPlanNormalizationError",
+      "message": "answer sourceRefs must have shape /userAnswers/{id}/value"
+    }
+  ],
+  "seconds": 18.7,
+  "observed_responses": [
+    {
+      "request_label": "resume_optimization_plan",
+      "response": {
+        "changes": [
+          {
+            "changeId": "CHG_001",
+            "issueIds": [
+              "ISSUE_001"
+            ],
+            "dimension": "逻辑清晰",
+            "moduleType": "experience_star",
+            "moduleId": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+            "fieldPath": "star.a",
+            "actionKind": "ask_user",
+            "scope": "general",
+            "beforeValue": "参与产品工作，负责相关工作，参与相关工作",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+            ],
+            "introducedTerms": [],
+            "rationale": "当前工作经历的行动描述存在循环重复且缺乏具体工作职责与因果逻辑，需要用户补充核心职责与实施细节。",
+            "expectedScoreGain": 15,
+            "defaultSelected": true
+          },
+          {
+            "changeId": "CHG_002",
+            "issueIds": [
+              "ISSUE_002"
+            ],
+            "dimension": "STAR应用",
+            "moduleType": "experience_star",
+            "moduleId": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+            "fieldPath": "star.r",
+            "actionKind": "ask_user",
+            "scope": "general",
+            "beforeValue": "",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/r"
+            ],
+            "introducedTerms": [],
+            "rationale": "该段产品经理经历缺少结果（Result）描述，需要补充业务成果或效率收益以完善STAR结构。",
+            "expectedScoreGain": 30,
+            "defaultSelected": true
+          },
+          {
+            "changeId": "CHG_003",
+            "issueIds": [
+              "ISSUE_003"
+            ],
+            "dimension": "内容可读",
+            "moduleType": "experience_star",
+            "moduleId": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+            "fieldPath": "star.a",
+            "actionKind": "ask_user",
+            "scope": "general",
+            "beforeValue": "参与产品工作，负责相关工作，参与相关工作",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/currentResume/experiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/a"
+            ],
+            "introducedTerms": [],
+            "rationale": "运营周报自动化项目中的行动描述与工作经历完全重复且信息密度过低，需补充该项目的具体落地动作。",
+            "expectedScoreGain": 15,
+            "defaultSelected": true
+          },
+          {
+            "changeId": "CHG_004",
+            "issueIds": [
+              "ISSUE_004"
+            ],
+            "dimension": "内容完整",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "涉及不受支持的基础字段或无证据修改项，根据规则保持不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_005",
+            "issueIds": [
+              "ISSUE_005"
+            ],
+            "dimension": "专业表达",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "personal_summary",
+            "actionKind": "ask_user",
+            "scope": "general",
+            "beforeValue": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/currentResume/personal_summary"
+            ],
+            "introducedTerms": [],
+            "rationale": "个人总结包含绝对化与主观夸大表述，缺乏客观可信的产品专业术语与具体定位，需引导用户选择客观专业表达。",
+            "expectedScoreGain": 15,
+            "defaultSelected": true
+          },
+          {
+            "changeId": "CHG_006",
+            "issueIds": [
+              "ISSUE_006"
+            ],
+            "dimension": "成果量化",
+            "moduleType": "experience_star",
+            "moduleId": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+            "fieldPath": "star.r",
+            "actionKind": "ask_user",
+            "scope": "general",
+            "beforeValue": "",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/currentResume/experiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/r"
+            ],
+            "introducedTerms": [],
+            "rationale": "运营周报自动化项目缺少量化成果指标（如工时节省比例、提效幅度），需补充数据成果。",
+            "expectedScoreGain": 25,
+            "defaultSelected": true
+          }
+        ],
+        "questions": [
+          {
+            "questionId": "QST_001",
+            "moduleId": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+            "fieldPath": "star.a",
+            "text": "在云桥软件担任产品经理期间，您的核心产品工作与具体动作主要包含哪些？",
+            "reason": "当前经历的行动描述存在大量重复词汇，需要明确具体职责以体现因果与逻辑层次。",
+            "answerType": "single_choice_with_text",
+            "choices": [
+              {
+                "value": "负责B2B SaaS产品需求调研、PRD撰写及跨部门协同推进研发上线",
+                "label": "负责B2B SaaS产品需求调研、PRD撰写及跨部门协同推进研发上线"
+              },
+              {
+                "value": "负责核心业务模块功能设计、用户流程梳理及版本迭代规划",
+                "label": "负责核心业务模块功能设计、用户流程梳理及版本迭代规划"
+              },
+              {
+                "value": "other",
+                "label": "其他（请输入具体工作内容）"
+              }
+            ],
+            "affectsChangeIds": [
+              "CHG_001"
+            ],
+            "priority": 3
+          },
+          {
+            "questionId": "QST_002",
+            "moduleId": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+            "fieldPath": "star.r",
+            "text": "在云桥软件的产品工作中，取得了哪些可衡量的业务结果或产品指标？",
+            "reason": "补充量化成果指标与业务价值，完善STAR模型的Result部分。",
+            "answerType": "single_choice_with_text",
+            "choices": [
+              {
+                "value": "按时交付核心版本并上线，支持多个企业客户平稳运行，提升客户满意度",
+                "label": "按时交付核心版本并上线，支持多个企业客户平稳运行，提升客户满意度"
+              },
+              {
+                "value": "优化业务操作流程，缩短用户操作路径与交付周期",
+                "label": "优化业务操作流程，缩短用户操作路径与交付周期"
+              },
+              {
+                "value": "other",
+                "label": "其他（请输入具体成果指标）"
+              }
+            ],
+            "affectsChangeIds": [
+              "CHG_002"
+            ],
+            "priority": 1
+          },
+          {
+            "questionId": "QST_003",
+            "moduleId": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+            "fieldPath": "star.a",
+            "text": "在“运营周报自动化”项目中，您具体采取了哪些分析与实施步骤？",
+            "reason": "消除与主经历雷同的空泛描述，清晰展现项目的具体执行路径与工具应用。",
+            "answerType": "single_choice_with_text",
+            "choices": [
+              {
+                "value": "梳理周报统计指标与数据流，使用SQL提取业务数据并搭建自动化报表模板",
+                "label": "梳理周报统计指标与数据流，使用SQL提取业务数据并搭建自动化报表模板"
+              },
+              {
+                "value": "调研运营手工制表痛点，设计自动化数据流转方案并实现周期性自动输出",
+                "label": "调研运营手工制表痛点，设计自动化数据流转方案并实现周期性自动输出"
+              },
+              {
+                "value": "other",
+                "label": "其他（请输入项目实施细节）"
+              }
+            ],
+            "affectsChangeIds": [
+              "CHG_003"
+            ],
+            "priority": 4
+          },
+          {
+            "questionId": "QST_004",
+            "moduleId": "current_resume",
+            "fieldPath": "personal_summary",
+            "text": "针对求职目标“B2B SaaS 产品经理”，您希望如何更客观专业地概括个人优势？",
+            "reason": "替换主观夸大词汇，以更专业客观的语言展现岗位匹配度。",
+            "answerType": "single_choice_with_text",
+            "choices": [
+              {
+                "value": "3年B2B SaaS产品经验，具备需求分析、PRD撰写及数据分析能力，注重业务落地与跨团队协同。",
+                "label": "3年B2B SaaS产品经验，具备需求分析、PRD撰写及数据分析能力，注重业务落地与跨团队协同。"
+              },
+              {
+                "value": "具备扎实的需求分析与数据处理功底，熟悉SaaS产品生命周期管理与报表自动化方案落地。",
+                "label": "具备扎实的需求分析与数据处理功底，熟悉SaaS产品生命周期管理与报表自动化方案落地。"
+              },
+              {
+                "value": "other",
+                "label": "其他（请输入个人总结内容）"
+              }
+            ],
+            "affectsChangeIds": [
+              "CHG_005"
+            ],
+            "priority": 5
+          },
+          {
+            "questionId": "QST_005",
+            "moduleId": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+            "fieldPath": "star.r",
+            "text": "“运营周报自动化”项目上线后，带来了哪些具体的数据提效或时间缩减？",
+            "reason": "补充项目量化产出，提升成果量化维度的信服力与得分。",
+            "answerType": "single_choice_with_text",
+            "choices": [
+              {
+                "value": "将周报生成时间由原先的每周4小时缩短至10分钟内，显著提升运营数据处理效率",
+                "label": "将周报生成时间由原先的每周4小时缩短至10分钟内，显著提升运营数据处理效率"
+              },
+              {
+                "value": "实现周报全流程自动化生成与分发，减少人工统计误差，数据交付时效提升80%以上",
+                "label": "实现周报全流程自动化生成与分发，减少人工统计误差，数据交付时效提升80%以上"
+              },
+              {
+                "value": "other",
+                "label": "其他（请输入具体量化数据）"
+              }
+            ],
+            "affectsChangeIds": [
+              "CHG_006"
+            ],
+            "priority": 2
+          }
+        ]
+      }
+    },
+    {
+      "request_label": "resume_optimization_answer",
+      "response": {
+        "changes": [
+          {
+            "changeId": "CHANGE_001",
+            "issueIds": [
+              "ISSUE_001"
+            ],
+            "dimension": "逻辑清晰",
+            "moduleType": "experience_star",
+            "moduleId": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+            "fieldPath": "star.a",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "参与产品工作，负责相关工作，参与相关工作",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/userAnswers/QUESTION_001"
+            ],
+            "introducedTerms": [],
+            "rationale": "用户选择无额外补充数据，保持原内容不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHANGE_002",
+            "issueIds": [
+              "ISSUE_002"
+            ],
+            "dimension": "STAR应用",
+            "moduleType": "experience_star",
+            "moduleId": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+            "fieldPath": "star.r",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/userAnswers/QUESTION_002"
+            ],
+            "introducedTerms": [],
+            "rationale": "用户选择无额外补充数据，保持原内容不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHANGE_003",
+            "issueIds": [
+              "ISSUE_003"
+            ],
+            "dimension": "内容可读",
+            "moduleType": "experience_star",
+            "moduleId": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+            "fieldPath": "star.a",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "参与产品工作，负责相关工作，参与相关工作",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/userAnswers/QUESTION_003"
+            ],
+            "introducedTerms": [],
+            "rationale": "用户选择无额外补充数据，保持原内容不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHANGE_004",
+            "issueIds": [
+              "ISSUE_005"
+            ],
+            "dimension": "专业表达",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "personal_summary",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/userAnswers/QUESTION_004"
+            ],
+            "introducedTerms": [],
+            "rationale": "用户选择无额外补充数据，保持原内容不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHANGE_005",
+            "issueIds": [
+              "ISSUE_006"
+            ],
+            "dimension": "成果量化",
+            "moduleType": "experience_star",
+            "moduleId": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+            "fieldPath": "star.r",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "",
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [
+              "/userAnswers/QUESTION_005"
+            ],
+            "introducedTerms": [],
+            "rationale": "用户选择无额外补充数据，保持原内容不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          }
+        ]
+      }
+    }
+  ]
+}

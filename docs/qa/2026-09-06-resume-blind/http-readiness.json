@@ -1,0 +1,14 @@
+{
+  "ready_status": 200,
+  "optimization_routes": [
+    "/api/resume-optimizations/stream",
+    "/api/resume-optimizations/latest",
+    "/api/resume-optimizations/{run_id}/answers/stream",
+    "/api/resume-optimizations/{run_id}/rescore-claim",
+    "/api/resume-optimizations/{run_id}/apply",
+    "/api/resume-optimizations/{run_id}/finalize",
+    "/api/resume-optimizations/{run_id}/revert",
+    "/api/resume-optimizations/{run_id}/cancel",
+    "/api/resume-optimizations/{run_id}"
+  ]
+}

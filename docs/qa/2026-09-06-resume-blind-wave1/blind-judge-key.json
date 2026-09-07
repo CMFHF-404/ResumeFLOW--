@@ -1,0 +1,30 @@
+{
+  "f202aa1a": {
+    "sample": "R7K2",
+    "phase": "baseline"
+  },
+  "2af0dddb": {
+    "sample": "R2M9",
+    "phase": "baseline"
+  },
+  "5cdb43a9": {
+    "sample": "R2M9",
+    "phase": "optimization-1"
+  },
+  "e876a4b3": {
+    "sample": "R8P4",
+    "phase": "baseline"
+  },
+  "0add14f4": {
+    "sample": "R8P4",
+    "phase": "optimization-1"
+  },
+  "e3df0b77": {
+    "sample": "R8P4",
+    "phase": "optimization-2"
+  },
+  "3c94ffbe": {
+    "sample": "R3V6",
+    "phase": "baseline"
+  }
+}

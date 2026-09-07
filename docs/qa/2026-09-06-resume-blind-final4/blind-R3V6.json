@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "seconds": 4.37,
+  "value": {
+    "documents": [
+      {
+        "id": "0c7d30b5",
+        "clarity": 2,
+        "specificity": 2,
+        "groundedness": 4,
+        "defects": [
+          "个人总结存在明显重复与口水话（'我有产品经验。我有产品经验。'）",
+          "工作经历 Action 与 Result 表达极其简略空泛（如'参与交付，做相关工作'、'产品上线了'），丢失了源数据中详实的行动与量化结果",
+          "项目经历 Action 存在重复语病（'做周报，做周报，整理相关东西'）且缺乏句末标点，Result 过度简略空泛"
+        ],
+        "unsupportedClaims": [],
+        "reason": "该版本内容严重退化，删减了源数据中关键的量化成果和具体动作，并充斥大量重复和空泛口水话。"
+      },
+      {
+        "id": "7f9a1578",
+        "clarity": 4,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [
+          "个人总结存在明显重复与口水话（'我有产品经验。我有产品经验。'）"
+        ],
+        "unsupportedClaims": [],
+        "reason": "工作经历与项目经历完整保留了源数据中的具体行动与严谨量化结果（包括归因说明），表述清晰详实，整体质量明显优于另一份。"
+      }
+    ],
+    "preferredId": "7f9a1578"
+  }
+}

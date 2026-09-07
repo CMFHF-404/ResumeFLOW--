@@ -1,0 +1,14 @@
+[
+  {
+    "type": "OptimizationAnswerRewriteNormalizationError",
+    "message": "answer rewrite response violates the optimization contract"
+  },
+  {
+    "type": "OptimizationPlanNormalizationError",
+    "message": "changes[0] violates the optimization contract"
+  },
+  {
+    "type": "ValidationError",
+    "message": "omitted"
+  }
+]
