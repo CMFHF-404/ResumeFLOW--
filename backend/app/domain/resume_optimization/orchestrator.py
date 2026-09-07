@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from ...config import load_settings
 from ..ai import runtime_budget
 from ..ai.public_errors import (
     AI_PROVIDER_UNAVAILABLE_MESSAGE,
@@ -678,6 +679,7 @@ async def create_optimization_plan(
             analysis_result=analysis_result,
             selected_master_ids=set(frozen.selected_master_experience_ids),
             bank_experience_metadata=bank_metadata,
+            limit=load_settings().resume_optimization_max_bank_suggestions,
         )
         result_plan = result_plan.model_copy(
             update={

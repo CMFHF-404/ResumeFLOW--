@@ -1254,6 +1254,7 @@ def normalize_optimization_plan(
     known_issue_dimensions: Mapping[str, str] | None = None,
     known_issue_ids: set[str] | None = None,
     _source_context: _SourceValidationContext | None = None,
+    max_questions: int = 5,
 ) -> OptimizationPlan:
     """Normalize a model plan using whole-plan, fail-closed rejection.
 
@@ -1281,8 +1282,8 @@ def normalize_optimization_plan(
     raw_questions = raw.get("questions", [])
     if not isinstance(raw_changes, list) or not isinstance(raw_questions, list):
         _fail("changes and questions must be arrays")
-    if len(raw_questions) > 5:
-        _fail("optimization plan may contain at most five questions")
+    if len(raw_questions) > min(5, max_questions):
+        _fail(f"optimization plan may contain at most {min(5, max_questions)} questions")
     if "bankSuggestions" in raw and "bank_suggestions" in raw:
         _fail("bank suggestion root aliases must not both be present")
     bank_suggestions = raw.get("bankSuggestions", raw.get("bank_suggestions", []))

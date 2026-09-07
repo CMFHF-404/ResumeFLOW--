@@ -61,7 +61,7 @@ def _rank(issue, priorities):
             RESUME_EVALUATION_DIMENSION_NAMES.index(issue['primaryDimension']), issue['issueId'])
 
 
-def build_tasks(context):
+def build_tasks(context, *, max_questions=5):
     from .planner_service import _minimized_planner_model_payload, _private_target_original_value
     payload = _minimized_planner_model_payload(context)
     local = reconcile_coverage(OptimizationPlan(), context)
@@ -132,7 +132,7 @@ def build_tasks(context):
         key = f'TASK_{len(tasks)+1:03d}'
         tasks[key] = {'module_id': identity, 'field_path': field, 'before': before,
                       'issue_ids': ids, 'dimension': issues[ids[0]]['primaryDimension'],
-                      'sources': sources, 'allow_question': len(tasks) < 5,
+                      'sources': sources, 'allow_question': len(tasks) < max_questions,
                       'local_candidate': local_by_field.get(address),
                       'problems': [issues[i].get('description', '') for i in ids]}
         represented.update(ids)

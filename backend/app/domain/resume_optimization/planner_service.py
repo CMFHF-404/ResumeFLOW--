@@ -7,6 +7,7 @@ import re
 import unicodedata
 from typing import Any, Mapping, Sequence
 
+from ...config import load_settings
 from ..ai import runtime_budget
 from ..ai.llm_transport import _call_llm
 from ..ai.public_errors import AiProviderPayloadError
@@ -1211,6 +1212,9 @@ def _messages(*, system_prompt: str, payload: Mapping[str, Any]) -> list[dict[st
 async def _plan_resume_optimization_v3(
     context: FrozenOptimizationContext,
 ) -> OptimizationPlan:
+    max_questions = load_settings().resume_optimization_max_questions
+    response_schema = deepcopy(_PLAN_RESPONSE_SCHEMA)
+    response_schema['properties']['questions']['maxItems'] = max_questions
     known_issue_dimensions = _known_issue_dimensions(context.evaluation)
     issue_alias_to_original = {
         alias: issue_id
@@ -1220,7 +1224,9 @@ async def _plan_resume_optimization_v3(
     from .coverage import coverage_targets, reconcile_coverage, bind_cleanup_fallbacks
     raw = await _bounded_model_call(
         _messages(
-            system_prompt=OPTIMIZATION_SYSTEM_PROMPT,
+            system_prompt=OPTIMIZATION_SYSTEM_PROMPT.replace(
+                'Maximum five questions', f'Maximum {max_questions} questions',
+            ),
             payload={
                 "context": model_payload,
                 "fieldCoverageTargets": [
@@ -1238,7 +1244,7 @@ async def _plan_resume_optimization_v3(
         request_label="resume_optimization_plan",
         gemini_thinking_level="low",
         gemini_stream=True,
-        gemini_response_json_schema=_PLAN_RESPONSE_SCHEMA,
+        gemini_response_json_schema=response_schema,
     )
     raw = _restore_planner_issue_ids(raw, issue_alias_to_original)
     cleanup_raw = raw.pop("safeCleanupCandidates", []) if isinstance(raw, dict) else []
@@ -1255,6 +1261,7 @@ async def _plan_resume_optimization_v3(
                     change["dimension"] = next(iter(dimensions))
     plan = normalize_optimization_plan(
         raw,
+        max_questions=max_questions,
         known_issue_dimensions=known_issue_dimensions,
         selected_master_ids=set(context.selected_master_experience_ids),
         selected_skill_ids=_selected_skill_ids(context),
@@ -1281,7 +1288,9 @@ async def _plan_resume_optimization_v3(
 @runtime_budget.ai_wall_clock_limited
 async def plan_resume_optimization(context: FrozenOptimizationContext) -> OptimizationPlan:
     from .planner_tasks import build_tasks, task_payload, task_schema, assemble_plan, TASK_PROMPT
-    tasks, retained = build_tasks(context)
+    tasks, retained = build_tasks(
+        context, max_questions=load_settings().resume_optimization_max_questions,
+    )
     if tasks:
         payload = _scrub_human_text(
             {"targetRole": context.target_role, "tasks": task_payload(tasks)},

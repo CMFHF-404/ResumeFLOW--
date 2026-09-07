@@ -262,6 +262,8 @@ class OptimizationSafetySummary(BaseModel):
 
 class OptimizationPlan(BaseModel):
     changes: list[OptimizationChange] = Field(default_factory=list)
+    # Storage/protocol ceilings. New plans use the configured lower limits at
+    # generation and selection time; lowering them must not invalidate saved runs.
     questions: list[OptimizationQuestion] = Field(default_factory=list, max_length=5)
     bank_suggestions: list[BankSuggestion] = Field(default_factory=list, max_length=3)
     safety_summary: OptimizationSafetySummary = Field(
