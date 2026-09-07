@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "seconds": 3.96,
+  "value": {
+    "documents": [
+      {
+        "id": "167a0c83",
+        "clarity": 5,
+        "specificity": 4,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容完全忠于来源，补全了Action部分的句末句号，标点规范统一。"
+      },
+      {
+        "id": "62451518",
+        "clarity": 4,
+        "specificity": 4,
+        "groundedness": 5,
+        "defects": [
+          "经历中的行动描述末尾缺少句号"
+        ],
+        "unsupportedClaims": [],
+        "reason": "完全忠于来源，但Action部分句末缺失标点符号。"
+      }
+    ],
+    "preferredId": "167a0c83"
+  }
+}

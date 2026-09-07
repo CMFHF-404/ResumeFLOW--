@@ -1,0 +1,54 @@
+{
+  "ok": false,
+  "seconds": 120.47,
+  "error_type": "ResumeEvaluationIntegrityError",
+  "message": "本次六维报告未通过完整性校验，未保存本次结果，请重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 102,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1429,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1341,
+      "function": "_run_with_total_timeout"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1419,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1399,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "qa_resume_blind_final.py",
+      "line": 31,
+      "function": "observe_member"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1382,
+      "function": "_analyze_resume_evaluation_once"
+    }
+  ],
+  "cause_type": "ValueError"
+}

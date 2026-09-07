@@ -1,0 +1,10 @@
+[
+  {
+    "type": "OptimizationAnswerRewriteNormalizationError",
+    "message": "answer rewrite response violates the optimization contract"
+  },
+  {
+    "type": "OptimizationPlanNormalizationError",
+    "message": "answer sourceRefs must have shape /userAnswers/{id}/value"
+  }
+]

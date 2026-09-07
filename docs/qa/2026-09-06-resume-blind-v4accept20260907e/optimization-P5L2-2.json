@@ -1,0 +1,85 @@
+{
+  "ok": false,
+  "seconds": 3.09,
+  "error_type": "AiProviderUnavailableError",
+  "message": "Service call failed; inspect local diagnostic log",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 272,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 304,
+      "function": "optimize"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "planner_service.py",
+      "line": 1288,
+      "function": "plan_resume_optimization"
+    },
+    {
+      "file": "planner_service.py",
+      "line": 42,
+      "function": "_bounded_model_call"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1893,
+      "function": "_stream_gemini_json_response_once"
+    }
+  ],
+  "cause_type": "HTTPStatusError",
+  "diagnostics": []
+}

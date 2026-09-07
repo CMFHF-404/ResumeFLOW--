@@ -1,0 +1,92 @@
+{
+  "ok": false,
+  "seconds": 101.58,
+  "error_type": "ResumeEvaluationAuditError",
+  "message": "本次评分依据未通过量表审核，未保存本次结果，请重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 272,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 292,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1527,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1415,
+      "function": "_run_with_total_timeout"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1519,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "resume_evaluation_audit.py",
+      "line": 253,
+      "function": "reviewed_evaluation"
+    }
+  ],
+  "cause_type": null,
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 1
+    },
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 2
+    },
+    {
+      "stage": "generation",
+      "category": "transport_failure"
+    },
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 3
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt",
+      "attempt": 4
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "reviewed",
+      "receipts": [
+        {
+          "input_hash": "ad76af0de8863899290222918d4c03037727a80e4011e880a4e9d59ffc3b14d9",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        },
+        {
+          "input_hash": "4ef4fa120b70413cbcfd9a5ae39bb6cbb55a195233f419871184c7285e085ab9",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": true
+        }
+      ]
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "rubric_mismatch",
+      "dimensions": 1
+    },
+    {
+      "stage": "publication",
+      "category": "rubric_unconfirmed",
+      "attempts": 4,
+      "approved": 1
+    }
+  ]
+}

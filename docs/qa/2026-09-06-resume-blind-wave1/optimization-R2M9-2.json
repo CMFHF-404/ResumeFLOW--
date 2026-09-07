@@ -1,0 +1,39 @@
+{
+  "ok": false,
+  "seconds": 15.67,
+  "error_type": "OptimizationSemanticReviewNormalizationError",
+  "message": "AI 返回的优化审核结果结构异常，请重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_wave.py",
+      "line": 15,
+      "function": "traced"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 123,
+      "function": "optimize"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "semantic_review.py",
+      "line": 101,
+      "function": "review_plan_semantics"
+    }
+  ],
+  "cause_type": "AiProviderPayloadError"
+}

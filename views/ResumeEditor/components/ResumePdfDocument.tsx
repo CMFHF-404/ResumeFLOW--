@@ -1,12 +1,14 @@
 import React from 'react';
 import type { ResumePdfRenderSnapshot } from '../../../types/resume';
-import ResumePreview from './ResumePreview';
+import ResumePreview, { type ResumePreviewProps } from './ResumePreview';
 
 type ResumePdfDocumentProps = {
   snapshot: ResumePdfRenderSnapshot;
   previewRef?: React.RefObject<HTMLDivElement | null>;
   previewContentRef?: React.RefObject<HTMLDivElement | null>;
   className?: string;
+  previewScope?: ResumePreviewProps['previewScope'];
+  optimizationComparison?: ResumePreviewProps['optimizationComparison'];
 };
 
 const noop = () => {};
@@ -16,6 +18,8 @@ const ResumePdfDocument: React.FC<ResumePdfDocumentProps> = ({
   previewRef,
   previewContentRef,
   className = 'rf-print-preview-shell',
+  previewScope = 'print',
+  optimizationComparison,
 }) => {
   const fallbackPreviewRef = React.useRef<HTMLDivElement | null>(null);
   const fallbackPreviewContentRef = React.useRef<HTMLDivElement | null>(null);
@@ -29,11 +33,11 @@ const ResumePdfDocument: React.FC<ResumePdfDocumentProps> = ({
   );
 
   return (
-    <div className={className} data-rf-export-root="true">
+    <div className={className} data-rf-export-root={previewScope === 'print' ? 'true' : undefined}>
       <ResumePreview
         previewRef={previewRef ?? fallbackPreviewRef}
         previewContentRef={previewContentRef ?? fallbackPreviewContentRef}
-        previewScope="print"
+        previewScope={previewScope}
         lineHeight={snapshot.lineHeight}
         fontSize={snapshot.fontSize}
         listSpacingValue={snapshot.listSpacingValue}
@@ -74,6 +78,7 @@ const ResumePdfDocument: React.FC<ResumePdfDocumentProps> = ({
         onEditCertification={noop}
         onEditSkill={noop}
         targetRole={snapshot.targetRole}
+        optimizationComparison={optimizationComparison}
       />
     </div>
   );

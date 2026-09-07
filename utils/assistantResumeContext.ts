@@ -49,6 +49,43 @@ export const buildJDPolishContext = (
   return contextLines.join('\n');
 };
 
+const JD_ATTACHMENT_SUPPLEMENT_PREFIX = '\n\n补充 JD 说明：\n';
+
+/**
+ * Persisted attachment inputs keep the text-area supplement separately from
+ * the extracted file body.  If that body is unavailable after restoration,
+ * fail closed instead of presenting the supplement as a complete text JD.
+ */
+export const buildPersistedJDPolishContext = (
+  jdAnalysis: ResumeJDAnalysis | null,
+  isOutdated: boolean,
+) => {
+  if (!jdAnalysis || isOutdated) {
+    return '';
+  }
+  const record = jdAnalysis as ResumeJDAnalysis & { inputMode?: unknown };
+  // A missing mode predates attachment support and is a text JD.  Never turn
+  // an explicitly unrecognized persisted mode into a text JD, though.
+  if (record.inputMode !== undefined && record.inputMode !== 'text' && record.inputMode !== 'attachment') {
+    return '';
+  }
+  if (record.inputMode !== 'attachment') {
+    return jdAnalysis.jdText.trim();
+  }
+  const extractedText = jdAnalysis.attachmentExtractedText?.trim() ?? '';
+  if (!extractedText) {
+    return '';
+  }
+  const storedText = jdAnalysis.jdText.trim();
+  const composedPrefix = `${extractedText}${JD_ATTACHMENT_SUPPLEMENT_PREFIX}`;
+  const canonicalText = !storedText || storedText === extractedText
+    ? extractedText
+    : storedText.startsWith(composedPrefix)
+      ? storedText
+      : `${composedPrefix}${storedText}`;
+  return canonicalText;
+};
+
 export const buildJDCapabilityContext = (
   analysisResult: JDAnalysisResult | null,
   isOutdated: boolean
@@ -190,9 +227,8 @@ export const buildSelectedResumeFromResources = (
   const config = normalizeResumeConfig(detail.resume.config ?? resume.config);
   const snapshot = buildResumeSnapshot(detail, educations, certifications, skills);
   const jdAnalysis = config.jdAnalysis ?? null;
-  const jdContext = buildJDPolishContext(
-    jdAnalysis?.jdText ?? '',
-    jdAnalysis?.result ?? null,
+  const jdContext = buildPersistedJDPolishContext(
+    jdAnalysis,
     isJDAnalysisOutdated(jdAnalysis, snapshot),
   );
 

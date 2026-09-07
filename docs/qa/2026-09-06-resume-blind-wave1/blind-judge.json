@@ -1,0 +1,95 @@
+{
+  "ok": true,
+  "seconds": 6.89,
+  "value": {
+    "documents": [
+      {
+        "id": "e3df0b77",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "STAR结构完整，量化指标详实，客观陈述了归因边界，完全忠实于原始事实来源，文本表达专业清晰。"
+      },
+      {
+        "id": "e876a4b3",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "内容详实具体，STAR要素齐备，数据与因果关系准确且忠实于数据源。"
+      },
+      {
+        "id": "0add14f4",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "结构严谨，量化成果具体，逻辑清晰，完全符合事实来源。"
+      },
+      {
+        "id": "5cdb43a9",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "内容真实无夸大，标点规范，但相较于完整版本缺乏具体的数据支撑，颗粒度较粗。"
+      },
+      {
+        "id": "2af0dddb",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [
+          "经历中的Action句末缺少句号"
+        ],
+        "reason": "内容忠实于来源但较为概括，且存在句末缺少句号的标点缺陷。"
+      },
+      {
+        "id": "3c94ffbe",
+        "clarity": 2,
+        "specificity": 2,
+        "groundedness": 4,
+        "unsupportedClaims": [],
+        "defects": [
+          "个人总结与行动描述存在无意义重复和空泛口语表达",
+          "部分句子缺少句号",
+          "结果描述过于简单粗略"
+        ],
+        "reason": "语言重复啰嗦、表述口语化严重，丢失了关键量化结果，STAR结构严重退化。"
+      },
+      {
+        "id": "f202aa1a",
+        "clarity": 1,
+        "specificity": 1,
+        "groundedness": 2,
+        "unsupportedClaims": [
+          "精通一切产品工作",
+          "执行力极强",
+          "沟通能力极强",
+          "学习能力极强"
+        ],
+        "defects": [
+          "个人总结空泛吹嘘且无依据",
+          "经历缺失S、T、R要素",
+          "Action描述车轱辘话重复且空洞"
+        ],
+        "reason": "自我评价过度夸大吹嘘，经历内容极度空泛且大段缺失STAR核心要素。"
+      }
+    ],
+    "ranking": [
+      "e3df0b77",
+      "e876a4b3",
+      "0add14f4",
+      "5cdb43a9",
+      "2af0dddb",
+      "3c94ffbe",
+      "f202aa1a"
+    ]
+  }
+}

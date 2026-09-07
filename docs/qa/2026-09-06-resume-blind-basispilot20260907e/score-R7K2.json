@@ -1,0 +1,163 @@
+{
+  "ok": false,
+  "seconds": 82.59,
+  "error_type": "ResumeEvaluationAuditError",
+  "message": "本次评分依据未通过量表审核，未保存本次结果，请重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 272,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 301,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1554,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1427,
+      "function": "_run_with_total_timeout"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1546,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "resume_evaluation_audit.py",
+      "line": 265,
+      "function": "reviewed_evaluation"
+    }
+  ],
+  "cause_type": null,
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 1
+    },
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 2
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt",
+      "attempt": 3
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "reviewed",
+      "receipts": [
+        {
+          "input_hash": "627b10c238d80181bdff0cdec3b4008970014a9f1730f40a201fbfd3ea81c493",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": true
+        },
+        {
+          "input_hash": "2a0c132c15cfb369ac6e84663a7b212797cf0544ee416e127bf8a77e56b368f7",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        }
+      ]
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "rubric_mismatch",
+      "dimensions": 2
+    },
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 4
+    },
+    {
+      "stage": "deductions",
+      "category": "deduction_full_score_has_issue",
+      "field": "resumeEvaluation.dimensions.subscores"
+    },
+    {
+      "stage": "generation",
+      "category": "structure_failure"
+    },
+    {
+      "stage": "publication",
+      "category": "audited_score_profile",
+      "report_hashes": [
+        "627b10c238d80181bdff0cdec3b4008970014a9f1730f40a201fbfd3ea81c493"
+      ],
+      "vectors": [
+        [
+          75,
+          10,
+          81,
+          97,
+          20,
+          0
+        ]
+      ],
+      "subscore_vectors": [
+        [
+          [
+            25,
+            10,
+            15,
+            25
+          ],
+          [
+            0,
+            0,
+            10,
+            0
+          ],
+          [
+            25,
+            20,
+            15,
+            13,
+            8
+          ],
+          [
+            7,
+            15,
+            25,
+            20,
+            15,
+            10,
+            5
+          ],
+          [
+            5,
+            5,
+            5,
+            5,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "total_range": null,
+      "dimension_ranges": null
+    },
+    {
+      "stage": "publication",
+      "category": "rubric_unconfirmed",
+      "attempts": 4,
+      "approved": 1
+    }
+  ]
+}

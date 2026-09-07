@@ -16,9 +16,14 @@ test('JD attachment preparation and latest-selection authority stay centralized'
   assert.match(attachmentUtils, /createJDAttachmentSelectionController/);
   assert.match(analysisHook, /createJDAttachmentSelectionController\(commitJdFile\)/);
   assert.match(analysisHook, /selectFile: selectJdFile/);
-  assert.match(analysisHook, /clearFile: clearJdFile/);
+  assert.match(analysisHook, /clearFile: clearSelectedJdFile/);
+  assert.match(
+    analysisHook,
+    /const clearJdFile = useCallback\(\(\) => \{[\s\S]*clearSelectedJdFile\(\);[\s\S]*restoreJDAttachmentReplacement/,
+  );
   assert.match(analysisHook, /invalidatePending: invalidatePendingJdFileSelection/);
   assert.match(analysisHook, /waitForPendingSelection: waitForPendingJdFileSelection/);
+  assert.match(analysisHook, /hasPendingSelection: hasPendingJdFileSelection/);
   assert.match(
     analysisHook,
     /await waitForPendingJdFileSelection\(\);[\s\S]*const snapshot = buildAnalyzeSnapshot\(\);/,

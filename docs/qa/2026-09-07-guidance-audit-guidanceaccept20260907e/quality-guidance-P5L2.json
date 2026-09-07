@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "P5L2",
+  "seconds": 5.6,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导内容准确反映了简历中缺少电话和标点符号的问题，对成果量化的建议均注明仅在有真实记录时补充否则保留原文，未强加高级职责或引入未证实事实，各发布版本间意见一致。",
+    "publishedVariantCount": 3
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导内容准确反映了简历中缺少电话和标点符号的问题，对成果量化的建议均注明仅在有真实记录时补充否则保留原文，未强加高级职责或引入未证实事实，各发布版本间意见一致。\"}",
+        "\"}",
+        "requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导内容"
+      ]
+    }
+  ]
+}

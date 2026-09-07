@@ -10,6 +10,7 @@ import { buildResumeExperienceMap, resolveExperienceDatePayload } from '../helpe
 import type { FloatingExperiencePolishSessionItem } from './useFloatingExperiencePolishSession';
 import { useAuthOwnerOperationGuard } from '../../../hooks/useAuthOwnerOperationGuard';
 import { AuthContextChangedError } from '../../../services/apiClient';
+import { ensureResumeExperienceLinks } from './resumeExperienceLinkPersistence';
 
 type UseFloatingPolishResumePersistenceParams = {
     authUserKey: string | null;
@@ -48,18 +49,20 @@ export const useFloatingPolishResumePersistence = ({
         if (!versionId) {
             return null;
         }
-        const detail = await resumeService.updateAssembly(resumeId, {
-            operations: [
-                {
-                    op: 'add',
-                    experience_version_id: versionId,
-                },
-            ],
-        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
-        await ownerGuard.assertOperationCurrent(operation);
-        const nextMap = buildResumeExperienceMap(detail);
-        applyResumeDetail(detail);
-        setResumeExperienceMap(nextMap);
+        const { nextMap } = await ensureResumeExperienceLinks({
+            resumeId,
+            candidates: [{ masterId, versionId }],
+            resumeExperienceMap,
+            expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            assertOwnerCurrent: () => ownerGuard.assertOperationCurrent(operation),
+            persistAssembly: (targetResumeId, payload, persistOptions) => resumeService.updateAssembly(
+                targetResumeId,
+                payload,
+                persistOptions,
+            ),
+            applyResumeDetail,
+            setResumeExperienceMap,
+        });
         return nextMap.get(masterId)?.id ?? null;
     }, [applyResumeDetail, ownerGuard, resumeExperienceMap, resumeId, setResumeExperienceMap]);
 
@@ -74,37 +77,23 @@ export const useFloatingPolishResumePersistence = ({
         if (!resumeId) {
             throw new Error('当前简历不存在');
         }
-        const pendingAddMap = new Map<string, string>();
-        sessionItems.forEach((item) => {
-            if (resumeExperienceMap.get(item.targetId)?.id) {
-                return;
-            }
-            const versionId = item.afterItem.experienceVersionId;
-            if (versionId) {
-                pendingAddMap.set(item.targetId, versionId);
-            }
-        });
-        if (!pendingAddMap.size) {
-            await ownerGuard.assertOperationCurrent(operation);
-            return {
-                nextMap: resumeExperienceMap,
-                addedLinkIds: [] as string[],
-            };
-        }
-
-        const detail = await resumeService.updateAssembly(resumeId, {
-            operations: Array.from(pendingAddMap.values()).map((versionId) => ({
-                op: 'add',
-                experience_version_id: versionId,
+        const { nextMap, addedLinkIds } = await ensureResumeExperienceLinks({
+            resumeId,
+            candidates: sessionItems.map((item) => ({
+                masterId: item.targetId,
+                versionId: item.afterItem.experienceVersionId,
             })),
-        }, { expectedAuthCacheKey: operation.expectedAuthCacheKey });
-        await ownerGuard.assertOperationCurrent(operation);
-        const nextMap = buildResumeExperienceMap(detail);
-        const addedLinkIds = Array.from(pendingAddMap.keys())
-            .map((targetId) => nextMap.get(targetId)?.id ?? null)
-            .filter((linkId): linkId is string => Boolean(linkId));
-        applyResumeDetail(detail);
-        setResumeExperienceMap(nextMap);
+            resumeExperienceMap,
+            expectedAuthCacheKey: operation.expectedAuthCacheKey,
+            assertOwnerCurrent: () => ownerGuard.assertOperationCurrent(operation),
+            persistAssembly: (targetResumeId, payload, persistOptions) => resumeService.updateAssembly(
+                targetResumeId,
+                payload,
+                persistOptions,
+            ),
+            applyResumeDetail,
+            setResumeExperienceMap,
+        });
         return {
             nextMap,
             addedLinkIds,

@@ -1,0 +1,83 @@
+{
+  "ok": false,
+  "seconds": 48.43,
+  "error_type": "ResumeEvaluationAuditError",
+  "message": "本次评分依据未通过量表审核，未保存本次结果，请重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 271,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 287,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1527,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1415,
+      "function": "_run_with_total_timeout"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1519,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "resume_evaluation_audit.py",
+      "line": 268,
+      "function": "reviewed_evaluation"
+    }
+  ],
+  "cause_type": null,
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 1
+    },
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 2
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt",
+      "attempt": 3
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "reviewed",
+      "receipts": [
+        {
+          "input_hash": "d7c3b339c9f1001d0ae52ca55d2311800476d5c4356f888dff64d1f21ee13a90",
+          "audit_version": "resume_rubric_audit_v2",
+          "approved": false
+        },
+        {
+          "input_hash": "d051d7d210d95f11d9e9098780d3a23c2766f48d484ecfca8d2da8b8af51adc1",
+          "audit_version": "resume_rubric_audit_v2",
+          "approved": false
+        }
+      ]
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "rubric_mismatch",
+      "dimensions": 2
+    },
+    {
+      "stage": "publication",
+      "category": "rubric_unconfirmed",
+      "attempts": 3,
+      "approved": 0
+    }
+  ]
+}

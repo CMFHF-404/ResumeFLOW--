@@ -1,0 +1,8 @@
+{
+  "tier": "中等质量且无量化资料",
+  "defects": [
+    "完整行动句缺少句号",
+    "已有定性结果但没有量化，不应误判无STAR结果"
+  ],
+  "expected_answer_policy": "no_data for missing facts; supplied sources only"
+}

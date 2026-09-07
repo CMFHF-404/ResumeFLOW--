@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "P8C6",
+  "seconds": 4.0,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导建议基于当前简历实际情况（缺少电话、结果为定性描述），引导补充事实时明确说明如有真实记录才补充否则保留原文，安全可执行且变体间无冲突。",
+    "publishedVariantCount": 3
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "```json\n{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导建议基于当前简历实际情况（缺少电话、结果为定性描述），引导补充事实时明确说明如有真实记录才补充否则保留原文，安全可执行且变体间无冲突。\"}\n```",
+        "如有真实记录才补充否则保留原文，安全可执行且变体间无冲突。\"}\n```",
+        " true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false,"
+      ]
+    }
+  ]
+}

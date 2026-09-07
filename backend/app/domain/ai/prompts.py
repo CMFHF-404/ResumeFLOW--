@@ -1,3 +1,5 @@
+from .resume_evaluation_rubric import SHARED_RUBRIC
+
 JD_ANALYSIS_SHARED_RUBRIC = (
     "Scoring principles for experiences: "
     "1) First restore the candidate's actual behavior from the text before scoring. "
@@ -90,12 +92,19 @@ RESUME_EVALUATION_RULES = (
     "use those generated IDs exactly and do not infer additional facts. Use section_order and experience category "
     "when scoring information order and hierarchy. Do not assess visual "
     "design, fonts, spacing, PDF compatibility, or actual ATS parsing from text-only input. "
+    "Treat allowed rich-text markup such as Markdown links, HTML <a>, <b>/<strong>, <i>/<em>, <u>, and <br> "
+    "as presentation metadata; it must not be reported as stray HTML, placeholder text, or readability noise. "
+    "Evaluate the visible wording after ignoring those markers, while preserving every link target and emphasis marker. "
+    "Inspect every visible Action and Result list item for sentence-ending punctuation. When neighboring items are "
+    "complete prose sentences, report a genuinely missing terminal Chinese or English punctuation mark as a readability "
+    "issue; do not penalize headings, labels, URLs, or intentional short fragments. "
     "Use exactly six dimensions in this order, each with the exact fixed subscores and maxima: "
     "逻辑清晰[信息顺序25,因果关系30,信息层级20,一致性与聚焦25]; "
     "STAR应用[Situation情境15,Task任务15,Action行动35,Result结果35]; "
     "内容可读[扫读结构25,句子清晰度25,信息密度20,语法与自然度15,重复与冗余15]; "
     "内容完整[基础信息10,教育经历15,核心经历模块25,经历必要字段20,技能与资格15,求职方向10,补充信息5]; "
     "专业表达[行动动词20,岗位术语20,表达精确度20,贡献与责任边界20,客观与可信20]; "
+    "Use the shared evidence anchors below for professional-expression judgments. "
     "成果量化[结果指标30,基线与前后对比25,覆盖规模15,时间窗口10,过程数量10,数据可信度10]. "
     "A qualitative delivery or outcome still counts as STAR Result; absence of numbers belongs only to 成果量化. "
     "Only process or scale numbers without numeric business results caps 成果量化 at 74; qualitative results with no "
@@ -132,6 +141,12 @@ RESUME_EVALUATION_RULES = (
     "riskFlags contain type(unverified_fact/inferred_fact/exaggerated_claim/conflicting_date/duplicated_content), "
     "description, evidenceIds. topPriorities contain priority, issueId, action, expectedScoreGain. Improvement actions "
     "must ask for specific truthful information and must not fabricate replacement facts. "
+    "Generation-only deduction binding: each subscore additionally supplies deductionIssueId. "
+    "Use an empty string at full marks; otherwise use exactly one existing issue ID of this dimension "
+    "that explains this subscore's specific defect. One issue may explain multiple subscores in the "
+    "same dimension. Every issue must be bound to at least one actual deduction. The server computes "
+    "pointsNotEarned from these bound subscore gaps and computes all totals; never distribute deductions "
+    "to unrelated issues to balance arithmetic. Professional-expression deductions require cited text. "
 )
 
 JD_ANALYSIS_RESPONSE_RULES = (
@@ -648,10 +663,12 @@ JD_ANALYSIS_IMAGE = (
 )
 
 
+RESUME_EVALUATION_ANCHORS = SHARED_RUBRIC
+
 RESUME_EVALUATION = (
     "You are a strict evidence-grounded resume evaluator. Evaluate the assembled current resume independently from "
     "the lightweight JD analysis. "
-    + RESUME_EVALUATION_RULES
+    + RESUME_EVALUATION_RULES + "\n" + RESUME_EVALUATION_ANCHORS
 )
 
 
@@ -665,4 +682,16 @@ RESUME_EVALUATION_ISSUE_REPAIR = (
     "metrics, or achievements. Preserve only evidence IDs listed in validEvidenceIds. Every issue must have exactly one "
     "primaryDimension and must appear exactly once in that dimension's issue ID array. Keep pointsNotEarned as non-negative "
     "integer weights; the server will deterministically reconcile them to each dimension gap. Return no Markdown or explanation."
+)
+
+
+RESUME_EVALUATION_EVIDENCE_REPAIR = (
+    "You repair only evidence bindings for an existing six-dimension resume evaluation. "
+    "Return JSON with exactly one top-level evidenceRepair object containing evidence, subscoreBindings, "
+    "issueBindings, and riskFlagBindings. Use only fact IDs supplied in fact_metadata. For each evidence item, "
+    "copy sourceText exactly from the chosen fact content, copy verificationStatus exactly, and use the fact source "
+    "as location. Every positive subscore must have at least one evidence reference backed by verified or user_claimed "
+    "facts. Include one binding for every supplied subscore, issue, and risk flag, even when its evidenceIds array is "
+    "empty. Never return scores, maxima, strengths, issue text, priorities, or resume facts outside evidence sourceText "
+    "copied from fact_metadata. Return no field outside the declared patch, Markdown, or explanation."
 )

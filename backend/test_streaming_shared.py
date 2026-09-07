@@ -63,6 +63,124 @@ async def _collect_payloads(iterator):
 
 
 class StreamingPolicyTests(unittest.TestCase):
+    def test_openai_reasoning_model_capability_is_explicit_and_fail_closed(self) -> None:
+        supported = (
+            "gpt-5",
+            "gpt-5.4-mini",
+            "gpt-5.6-luna",
+            "gpt-5.1-codex-max-2025-12-04",
+            "gpt-6-astra",
+            "o1",
+            "o3-mini-2025-01-31",
+            "o4-mini",
+            "codex-mini-latest",
+            " GPT-5.6-SOL ",
+        )
+        unsupported = (
+            None,
+            "",
+            "gpt-4.1",
+            "gpt-4.1-mini-2025-04-14",
+            "gpt-4o",
+            "gpt-4.5-preview",
+            "gpt-5-chat-latest",
+            "gpt-5.3-chat-latest",
+            "gpt-5-realtime",
+            "gpt-5-audio",
+            "gpt-5-search-preview",
+            "gpt-5-unknown",
+            "gpt-compatible",
+            "gpt-50",
+            "o3-realtime",
+            "o4-audio",
+            "relay-reasoning-model",
+        )
+
+        for model in supported:
+            with self.subTest(model=model, expected=True):
+                self.assertTrue(
+                    streaming_policy.supports_openai_reasoning_model(model)
+                )
+        for model in unsupported:
+            with self.subTest(model=model, expected=False):
+                self.assertFalse(
+                    streaming_policy.supports_openai_reasoning_model(model)
+                )
+
+        self.assertEqual(
+            streaming_policy.resolve_openai_reasoning_effort("gpt-5-pro"),
+            "high",
+        )
+        self.assertEqual(
+            streaming_policy.resolve_openai_reasoning_effort(
+                "gpt-5-pro-2025-10-06"
+            ),
+            "high",
+        )
+        self.assertEqual(
+            streaming_policy.resolve_openai_reasoning_effort("gpt-5.6-luna"),
+            "medium",
+        )
+        self.assertTrue(
+            streaming_policy.is_openai_responses_streaming_unsupported("o1-pro")
+        )
+        self.assertTrue(
+            streaming_policy.is_openai_responses_streaming_unsupported(
+                "o3-pro-2025-06-10"
+            )
+        )
+        self.assertFalse(
+            streaming_policy.is_openai_responses_streaming_unsupported("o3")
+        )
+
+    def test_openai_primary_exposes_responses_thinking_for_gpt_models(self) -> None:
+        settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-compatible-key",
+            ai_model="gpt-5.6-luna",
+            gemini_api_key=None,
+        )
+
+        self.assertFalse(streaming_policy.has_qwen_thinking_provider(settings))
+        self.assertTrue(streaming_policy.has_openai_stream_provider(settings))
+        self.assertTrue(streaming_policy.has_openai_thinking_provider(settings))
+        self.assertTrue(streaming_policy.has_thinking_stream_provider(settings))
+        self.assertEqual(
+            streaming_policy.resolve_thinking_model_name(settings),
+            "gpt-5.6-luna",
+        )
+
+    def test_openai_primary_without_ai_key_does_not_expose_stale_gemini_key(self) -> None:
+        settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key=None,
+            ai_model="gpt-5.6-luna",
+            gemini_api_key="stale-gemini-key",
+            gemini_model="gemini-3.5-flash-lite",
+        )
+
+        self.assertFalse(streaming_policy.has_thinking_stream_provider(settings))
+        self.assertEqual(
+            streaming_policy.resolve_thinking_model_name(settings),
+            "gpt-5.6-luna",
+        )
+
+    def test_non_reasoning_openai_model_keeps_stream_route_without_thinking_capability(self) -> None:
+        settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-compatible-key",
+            ai_model="gpt-4.1",
+            gemini_api_key=None,
+        )
+
+        self.assertTrue(streaming_policy.has_openai_stream_provider(settings))
+        self.assertFalse(streaming_policy.has_openai_thinking_provider(settings))
+        self.assertTrue(streaming_policy.has_thinking_stream_provider(settings))
+        self.assertEqual(
+            streaming_policy.resolve_thinking_model_name(settings),
+            "gpt-4.1",
+        )
+
     def test_provider_capability_wrappers_preserve_shared_policy_semantics(self) -> None:
         cases = (
             (

@@ -18,6 +18,7 @@
   - The frontend uses Logto ID tokens for backend auth; do not configure `VITE_LOGTO_RESOURCE`.
   - For Logto account management, set `VITE_LOGTO_ACCOUNT_CENTER_URL` to the hosted Logto Account Center URL and add `http://localhost:5173` to the Logto "Post Sign-out Redirect URI" list for local logout.
 - The Vite dev server binds to `0.0.0.0:5173` and proxies `/api` to `VITE_API_BASE_URL`, falling back to `http://localhost:8000`.
+- Six-dimension resume optimization is protected by two independent, default-off feature flags: build the frontend with `VITE_ENABLE_RESUME_OPTIMIZATION=true` to expose the CTA, and run the backend with `ENABLE_RESUME_OPTIMIZATION=true` to register its API router. Enable the backend first; the feature is usable only when both flags are true.
 - Backend:
   - Install with `pip install -r requirements.txt` from `backend/`
   - Copy settings from `backend/.env.example` to `backend/.env`
@@ -37,13 +38,21 @@
 
 ## Verification
 
+- Select verification groups from the actual change scope. Commands stated as "use", "additionally use", or "also use" are required when their stated trigger applies; "commonly uses" groups guide focused selection. Deduplicate overlapping commands without dropping required coverage. The frontend build and type checks apply to frontend code/build changes; instruction-only edits use document and scope checks.
+- Rerun affected checks after relevant edits, failures, or new unresolved concerns. Passing checks do not need repeated runs when their inputs and scope are unchanged. If a check is blocked, continue independent checks and report the missing evidence; blocked is neither passed nor failed.
+- Separate local/offline tests from configured-environment probes, real database checks, live AI calls, deployment, and browser/device acceptance. In particular, `verify_ai.py` calls real model services. Run live or mutating checks only within the user's authorized target and scope; the migration/admin guardrails and isolated PostgreSQL opt-in below still apply.
+- Finish when the requested scope and applicable checks are satisfied. State separately which implementation, automated, runtime/device, and hosted/provider checks actually passed; do not imply that one proves another. A missing external capability blocks that acceptance item, not all independent work.
+
 - Frontend: `npm run build`
 - Frontend type-only checks: `npx tsc --noEmit --pretty false`
 - Frontend targeted tests are plain Node test files under `tests/`. Run focused checks with `node --test tests/<file>.test.mjs`; for example `node --test tests/account-management-static.test.mjs` for account management, `node --test tests/experienceBankDrafts.test.mjs tests/experienceSimpleModeParser.test.mjs` for experience draft/simple-mode work, `node --test tests/dashboardStructure.test.mjs tests/dashboardUtils.test.mjs` for Dashboard list/filter work, or `node --test tests/appDevLoggingStructure.test.mjs` for app-shell development logging.
+- Six-dimension resume-optimization frontend changes use `node --test tests/resumeOptimizationNormalize.test.mjs tests/resumeOptimizationServiceStructure.test.mjs tests/resumeOptimizationFlowStructure.test.mjs tests/resumeOptimizationEntryStructure.test.mjs tests/resumeOptimizationWorkspaceStructure.test.mjs tests/resumeOptimizationQuestions.test.mjs tests/resumeOptimizationDisplayUtils.test.mjs tests/resumeOptimizationPreviewStructure.test.mjs tests/resumeOptimizationResultStructure.test.mjs tests/resumeOptimizationPostScoreFlow.test.mjs tests/resumeOptimizationAnalytics.test.mjs tests/resumeOptimizationAccessibility.test.mjs`.
+- Resume-optimization save and selected-experience preflight regressions additionally use `node --test tests/resumeOptimizationSaveBridge.test.mjs tests/resumeEvaluationExperienceLinkPreflight.test.mjs`.
 - Dashboard resume-preview/cache work commonly uses `node --test tests/dashboardStructure.test.mjs tests/dashboardResumePreviewCache.test.mjs tests/resumePreviewPerformanceStructure.test.mjs`.
 - AI thinking and JD-analysis UI checks commonly use `node --test tests/aiStopHandlingStructure.test.mjs tests/jdAnalysisThinkingText.test.mjs tests/jdAnalysisToastThinking.test.mjs`; assistant thinking persistence commonly uses `node --test tests/assistantMessageSendUtils.test.mjs tests/assistantThinkingDisplay.test.mjs`.
 - Assistant sidebar and selected-resume context checks commonly use `node --test tests/assistantSidebarStructure.test.mjs tests/assistantSkillPresetPanelStructure.test.mjs tests/assistantResumeSelectionUtils.test.mjs tests/assistantContextRailRender.test.mjs tests/assistantSidebarContextPersistence.test.mjs`.
 - Resume factory desktop sidebar checks commonly use `node --test tests/resumeEditorDesktopWorkspaceStructure.test.mjs tests/resumeEditorToolbarStructure.test.mjs tests/jdAnalysisDetailsSidebarStructure.test.mjs`.
+- Desktop AI layout and inline resume-optimization comparison checks use `node --test tests/resumeEditorAiLayout.test.mjs`.
 - JD match-state, persistence, request-runner, and evaluation changes commonly use `node --test tests/jdAnalysisPersistenceUtils.test.mjs tests/jdAnalysisRequestRunner.test.mjs tests/jdAnalysisResultAssemblyUtils.test.mjs tests/jdAnalysisRunStateUtils.test.mjs tests/resumeEvaluationExecutionStructure.test.mjs tests/resumeEvaluationNormalize.test.mjs tests/resumeEvaluationReport.test.mjs tests/resumeEvaluationSnapshot.test.mjs`.
 - JD analysis execution changes also use `node --test tests/jdAnalysisExecution.test.mjs`.
 - Payment checkout and order-controller changes commonly use `node --test tests/paymentCheckoutSubmissionController.test.mjs tests/paymentOrderListLoader.test.mjs tests/paymentOrderRequestController.test.mjs`.
@@ -60,9 +69,13 @@
   - `python verify_ai.py`
   - `python verify_timeout.py`
 - Backend tests are `unittest`-style files under `backend/`. Prefer `python -m unittest <module>` from `backend/` for targeted runs, for example `python -m unittest test_assistant_features` or `python -m unittest test_parser_service`.
+- Six-dimension resume-optimization backend changes use `python -m unittest test_resume_optimization_schemas test_resume_optimization_runtime_schema test_resume_optimization_run_service test_resume_optimization_context test_resume_optimization_bank_suggestions test_resume_optimization_planner test_resume_optimization_safety test_resume_optimization_orchestrator test_resume_optimization_router test_resume_optimization_apply test_resume_optimization_finalize test_resume_optimization_config test_resume_optimization_billing test_resume_optimization_public_errors` from `backend/`.
+- Resume version-token and no-op persistence regressions use `python -B -m unittest test_resume_service` from `backend/`.
+- AI validation and semantic review changes additionally use `python -B -m unittest test_ai_semantic_validation test_resume_evaluation` from `backend/`, and `node --test tests/resumeEvaluationNormalize.test.mjs tests/resumeOptimizationNormalize.test.mjs` at the root. These tests mock model verdicts; they verify the review contract and persistence boundaries, not live model accuracy. See `docs/ai-response-validation.md`.
 - Agent and AI backend checks commonly use `python -m unittest test_agent_api` and `python -m unittest test_ai_service` from `backend/`.
 - Agent runtime-schema changes commonly use `python -m unittest test_agent_api test_agent_api_runtime_schema test_runtime_schema` from `backend/`.
 - AI transport or parser changes commonly use `python -m unittest test_ai_service test_parser_service` from `backend/`.
+- Gemini-only route-profile defaults and compatibility checks use `python -m unittest test_gemini_only_routing` from `backend/`.
 - Backend startup imports and auth import-boundary changes commonly use `python -m unittest test_auth_import_boundaries test_startup_imports` from `backend/`.
 - Account and experience draft backend checks commonly use `python -m unittest test_account_verification_cooldown` and `python -m unittest test_experience_drafts` from `backend/`.
 - Profile updates with optimistic-concurrency handling commonly use `python -m unittest test_profile_update_concurrency` from `backend/`.
@@ -76,4 +89,4 @@
 - Do not mix package managers across workspaces: the repo root uses npm and `package-lock.json`; `magic-resume-inspect/` uses pnpm and `pnpm-lock.yaml`.
 - Treat `backend/migrate_postgres_best_effort.py` as a manual high-impact database migration tool. It requires explicit `SOURCE_DATABASE_URL` and `TARGET_DATABASE_URL`; do not run it as part of default setup.
 - Treat `backend/manage_redemption_codes.py` as a manual admin tool for token packages and card codes. Do not run mutating subcommands or export plaintext redemption codes unless the target database and operator intent are explicit.
-- TODO: There is no repo-owned command yet that starts the root frontend and `backend/` together. If a unified local workflow is added later, document it here instead of guessing.
+- TODO: There is no repo-owned command yet that starts the root frontend and `backend/` together. If a unified local workflow is added later, document it here instead of guessing. This does not block local debugging: start the two services separately with the documented commands, preserving their existing environment and database guardrails.

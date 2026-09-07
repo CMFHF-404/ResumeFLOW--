@@ -1,0 +1,567 @@
+{
+  "ok": true,
+  "seconds": 31.13,
+  "value": [
+    {
+      "input_hash": "6736f76ddee51f8759fb12474944371f4590cb4178cb5b29b8a5e9193dd64426",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "评分符合标准，信息顺序、因果逻辑与层级聚焦均有充分证据支持。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR各要素完整清晰，交付验收等定性结果符合Result判定标准。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "行动句缺少句末标点扣1分符合语法与自然度分项的标点扣分规则。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "各项信息提取完整，求职意向结合总结与职位明确，扣分项符合实际缺失情况。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "动词、术语、精确度、责任边界及客观性表述规范，符合满分标准。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "数据可信度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "履历中包含明确的过程数量（15名管理员、20条需求），具备清晰的度量、范围与归属，数据可信度应获得相应分数，判定为0分不符合量化标准契约。"
+        }
+      ]
+    },
+    {
+      "input_hash": "869eeeebf290f172153045b50d737efc2c12b6a73778dab249220298125e0e63",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "逻辑各维度判定准确，证据支持充分。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR结构完整，交付验收结果符合定性Result标准。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "文本通顺，结构与清晰度均达标。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "各字段覆盖完整，求职方向与基础信息扣分准确。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "专业用词与责任边界表述准确客观。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "过程数量",
+            "数据可信度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "经历中存在显式的过程数量（访谈15名管理员，整理20条反馈需求），过程数量与数据可信度不应因为缺乏业务结果指标而判为0分。"
+        }
+      ]
+    },
+    {
+      "input_hash": "f580e68d5237f4aa52a7564c501faccd654393614222f468065303cf0c999617",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "逻辑结构清晰，各子项评分符合标准。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR结构要素齐全，定性交付符合Result要求。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "排版结构、清晰度及语法均符合要求。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "求职方向结合个人总结和岗位职称已明确，其余扣分项合规。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "表达精确、术语规范且责任边界清晰。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "数据可信度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "E025包含清晰的过程计数与度量范围，符合数据可信度的计分标准，判为0分属于不合理扣分。"
+        }
+      ]
+    },
+    {
+      "input_hash": "147bb1c432d09d6e470c80202f8139ae28c586e66e2e395b6bd89fb326801747",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": true,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "逻辑结构清晰，各子项评分与证据匹配。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR四要素完备，定性交付成果有效支撑Result。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "可读性各分项评分准确合理。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "核心模块完整，求职方向明确，扣分符合事实。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "用词客观专业，动作明确，完全符合评分标准。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "准确识别了过程数量及其数据可信度，其余缺失项扣分合理。"
+        }
+      ]
+    },
+    {
+      "input_hash": "ed70998b6eeaf42e59cfdcf8c7200b2a93d3fa26506411af40b930de422f8c3e",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "逻辑结构完整清晰。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR结构符合规范。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "不符合",
+          "subscores": [
+            "语法与自然度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "仅单句缺失句末标点扣除全部15分违反了标点缺陷上限3分的评分规则。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "信息完整度评分准确。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "专业表达各项评分符合标准。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "数据可信度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "存在合规的过程数量描述，数据可信度不应扣为0分。"
+        }
+      ]
+    },
+    {
+      "input_hash": "f638aa48093933ed6c15f98aaf73f3a7a9719487dc6194126a96e80b125fd845",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "逻辑评分符合标准。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR要素完整有效。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "内容可读性评分准确。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "内容完整性评分准确。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "专业表达用词规范，责任明确。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "数据可信度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "过程量化数据明确，数据可信度应得分而非0分。"
+        }
+      ]
+    },
+    {
+      "input_hash": "eb56c1dbccd315cf1207465e719c3b50a6f61e9f723153e472996579bc68585c",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "逻辑各分项评分准确。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR结构完整。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "可读性评估符合规范。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "不符合",
+          "subscores": [
+            "求职方向"
+          ],
+          "evidenceIds": [
+            "E004",
+            "E019"
+          ],
+          "reason": "简历总结与经历职称已明确表明B2B协作软件产品经理职能，不要求独立求职意向字段，求职方向得0分不符合评分标准。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "表达客观规范。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "数据可信度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "过程数量符合数据可信度要求，不应判定为0分。"
+        }
+      ]
+    },
+    {
+      "input_hash": "e2ee4335627fa1f86a82121fc2199e543d7f2cd2e3bd5fb5fe7a88824fc5030a",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "逻辑清晰度各项评分符合要求。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR要素符合判定标准。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "可读性各项评分达标。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "完整性评分与扣分符合标准。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "不符合",
+          "subscores": [
+            "行动动词",
+            "岗位术语",
+            "表达精确度",
+            "贡献与责任边界",
+            "客观与可信"
+          ],
+          "evidenceIds": [
+            "E001"
+          ],
+          "reason": "专业表达所有子项均仅引用候选人姓名E001作为证据，证据与维度标准完全不匹配。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "数据可信度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "过程数量真实具体，数据可信度不应为0分。"
+        }
+      ]
+    },
+    {
+      "input_hash": "1f6e9cbea122989bc2b93a04bc85d221b7c5eb09cb91b19975f7f383b4c78b93",
+      "audit_version": "resume_rubric_audit_v3",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "逻辑维度评分符合标准。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR维度评分符合标准。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "内容可读性评分符合标准。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "内容完整性评分符合标准。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "不符合",
+          "subscores": [
+            "行动动词",
+            "岗位术语",
+            "表达精确度",
+            "贡献与责任边界",
+            "客观与可信"
+          ],
+          "evidenceIds": [
+            "E012",
+            "E023",
+            "E024",
+            "E025",
+            "E026"
+          ],
+          "reason": "评估中错误要求高级职责、术语密度和独立验证，对明确具体的动词、日常规范术语及清晰责任边界做出不合理降分。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "数据可信度"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "过程数量具备明确度量与归属，数据可信度不应判为0分。"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "rubric_audit",
+      "category": "reviewed",
+      "receipts": [
+        {
+          "input_hash": "6736f76ddee51f8759fb12474944371f4590cb4178cb5b29b8a5e9193dd64426",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        },
+        {
+          "input_hash": "869eeeebf290f172153045b50d737efc2c12b6a73778dab249220298125e0e63",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        },
+        {
+          "input_hash": "f580e68d5237f4aa52a7564c501faccd654393614222f468065303cf0c999617",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        },
+        {
+          "input_hash": "147bb1c432d09d6e470c80202f8139ae28c586e66e2e395b6bd89fb326801747",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": true
+        },
+        {
+          "input_hash": "ed70998b6eeaf42e59cfdcf8c7200b2a93d3fa26506411af40b930de422f8c3e",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        },
+        {
+          "input_hash": "f638aa48093933ed6c15f98aaf73f3a7a9719487dc6194126a96e80b125fd845",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        },
+        {
+          "input_hash": "eb56c1dbccd315cf1207465e719c3b50a6f61e9f723153e472996579bc68585c",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        },
+        {
+          "input_hash": "e2ee4335627fa1f86a82121fc2199e543d7f2cd2e3bd5fb5fe7a88824fc5030a",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        },
+        {
+          "input_hash": "1f6e9cbea122989bc2b93a04bc85d221b7c5eb09cb91b19975f7f383b4c78b93",
+          "audit_version": "resume_rubric_audit_v3",
+          "approved": false
+        }
+      ]
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "rubric_mismatch",
+      "dimensions": 12
+    }
+  ]
+}

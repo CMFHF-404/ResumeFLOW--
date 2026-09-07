@@ -95,7 +95,6 @@ const mergeSelectedResumeWithLiveSnapshot = (
     ...liveSelectedResume,
     masterId: selectedResume.masterId ?? liveSelectedResume.masterId,
     resumeName: selectedResume.resumeName || liveSelectedResume.resumeName,
-    jdContext: selectedResume.jdContext ?? liveSelectedResume.jdContext,
     contextSource: selectedResume.contextSource ?? liveSelectedResume.contextSource ?? 'history_replay',
     selection: selectedResume.selection,
   };

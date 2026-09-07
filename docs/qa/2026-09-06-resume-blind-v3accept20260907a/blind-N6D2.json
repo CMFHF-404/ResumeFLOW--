@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "seconds": 6.29,
+  "value": {
+    "documents": [
+      {
+        "id": "6d54c95c",
+        "clarity": 4,
+        "specificity": 4,
+        "groundedness": 5,
+        "defects": [
+          "工作经历中的行动描述（a）句末缺少标点符号。"
+        ],
+        "unsupportedClaims": [],
+        "reason": "内容完全忠实于原始来源，但工作经历中行动部分句末缺少句号，格式略有瑕疵。"
+      },
+      {
+        "id": "484d3d40",
+        "clarity": 5,
+        "specificity": 4,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容完全忠实于原始来源，标点符号规范完整，表达清晰。"
+      }
+    ],
+    "preferredId": "484d3d40"
+  },
+  "diagnostics": []
+}

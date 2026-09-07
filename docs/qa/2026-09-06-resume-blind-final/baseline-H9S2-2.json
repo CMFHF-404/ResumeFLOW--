@@ -1,0 +1,89 @@
+{
+  "ok": false,
+  "seconds": 36.65,
+  "error_type": "AiRuntimeTimeoutError",
+  "message": "AI 请求处理超时，请稍后重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 102,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1404,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1339,
+      "function": "_run_with_total_timeout"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1381,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "qa_resume_blind_final.py",
+      "line": 31,
+      "function": "observe_member"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1358,
+      "function": "_analyze_resume_evaluation_once"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2843,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2001,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1906,
+      "function": "_stream_gemini_json_response_once"
+    }
+  ],
+  "cause_type": "ConnectTimeout"
+}

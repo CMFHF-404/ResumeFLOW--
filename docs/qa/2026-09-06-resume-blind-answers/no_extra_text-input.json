@@ -1,0 +1,346 @@
+{
+  "plan": {
+    "changes": [
+      {
+        "change_id": "CHG_001",
+        "issue_ids": [
+          "ISSUE_READ_002"
+        ],
+        "dimension": "内容可读",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+        "general_value": "具备产品经理专业工作经验，掌握SQL、Excel及需求分析与PRD技能。",
+        "targeted_value": "具备B2B SaaS产品经理相关工作经验，掌握SQL、Excel及需求分析与PRD技能。",
+        "source_refs": [
+          "/currentResume/personal_summary",
+          "/currentResume/skills/0/name",
+          "/currentResume/skills/1/name",
+          "/currentResume/skills/2/name",
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/title"
+        ],
+        "introduced_terms": [
+          "具备",
+          "掌握",
+          "技能"
+        ],
+        "rationale": "移除个人优势中的主观夸大与高频重复词汇，基于已有岗位及已掌握的技能客观重构个人总结。",
+        "expected_score_gain": 15,
+        "default_selected": true,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_002",
+        "issue_ids": [
+          "ISSUE_LOGIC_003"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/personal_summary"
+        ],
+        "introduced_terms": [],
+        "rationale": "已在CHG_001中对个人总结进行客观重构与降噪，此逻辑清晰维度问题不再重复修改。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_003",
+        "issue_ids": [
+          "RUBRIC_EXAGGERATED_CLAIM"
+        ],
+        "dimension": "专业表达",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/personal_summary"
+        ],
+        "introduced_terms": [],
+        "rationale": "已在CHG_001中处理个人总结中的表述规范问题，避免同字段重复变更。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_004",
+        "issue_ids": [
+          "ISSUE_LOGIC_001",
+          "ISSUE_LOGIC_002"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "经历行动描述缺乏具体事实细节，将在STAR及专业表达维度通过问答补充后统一优化。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_005",
+        "issue_ids": [
+          "ISSUE_STAR_001",
+          "ISSUE_STAR_002"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "ask_user",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "当前工作经历行动项为空泛套话，需要用户提供具体负责的产品模块、核心动作与业务实践细节以补充STAR中的Action。",
+        "expected_score_gain": 26,
+        "default_selected": true,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_006",
+        "issue_ids": [
+          "ISSUE_STAR_003"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.r",
+        "action_kind": "ask_user",
+        "scope": "general",
+        "before_value": "",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/r"
+        ],
+        "introduced_terms": [],
+        "rationale": "当前经历缺少结果（Result）描述，需要用户提供可验证的项目业务产出或成果。",
+        "expected_score_gain": 25,
+        "default_selected": true,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_007",
+        "issue_ids": [
+          "ISSUE_READ_001"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "该字段的可读性与信息密度依赖问答补充具体动作事实，统一由CHG_005问答驱动。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_008",
+        "issue_ids": [
+          "ISSUE_EXP_001",
+          "ISSUE_EXP_002"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "专业动词及责任边界的优化将在获取真实工作细节后进行，避免同字段产生冲突变更。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_009",
+        "issue_ids": [
+          "ISSUE_QUANT_001"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.r",
+        "action_kind": "ask_user",
+        "scope": "general",
+        "before_value": "",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [
+          "/currentResume/experiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/r"
+        ],
+        "introduced_terms": [],
+        "rationale": "运营周报自动化项目缺少量化成果产出，需向用户确认效率提升或覆盖范围等真实指标。",
+        "expected_score_gain": 30,
+        "default_selected": true,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_010",
+        "issue_ids": [
+          "RUBRIC_内容完整_0",
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "求职意向与基础字段补充等首发暂不支持的模块通过只读哨兵安全留空处理。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "questions": [
+      {
+        "question_id": "QST_001",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "text": "在云桥软件担任产品经理期间，您具体负责了哪些核心产品功能或工作任务？",
+        "reason": "当前经历的行动描述为空泛短语，补充具体负责的产品模块、分析调研及执行动作可显著提升STAR结构与专业度。",
+        "answer_type": "single_choice_with_text",
+        "choices": [
+          {
+            "value": "no_data",
+            "label": "暂无可确认的信息"
+          }
+        ],
+        "affects_change_ids": [
+          "CHG_005"
+        ],
+        "priority": 1
+      },
+      {
+        "question_id": "QST_002",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.r",
+        "text": "在云桥软件的产品工作中，相关产品或功能上线后带来了哪些业务成果或数据变化？",
+        "reason": "补充产品上线后的使用情况、业务指标改善或交付成果，以补齐STAR结果要素。",
+        "answer_type": "single_choice_with_text",
+        "choices": [
+          {
+            "value": "no_data",
+            "label": "暂无可确认的信息"
+          }
+        ],
+        "affects_change_ids": [
+          "CHG_006"
+        ],
+        "priority": 2
+      },
+      {
+        "question_id": "QST_003",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.r",
+        "text": "在“运营周报自动化”项目中，自动化实施后周报制作或运营流程的具体效率提升情况如何？",
+        "reason": "补充周报自动化项目带来的耗时节省、流转提效或数据量化表现，以增强成果可信度。",
+        "answer_type": "single_choice_with_text",
+        "choices": [
+          {
+            "value": "no_data",
+            "label": "暂无可确认的信息"
+          }
+        ],
+        "affects_change_ids": [
+          "CHG_009"
+        ],
+        "priority": 3
+      }
+    ],
+    "bank_suggestions": [],
+    "safety_summary": {
+      "allowed_change_ids": [],
+      "blocked_change_ids": [],
+      "pending_change_ids": [],
+      "findings": []
+    }
+  },
+  "answers": [
+    {
+      "question_id": "QST_001",
+      "state": "answered",
+      "value": "没有额外可确认的数据。"
+    },
+    {
+      "question_id": "QST_002",
+      "state": "answered",
+      "value": "没有额外可确认的数据。"
+    },
+    {
+      "question_id": "QST_003",
+      "state": "answered",
+      "value": "没有额外可确认的数据。"
+    }
+  ]
+}

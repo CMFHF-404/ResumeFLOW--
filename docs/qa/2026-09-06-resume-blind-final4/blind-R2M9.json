@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "seconds": 3.67,
+  "value": {
+    "documents": [
+      {
+        "id": "c1d3e4d3",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容真实严谨，完全忠实于来源，且修复了行动描述中的句末标点缺失问题，语言表达规范。"
+      },
+      {
+        "id": "73f277c8",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "defects": [
+          "经历中的Action字段末尾缺失句号标点"
+        ],
+        "unsupportedClaims": [],
+        "reason": "内容完全基于来源，但在STAR的Action部分缺失句末句号。"
+      }
+    ],
+    "preferredId": "c1d3e4d3"
+  }
+}

@@ -13,7 +13,8 @@ test('ResumeEditor delegates editor preview shell to ResumeEditorPreviewStage', 
   assert.doesNotMatch(editor, /import ResumePreview from '\.\/components\/ResumePreview'/);
   assert.doesNotMatch(editor, /<ResumePreview\s/);
   assert.match(editor, /useResumeEditorPreviewWorkspaceProps/);
-  assert.match(editor, /previewProps=\{editorPreviewProps\}/);
+  assert.match(editor, /const editorPreviewPropsWithOptimization =/);
+  assert.match(editor, /previewProps=\{editorPreviewPropsWithOptimization\}/);
 
   assert.match(workspace, /import ResumeEditorPreviewStage from '\.\/ResumeEditorPreviewStage'/);
   assert.match(workspace, /<ResumeEditorPreviewStage/);

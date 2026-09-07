@@ -1,0 +1,2711 @@
+{
+  "ok": true,
+  "seconds": 19.25,
+  "value": {
+    "initial_plan": {
+      "changes": [
+        {
+          "change_id": "CHANGE_TASK_001",
+          "issue_ids": [
+            "ISSUE_QUANT_01",
+            "ISSUE_QUANT_02",
+            "ISSUE_QUANT_03",
+            "ISSUE_QUANT_04"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "产品上线了。",
+          "general_value": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+          "targeted_value": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+          "source_refs": [
+            "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r"
+          ],
+          "introduced_terms": [],
+          "rationale": "采用包含具体跟踪周期、样本量及对比指标的完整结果数据，并保留归因限制说明。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_0",
+          "issue_ids": [
+            "ISSUE_STAR_02"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "产品上线了。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_1",
+          "issue_ids": [
+            "ISSUE_PROF_05"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "产品上线了。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_2",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "产品上线了。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002",
+          "issue_ids": [
+            "ISSUE_QUANT_01",
+            "ISSUE_QUANT_02",
+            "ISSUE_QUANT_04"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "周报做好了。",
+          "general_value": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。",
+          "targeted_value": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。",
+          "source_refs": [
+            "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r"
+          ],
+          "introduced_terms": [],
+          "rationale": "采用包含观测周期、工时对比及使用规模的完整量化成果。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002_RELATED_0",
+          "issue_ids": [
+            "ISSUE_STAR_02"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "周报做好了。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002_RELATED_1",
+          "issue_ids": [
+            "ISSUE_PROF_05"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "周报做好了。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002_RELATED_2",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "周报做好了。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003",
+          "issue_ids": [
+            "ISSUE_READ_05",
+            "ISSUE_READ_02",
+            "ISSUE_READ_03",
+            "ISSUE_READ_04"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+          "general_value": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+          "targeted_value": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+          "source_refs": [
+            "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "消除重复口语词，补充完整、专业的操作过程与数据处理细节。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_0",
+          "issue_ids": [
+            "ISSUE_PROF_03",
+            "ISSUE_PROF_01",
+            "ISSUE_PROF_02"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_1",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_2",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_004",
+          "issue_ids": [
+            "ISSUE_READ_05",
+            "ISSUE_READ_03"
+          ],
+          "dimension": "内容可读",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+          "general_value": "具备产品经验，掌握需求分析与PRD编写，能使用SQL与Excel进行数据分析。",
+          "targeted_value": "具备产品经验，掌握需求分析与PRD编写，能使用SQL与Excel进行数据分析。",
+          "source_refs": [
+            "/currentResume/personal_summary",
+            "/currentResume/skills/0/name",
+            "/currentResume/skills/1/name",
+            "/currentResume/skills/2/name"
+          ],
+          "introduced_terms": [],
+          "rationale": "去除重复语句与主观空泛陈述，结合已有技能事实客观总结。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_004_RELATED_0",
+          "issue_ids": [
+            "ISSUE_PROF_05"
+          ],
+          "dimension": "专业表达",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_004_RELATED_1",
+          "issue_ids": [
+            "ISSUE_LOGIC_02"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_005",
+          "issue_ids": [
+            "ISSUE_PROF_03",
+            "ISSUE_PROF_01",
+            "ISSUE_PROF_04"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+          "general_value": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+          "targeted_value": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+          "source_refs": [
+            "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "消除模糊代词和重复动作，完整呈现需求分析与交付协作过程。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_005_RELATED_0",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_005_RELATED_1",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_005_RELATED_2",
+          "issue_ids": [
+            "ISSUE_READ_02",
+            "ISSUE_READ_03",
+            "ISSUE_READ_01",
+            "ISSUE_READ_04"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_005_RELATED_3",
+          "issue_ids": [
+            "ISSUE_QUANT_03"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_006",
+          "issue_ids": [
+            "ISSUE_QUANT_02"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.s",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "当前背景已准确表述现状与基线，优化后对比指标已在Result中呈现，保持不变。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_007",
+          "issue_ids": [
+            "ISSUE_QUANT_02"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.s",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "当前背景已准确提供周报现状与基线耗时，保持不变。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_008",
+          "issue_ids": [
+            "ISSUE_PROF_04"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.t",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "当前目标表述明确，职责清晰，保持不变。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_0",
+          "issue_ids": [
+            "RUBRIC_内容完整_0"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_1",
+          "issue_ids": [
+            "RUBRIC_内容完整_1"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      ],
+      "questions": [],
+      "bank_suggestions": [],
+      "safety_summary": {
+        "allowed_change_ids": [],
+        "blocked_change_ids": [],
+        "pending_change_ids": [],
+        "findings": []
+      },
+      "coverage": [
+        {
+          "issue_id": "ISSUE_LOGIC_01",
+          "dimension": "逻辑清晰",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_01",
+          "dimension": "逻辑清晰",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_01",
+          "dimension": "逻辑清晰",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_01",
+          "dimension": "逻辑清晰",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_02",
+          "dimension": "逻辑清晰",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "pending_review",
+          "description": "个人总结内容重复且泛化，与经历中具体的B2B SaaS业务细节缺乏聚焦与呼应。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_01",
+          "dimension": "STAR应用",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "Action部分包含较多模糊与重复表述（如'参与交付，做相关工作'、'做周报，做周报'），未深入展开具体执行步骤与方法。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_01",
+          "dimension": "STAR应用",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "Action部分包含较多模糊与重复表述（如'参与交付，做相关工作'、'做周报，做周报'），未深入展开具体执行步骤与方法。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_02",
+          "dimension": "STAR应用",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "Result部分仅有极简定性交付表述（'产品上线了。'、'周报做好了。'），缺少业务反馈或具体成效闭环。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_02",
+          "dimension": "STAR应用",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "Result部分仅有极简定性交付表述（'产品上线了。'、'周报做好了。'），缺少业务反馈或具体成效闭环。"
+        },
+        {
+          "issue_id": "ISSUE_READ_01",
+          "dimension": "内容可读",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "Action部分换行与断句排版略显松散，扫读结构有待优化。"
+        },
+        {
+          "issue_id": "ISSUE_READ_02",
+          "dimension": "内容可读",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "部分句子表述口语化、断句不完整，影响阅读流畅度与信息提取效率。"
+        },
+        {
+          "issue_id": "ISSUE_READ_02",
+          "dimension": "内容可读",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "部分句子表述口语化、断句不完整，影响阅读流畅度与信息提取效率。"
+        },
+        {
+          "issue_id": "ISSUE_READ_03",
+          "dimension": "内容可读",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。"
+        },
+        {
+          "issue_id": "ISSUE_READ_03",
+          "dimension": "内容可读",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "pending_review",
+          "description": "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。"
+        },
+        {
+          "issue_id": "ISSUE_READ_03",
+          "dimension": "内容可读",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。"
+        },
+        {
+          "issue_id": "ISSUE_READ_04",
+          "dimension": "内容可读",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "行动列表中部分分句缺少末尾标点符号，影响句末规范性。"
+        },
+        {
+          "issue_id": "ISSUE_READ_04",
+          "dimension": "内容可读",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "行动列表中部分分句缺少末尾标点符号，影响句末规范性。"
+        },
+        {
+          "issue_id": "ISSUE_READ_05",
+          "dimension": "内容可读",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "pending_review",
+          "description": "个人总结出现'我有产品经验。我有产品经验。'严重复读，项目行动中出现'做周报，做周报'明显冗余。"
+        },
+        {
+          "issue_id": "ISSUE_READ_05",
+          "dimension": "内容可读",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "个人总结出现'我有产品经验。我有产品经验。'严重复读，项目行动中出现'做周报，做周报'明显冗余。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_01",
+          "dimension": "专业表达",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "行动动词较为空泛，使用了'做'、'做相关工作'等口语化动词，缺少具有专业度的产品动作词汇。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_01",
+          "dimension": "专业表达",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "行动动词较为空泛，使用了'做'、'做相关工作'等口语化动词，缺少具有专业度的产品动作词汇。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_02",
+          "dimension": "专业表达",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "项目描述中行业术语使用偏少，周报自动化项目未提及具体的自动化实现方案或数据处理机制。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_03",
+          "dimension": "专业表达",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "表达精确度不足，使用了'做相关工作'、'整理相关东西'等模糊代词。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_03",
+          "dimension": "专业表达",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "表达精确度不足，使用了'做相关工作'、'整理相关东西'等模糊代词。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_04",
+          "dimension": "专业表达",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中个人独立负责与协助协作的职责边界不够清晰，'参与交付'缺乏具体分工说明。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_04",
+          "dimension": "专业表达",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.t",
+          "status": "uncovered",
+          "description": "经历中个人独立负责与协助协作的职责边界不够清晰，'参与交付'缺乏具体分工说明。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_05",
+          "dimension": "专业表达",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_05",
+          "dimension": "专业表达",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "pending_review",
+          "description": "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_05",
+          "dimension": "专业表达",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_01",
+          "dimension": "成果量化",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "所有经历的Result结果均无量化业务指标，仅有定性完成描述，未体现业务价值。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_01",
+          "dimension": "成果量化",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "所有经历的Result结果均无量化业务指标，仅有定性完成描述，未体现业务价值。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_02",
+          "dimension": "成果量化",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_02",
+          "dimension": "成果量化",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.s",
+          "status": "uncovered",
+          "description": "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_02",
+          "dimension": "成果量化",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_02",
+          "dimension": "成果量化",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.s",
+          "status": "uncovered",
+          "description": "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_03",
+          "dimension": "成果量化",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "未体现产品或功能上线后覆盖的企业客户数、活跃用户数或周报服务团队规模等业务覆盖量级。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_03",
+          "dimension": "成果量化",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "未体现产品或功能上线后覆盖的企业客户数、活跃用户数或周报服务团队规模等业务覆盖量级。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_04",
+          "dimension": "成果量化",
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "结果中缺乏明确的指标统计周期或观测时间窗口（如上线后1个月、连续3个季度等）。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_04",
+          "dimension": "成果量化",
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "status": "pending_review",
+          "description": "结果中缺乏明确的指标统计周期或观测时间窗口（如上线后1个月、连续3个季度等）。"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_0",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_1",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        }
+      ],
+      "planning_tasks": {
+        "TASK_001": {
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.r",
+          "before": "产品上线了。",
+          "issue_ids": [
+            "ISSUE_QUANT_01",
+            "ISSUE_STAR_02",
+            "ISSUE_PROF_05",
+            "ISSUE_QUANT_02",
+            "ISSUE_LOGIC_01",
+            "ISSUE_QUANT_03",
+            "ISSUE_QUANT_04"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "产品上线了。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "所有经历的Result结果均无量化业务指标，仅有定性完成描述，未体现业务价值。",
+            "Result部分仅有极简定性交付表述（'产品上线了。'、'周报做好了。'），缺少业务反馈或具体成效闭环。",
+            "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。",
+            "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。",
+            "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。",
+            "未体现产品或功能上线后覆盖的企业客户数、活跃用户数或周报服务团队规模等业务覆盖量级。",
+            "结果中缺乏明确的指标统计周期或观测时间窗口（如上线后1个月、连续3个季度等）。"
+          ]
+        },
+        "TASK_002": {
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.r",
+          "before": "周报做好了。",
+          "issue_ids": [
+            "ISSUE_QUANT_01",
+            "ISSUE_STAR_02",
+            "ISSUE_PROF_05",
+            "ISSUE_QUANT_02",
+            "ISSUE_LOGIC_01",
+            "ISSUE_QUANT_04"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/s",
+              "text": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/t",
+              "text": "负责统一指标口径和整理数据，减少周报重复劳动。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a",
+              "text": "用SQL和Excel做周报，做周报，整理相关东西"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r",
+              "text": "周报做好了。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/s",
+              "text": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/t",
+              "text": "负责统一指标口径和整理数据，减少周报重复劳动。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a",
+              "text": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r",
+              "text": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "所有经历的Result结果均无量化业务指标，仅有定性完成描述，未体现业务价值。",
+            "Result部分仅有极简定性交付表述（'产品上线了。'、'周报做好了。'），缺少业务反馈或具体成效闭环。",
+            "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。",
+            "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。",
+            "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。",
+            "结果中缺乏明确的指标统计周期或观测时间窗口（如上线后1个月、连续3个季度等）。"
+          ]
+        },
+        "TASK_003": {
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.a",
+          "before": "用SQL和Excel做周报，做周报，整理相关东西",
+          "issue_ids": [
+            "ISSUE_READ_05",
+            "ISSUE_PROF_03",
+            "ISSUE_LOGIC_01",
+            "ISSUE_STAR_01",
+            "ISSUE_READ_02",
+            "ISSUE_READ_03",
+            "ISSUE_PROF_01",
+            "ISSUE_READ_04",
+            "ISSUE_PROF_02"
+          ],
+          "dimension": "内容可读",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/s",
+              "text": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/t",
+              "text": "负责统一指标口径和整理数据，减少周报重复劳动。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a",
+              "text": "用SQL和Excel做周报，做周报，整理相关东西"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r",
+              "text": "周报做好了。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/s",
+              "text": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/t",
+              "text": "负责统一指标口径和整理数据，减少周报重复劳动。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a",
+              "text": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r",
+              "text": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "个人总结出现'我有产品经验。我有产品经验。'严重复读，项目行动中出现'做周报，做周报'明显冗余。",
+            "表达精确度不足，使用了'做相关工作'、'整理相关东西'等模糊代词。",
+            "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。",
+            "Action部分包含较多模糊与重复表述（如'参与交付，做相关工作'、'做周报，做周报'），未深入展开具体执行步骤与方法。",
+            "部分句子表述口语化、断句不完整，影响阅读流畅度与信息提取效率。",
+            "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。",
+            "行动动词较为空泛，使用了'做'、'做相关工作'等口语化动词，缺少具有专业度的产品动作词汇。",
+            "行动列表中部分分句缺少末尾标点符号，影响句末规范性。",
+            "项目描述中行业术语使用偏少，周报自动化项目未提及具体的自动化实现方案或数据处理机制。"
+          ]
+        },
+        "TASK_004": {
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "before": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+          "issue_ids": [
+            "ISSUE_READ_05",
+            "ISSUE_PROF_05",
+            "ISSUE_READ_03",
+            "ISSUE_LOGIC_02"
+          ],
+          "dimension": "内容可读",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/personal_summary",
+              "text": "我有产品经验。我有产品经验。擅长相关的产品相关工作。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/skills/0/name",
+              "text": "SQL"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/skills/1/name",
+              "text": "Excel"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/skills/2/name",
+              "text": "需求分析与PRD"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。"
+            },
+            "SOURCE_009": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/s",
+              "text": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。"
+            },
+            "SOURCE_010": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/t",
+              "text": "负责统一指标口径和整理数据，减少周报重复劳动。"
+            },
+            "SOURCE_011": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a",
+              "text": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。"
+            },
+            "SOURCE_012": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r",
+              "text": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "个人总结出现'我有产品经验。我有产品经验。'严重复读，项目行动中出现'做周报，做周报'明显冗余。",
+            "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。",
+            "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。",
+            "个人总结内容重复且泛化，与经历中具体的B2B SaaS业务细节缺乏聚焦与呼应。"
+          ]
+        },
+        "TASK_005": {
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.a",
+          "before": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+          "issue_ids": [
+            "ISSUE_PROF_03",
+            "ISSUE_LOGIC_01",
+            "ISSUE_STAR_01",
+            "ISSUE_READ_02",
+            "ISSUE_READ_03",
+            "ISSUE_PROF_01",
+            "ISSUE_PROF_04",
+            "ISSUE_QUANT_03",
+            "ISSUE_READ_01",
+            "ISSUE_READ_04"
+          ],
+          "dimension": "专业表达",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "产品上线了。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "表达精确度不足，使用了'做相关工作'、'整理相关东西'等模糊代词。",
+            "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。",
+            "Action部分包含较多模糊与重复表述（如'参与交付，做相关工作'、'做周报，做周报'），未深入展开具体执行步骤与方法。",
+            "部分句子表述口语化、断句不完整，影响阅读流畅度与信息提取效率。",
+            "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。",
+            "行动动词较为空泛，使用了'做'、'做相关工作'等口语化动词，缺少具有专业度的产品动作词汇。",
+            "经历中个人独立负责与协助协作的职责边界不够清晰，'参与交付'缺乏具体分工说明。",
+            "未体现产品或功能上线后覆盖的企业客户数、活跃用户数或周报服务团队规模等业务覆盖量级。",
+            "Action部分换行与断句排版略显松散，扫读结构有待优化。",
+            "行动列表中部分分句缺少末尾标点符号，影响句末规范性。"
+          ]
+        },
+        "TASK_006": {
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.s",
+          "before": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。",
+          "issue_ids": [
+            "ISSUE_QUANT_02"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "产品上线了。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。"
+            }
+          },
+          "allow_question": false,
+          "problems": [
+            "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。"
+          ]
+        },
+        "TASK_007": {
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.s",
+          "before": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。",
+          "issue_ids": [
+            "ISSUE_QUANT_02"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/s",
+              "text": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/t",
+              "text": "负责统一指标口径和整理数据，减少周报重复劳动。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a",
+              "text": "用SQL和Excel做周报，做周报，整理相关东西"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r",
+              "text": "周报做好了。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/s",
+              "text": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/t",
+              "text": "负责统一指标口径和整理数据，减少周报重复劳动。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a",
+              "text": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r",
+              "text": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。"
+            }
+          },
+          "allow_question": false,
+          "problems": [
+            "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。"
+          ]
+        },
+        "TASK_008": {
+          "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+          "field_path": "star.t",
+          "before": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。",
+          "issue_ids": [
+            "ISSUE_PROF_04"
+          ],
+          "dimension": "专业表达",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "产品上线了。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s",
+              "text": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/t",
+              "text": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a",
+              "text": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r",
+              "text": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。"
+            }
+          },
+          "allow_question": false,
+          "problems": [
+            "经历中个人独立负责与协助协作的职责边界不够清晰，'参与交付'缺乏具体分工说明。"
+          ]
+        },
+        "RETAINED_FIELD_009": {
+          "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+          "field_path": "star.t",
+          "before": "负责统一指标口径和整理数据，减少周报重复劳动。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        }
+      },
+      "cleanup_fallbacks": {}
+    },
+    "coverage": [
+      {
+        "issue_id": "ISSUE_LOGIC_01",
+        "dimension": "逻辑清晰",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。",
+        "repair_verdict": "repaired",
+        "repair_reason": "行动描述细化了访谈、SQL分析定位问题及协调交付验收的具体步骤，增强了逻辑。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "d1db639944c871177a0fd3c393e850f2bfb7fc0a468acf93f1342efcee1973a2"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_01",
+        "dimension": "逻辑清晰",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。",
+        "repair_verdict": "repaired",
+        "repair_reason": "结果补充了具体的激活率指标变化及归因说明，明确了行动带来的成效。",
+        "reviewed_candidates": [
+          "f48620561ad630de0e45b600d38ff3b1e32a0243be552f6713775af8e32d8633"
+        ],
+        "coverage_input_hash": "17fa1d030ffe14b48eb2f4e46a12bf0a65c6e143d8aecd527b03598e6a80c82b"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_01",
+        "dimension": "逻辑清晰",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。",
+        "repair_verdict": "repaired",
+        "repair_reason": "行动明确了整理指标字典、写SQL、做Excel模板及核对口径等具体动作。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "14c8f109d6117a5203ee1b195e4de493cc7f76cca17d595c0ed038ae9dfb056b"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_01",
+        "dimension": "逻辑清晰",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "经历中的Action与Result之间因果衔接薄弱，仅陈述'产品上线了'或'周报做好了'，未体现具体行动如何达成既定目标。",
+        "repair_verdict": "repaired",
+        "repair_reason": "结果补充了制作耗时减少和5名运营同事使用的具体成果数据。",
+        "reviewed_candidates": [
+          "5b6d58f730a1b3e6b0894b8b4fdef65e2a91efde6ac96f7c12b6ce941c64c8df"
+        ],
+        "coverage_input_hash": "8da33f8654b21bf4363a56abb926b3e5e605addb1711c845c90a15a4dea216ad"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_02",
+        "dimension": "逻辑清晰",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "repaired",
+        "description": "个人总结内容重复且泛化，与经历中具体的B2B SaaS业务细节缺乏聚焦与呼应。",
+        "repair_verdict": "repaired",
+        "repair_reason": "个人总结去除了重复泛化描述，明确具体的产品、PRD及SQL/Excel数据分析技能。",
+        "reviewed_candidates": [
+          "99a49006c9b1cc30bee10cf10b23dc9400d7b323134174c157b18682b477eab7"
+        ],
+        "coverage_input_hash": "74c9102b65b92c05d8dca4f84064331c17244c8663d3ba7607863da403939c6e"
+      },
+      {
+        "issue_id": "ISSUE_STAR_01",
+        "dimension": "STAR应用",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "Action部分包含较多模糊与重复表述（如'参与交付，做相关工作'、'做周报，做周报'），未深入展开具体执行步骤与方法。",
+        "repair_verdict": "repaired",
+        "repair_reason": "删除了模糊重复语句，展开为具体的访谈、漏斗分析、PRD编写与协调交付步骤。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "63d1148ff57af212e0e3ba50aeb63e2e59e129e0bb97d5a3238b44e0d6d32fee"
+      },
+      {
+        "issue_id": "ISSUE_STAR_01",
+        "dimension": "STAR应用",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "Action部分包含较多模糊与重复表述（如'参与交付，做相关工作'、'做周报，做周报'），未深入展开具体执行步骤与方法。",
+        "repair_verdict": "repaired",
+        "repair_reason": "删除了'做周报，做周报'等重复表述，细化为整理字典、SQL查询及Excel模板输出。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "d62e85edcf2956c4bcb8d2c87e15399da445fa24996e939ce3e0c635dfe5815f"
+      },
+      {
+        "issue_id": "ISSUE_STAR_02",
+        "dimension": "STAR应用",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "Result部分仅有极简定性交付表述（'产品上线了。'、'周报做好了。'），缺少业务反馈或具体成效闭环。",
+        "repair_verdict": "repaired",
+        "repair_reason": "结果补充了跟踪周期、企业样本量、激活率提升及归因分析等闭环数据。",
+        "reviewed_candidates": [
+          "f48620561ad630de0e45b600d38ff3b1e32a0243be552f6713775af8e32d8633"
+        ],
+        "coverage_input_hash": "b9edc959b3ad3d20ab0b9d5e9b2b5e76051fd137d86feebcd6a187ad7109807f"
+      },
+      {
+        "issue_id": "ISSUE_STAR_02",
+        "dimension": "STAR应用",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "Result部分仅有极简定性交付表述（'产品上线了。'、'周报做好了。'），缺少业务反馈或具体成效闭环。",
+        "repair_verdict": "repaired",
+        "repair_reason": "结果补充了耗时对比及团队使用人数，形成了量化成效闭环。",
+        "reviewed_candidates": [
+          "5b6d58f730a1b3e6b0894b8b4fdef65e2a91efde6ac96f7c12b6ce941c64c8df"
+        ],
+        "coverage_input_hash": "2abd733119a932744956baef970ea7aa0766ec13f429933ff05f21e6d65ef579"
+      },
+      {
+        "issue_id": "ISSUE_READ_01",
+        "dimension": "内容可读",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "Action部分换行与断句排版略显松散，扫读结构有待优化。",
+        "repair_verdict": "repaired",
+        "repair_reason": "重新梳理了句子结构，断句清晰，提升了扫读体验。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "8c6b86edda0695194fce5ceafbbfb88fc0098921ff38480a31751e84e81133a0"
+      },
+      {
+        "issue_id": "ISSUE_READ_02",
+        "dimension": "内容可读",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "部分句子表述口语化、断句不完整，影响阅读流畅度与信息提取效率。",
+        "repair_verdict": "repaired",
+        "repair_reason": "消除了口语化与不完整断句，语句表达规范流畅。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "9defc4ef24803bca2cb9b29fd628769576db7c076228f00b068e29ba74410f6c"
+      },
+      {
+        "issue_id": "ISSUE_READ_02",
+        "dimension": "内容可读",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "部分句子表述口语化、断句不完整，影响阅读流畅度与信息提取效率。",
+        "repair_verdict": "repaired",
+        "repair_reason": "修改后语句完整规范，消除了口语化表述。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "46e5e4b54906da17b51bde31c58a7a24d6911f54cc0ce0966f5b7e537c102b81"
+      },
+      {
+        "issue_id": "ISSUE_READ_03",
+        "dimension": "内容可读",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。",
+        "repair_verdict": "repaired",
+        "repair_reason": "去除了无效占位描述，增加了实质性的产品分析与交付工作内容。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "c905f9ad6e5473752dc9103bd57dcc24e92753575eed7ddf77f236ce90e3a308"
+      },
+      {
+        "issue_id": "ISSUE_READ_03",
+        "dimension": "内容可读",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "repaired",
+        "description": "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。",
+        "repair_verdict": "repaired",
+        "repair_reason": "个人总结精简了重复内容，聚焦核心专业技能，信息密度显著提高。",
+        "reviewed_candidates": [
+          "99a49006c9b1cc30bee10cf10b23dc9400d7b323134174c157b18682b477eab7"
+        ],
+        "coverage_input_hash": "57e1b700691a276dfef2ab3bb03a598e91770a973f5c2f5f1c6fa45569b21261"
+      },
+      {
+        "issue_id": "ISSUE_READ_03",
+        "dimension": "内容可读",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "个人总结及部分行动描述有效信息量偏低，占位字符多但实质内容少。",
+        "repair_verdict": "repaired",
+        "repair_reason": "行动部分补充了具体的渠道指标、SQL汇总及口径核对等实质信息。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "c299dc1a3a4a8a3c6ff9bc77acf3b7f5372adf3095b89dcc6b17b0a921d442db"
+      },
+      {
+        "issue_id": "ISSUE_READ_04",
+        "dimension": "内容可读",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "行动列表中部分分句缺少末尾标点符号，影响句末规范性。",
+        "repair_verdict": "repaired",
+        "repair_reason": "行动描述中的所有句子均规范添加了末尾标点符号。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "4cfcf1609f14d933a790c2fc1e87716cb359e817dbdf8d70fba96541468ee650"
+      },
+      {
+        "issue_id": "ISSUE_READ_04",
+        "dimension": "内容可读",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "行动列表中部分分句缺少末尾标点符号，影响句末规范性。",
+        "repair_verdict": "repaired",
+        "repair_reason": "行动描述末尾添加了规范的句号。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "35da7e0a19aeee6ec25174217f77071a807e678db44450da382c51ee3c800c28"
+      },
+      {
+        "issue_id": "ISSUE_READ_05",
+        "dimension": "内容可读",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "repaired",
+        "description": "个人总结出现'我有产品经验。我有产品经验。'严重复读，项目行动中出现'做周报，做周报'明显冗余。",
+        "repair_verdict": "repaired",
+        "repair_reason": "个人总结去除了复读表达，提炼为精炼的技能总结。",
+        "reviewed_candidates": [
+          "99a49006c9b1cc30bee10cf10b23dc9400d7b323134174c157b18682b477eab7"
+        ],
+        "coverage_input_hash": "0f2ad47195e6d90526e28f44e49e415b9ff8ee08fb8bfc3647557d2da7c7f7e1"
+      },
+      {
+        "issue_id": "ISSUE_READ_05",
+        "dimension": "内容可读",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "个人总结出现'我有产品经验。我有产品经验。'严重复读，项目行动中出现'做周报，做周报'明显冗余。",
+        "repair_verdict": "repaired",
+        "repair_reason": "去除了'做周报，做周报'的冗余重复，改为规范的专业动作表达。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "717b10fb391da75511e5aef4cc8779c397fb71fb8672f4aa2e838bfaacce29a3"
+      },
+      {
+        "issue_id": "ISSUE_PROF_01",
+        "dimension": "专业表达",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "行动动词较为空泛，使用了'做'、'做相关工作'等口语化动词，缺少具有专业度的产品动作词汇。",
+        "repair_verdict": "repaired",
+        "repair_reason": "使用了'访谈'、'统计入驻漏斗'、'定位'、'编写PRD'、'协调交付'等专业产品动词。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "1517b20e9a5fccbf17499c1afd836c482efe6930c2471ded0ff2e98fff751dea"
+      },
+      {
+        "issue_id": "ISSUE_PROF_01",
+        "dimension": "专业表达",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "行动动词较为空泛，使用了'做'、'做相关工作'等口语化动词，缺少具有专业度的产品动作词汇。",
+        "repair_verdict": "repaired",
+        "repair_reason": "替换为空泛的'做'，改用'整理'、'编写'、'输出'、'邀请核对'等明确动词。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "bb2e9aa30f7dfa63ca76c21d08be52db38b38ee05254bdef61333921e6caa945"
+      },
+      {
+        "issue_id": "ISSUE_PROF_02",
+        "dimension": "专业表达",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "项目描述中行业术语使用偏少，周报自动化项目未提及具体的自动化实现方案或数据处理机制。",
+        "repair_verdict": "repaired",
+        "repair_reason": "补充了'指标字典'、'SQL汇总查询'、'Excel模板输出'、'核对计算口径'等具体机制与术语。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "1cc6def7e01b077b28dbf03b299be69e65e915526ce19f6efc55c33dcaf05270"
+      },
+      {
+        "issue_id": "ISSUE_PROF_03",
+        "dimension": "专业表达",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "表达精确度不足，使用了'做相关工作'、'整理相关东西'等模糊代词。",
+        "repair_verdict": "repaired",
+        "repair_reason": "彻底删除了'做相关工作'等模糊代词，明确为具体的执行工作项。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "965a679df233c3a3bec9c8dd1d6c00581c8fc8baa1a584e61c00fb92939206b8"
+      },
+      {
+        "issue_id": "ISSUE_PROF_03",
+        "dimension": "专业表达",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "表达精确度不足，使用了'做相关工作'、'整理相关东西'等模糊代词。",
+        "repair_verdict": "repaired",
+        "repair_reason": "去除了'整理相关东西'等模糊词汇，具体化为整理指标字典及核对口径。",
+        "reviewed_candidates": [
+          "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7"
+        ],
+        "coverage_input_hash": "54e1e4eae0ac63ae975c4daa44ec555c41b452f9b42aee3102d364ae3b3063f7"
+      },
+      {
+        "issue_id": "ISSUE_PROF_04",
+        "dimension": "专业表达",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "经历中个人独立负责与协助协作的职责边界不够清晰，'参与交付'缺乏具体分工说明。",
+        "repair_verdict": "repaired",
+        "repair_reason": "明确了个人在编写PRD、协调设计研发交付以及完成验收中的具体分工。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "fbd4487612c8e5e713a67087d36614b6ea84f0cb28a4aaf1475cbb096295aa1a"
+      },
+      {
+        "issue_id": "ISSUE_PROF_04",
+        "dimension": "专业表达",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.t",
+        "status": "uncovered",
+        "description": "经历中个人独立负责与协助协作的职责边界不够清晰，'参与交付'缺乏具体分工说明。"
+      },
+      {
+        "issue_id": "ISSUE_PROF_05",
+        "dimension": "专业表达",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。",
+        "repair_verdict": "repaired",
+        "repair_reason": "提供了具体的激活率指标提升数据及严谨归因，支撑了成果陈述。",
+        "reviewed_candidates": [
+          "f48620561ad630de0e45b600d38ff3b1e32a0243be552f6713775af8e32d8633"
+        ],
+        "coverage_input_hash": "08c0e0dbf7721c01fd823dedb1186d96e2fdd64f9f049af17946b659dfd89589"
+      },
+      {
+        "issue_id": "ISSUE_PROF_05",
+        "dimension": "专业表达",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "repaired",
+        "description": "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。",
+        "repair_verdict": "repaired",
+        "repair_reason": "总结改为主客观结合的技能描述（PRD编写、SQL/Excel数据分析），避免空泛主观陈述。",
+        "reviewed_candidates": [
+          "99a49006c9b1cc30bee10cf10b23dc9400d7b323134174c157b18682b477eab7"
+        ],
+        "coverage_input_hash": "c954bc1636c147c67b78c5c0f1d37143a8d3ea407e9d856c48f09ca0176d89b0"
+      },
+      {
+        "issue_id": "ISSUE_PROF_05",
+        "dimension": "专业表达",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "个人总结与结果表述偏向主观陈述（'擅长相关的产品相关工作'、'周报做好了'），缺乏客观扎实的成果支撑。",
+        "repair_verdict": "repaired",
+        "repair_reason": "用耗时从4小时降至1.5小时及5名运营使用的客观事实替代了主观陈述。",
+        "reviewed_candidates": [
+          "5b6d58f730a1b3e6b0894b8b4fdef65e2a91efde6ac96f7c12b6ce941c64c8df"
+        ],
+        "coverage_input_hash": "5f1af3a2977f121741361dbdfb1408a43938480eadc1bc0a3d6fd55375bf62e4"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_01",
+        "dimension": "成果量化",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "所有经历的Result结果均无量化业务指标，仅有定性完成描述，未体现业务价值。",
+        "repair_verdict": "repaired",
+        "repair_reason": "补充了7日激活率由40%升至52%的量化业务指标。",
+        "reviewed_candidates": [
+          "f48620561ad630de0e45b600d38ff3b1e32a0243be552f6713775af8e32d8633"
+        ],
+        "coverage_input_hash": "3dfb4f52c541f4ca714bf0ad0dead393ec5da01dac9b9cba3d48cf0d27927c63"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_01",
+        "dimension": "成果量化",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "所有经历的Result结果均无量化业务指标，仅有定性完成描述，未体现业务价值。",
+        "repair_verdict": "repaired",
+        "repair_reason": "补充了耗时从4小时降至1.5小时的量化指标。",
+        "reviewed_candidates": [
+          "5b6d58f730a1b3e6b0894b8b4fdef65e2a91efde6ac96f7c12b6ce941c64c8df"
+        ],
+        "coverage_input_hash": "5a046dc50e6b8e6aa734d24f63e258c6bc0ca88f468df3e1b73a32ee56732a1d"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_02",
+        "dimension": "成果量化",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。",
+        "repair_verdict": "repaired",
+        "repair_reason": "给出了优化后的52%激活率，形成了40%升至52%的基线对比。",
+        "reviewed_candidates": [
+          "f48620561ad630de0e45b600d38ff3b1e32a0243be552f6713775af8e32d8633"
+        ],
+        "coverage_input_hash": "ba2f538d9455c34378750823ae3e7c9d4eaaf518f984d75dd4bcd1722a652cbf"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_02",
+        "dimension": "成果量化",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.s",
+        "status": "uncovered",
+        "description": "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_02",
+        "dimension": "成果量化",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。",
+        "repair_verdict": "repaired",
+        "repair_reason": "给出了从4小时降至1.5小时的前后对照数据。",
+        "reviewed_candidates": [
+          "5b6d58f730a1b3e6b0894b8b4fdef65e2a91efde6ac96f7c12b6ce941c64c8df"
+        ],
+        "coverage_input_hash": "c469179db6655026f255926a1545e6208d9407abb7c5c27d502c297400cb80ff"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_02",
+        "dimension": "成果量化",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.s",
+        "status": "uncovered",
+        "description": "虽然Situation中提供了40%激活率及4小时工时基线，但缺少优化后的对照数值，未能形成基线对比。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_03",
+        "dimension": "成果量化",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "未体现产品或功能上线后覆盖的企业客户数、活跃用户数或周报服务团队规模等业务覆盖量级。",
+        "repair_verdict": "repaired",
+        "repair_reason": "行动中明确了访谈12家试用企业的具体业务覆盖量级。",
+        "reviewed_candidates": [
+          "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827"
+        ],
+        "coverage_input_hash": "a6d12da5e6ec811a5e0718be98a81904609dabcad0b6197970bd7e6acc8f5665"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_03",
+        "dimension": "成果量化",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "未体现产品或功能上线后覆盖的企业客户数、活跃用户数或周报服务团队规模等业务覆盖量级。",
+        "repair_verdict": "repaired",
+        "repair_reason": "结果中明确体现了跟踪200家新增试用企业的业务覆盖量级。",
+        "reviewed_candidates": [
+          "f48620561ad630de0e45b600d38ff3b1e32a0243be552f6713775af8e32d8633"
+        ],
+        "coverage_input_hash": "f35609ed09933e07ada35fd02382913b502201e7d4fb93bc076db3624aecb8ab"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_04",
+        "dimension": "成果量化",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "结果中缺乏明确的指标统计周期或观测时间窗口（如上线后1个月、连续3个季度等）。",
+        "repair_verdict": "repaired",
+        "repair_reason": "补充了'上线后连续8周跟踪'这一明确的统计时间周期。",
+        "reviewed_candidates": [
+          "f48620561ad630de0e45b600d38ff3b1e32a0243be552f6713775af8e32d8633"
+        ],
+        "coverage_input_hash": "aa3a3cf9707a514276de8190ddd900cc8c5b09db6eb2033dd571a9ebeebc7608"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_04",
+        "dimension": "成果量化",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "status": "repaired",
+        "description": "结果中缺乏明确的指标统计周期或观测时间窗口（如上线后1个月、连续3个季度等）。",
+        "repair_verdict": "repaired",
+        "repair_reason": "补充了'连续4周记录'这一明确的观测时间窗口。",
+        "reviewed_candidates": [
+          "5b6d58f730a1b3e6b0894b8b4fdef65e2a91efde6ac96f7c12b6ce941c64c8df"
+        ],
+        "coverage_input_hash": "369aff0201ca0b314360e2fe629b386be6045a9821e960592948c063d6cfaf95"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_0",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_1",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      }
+    ],
+    "changes": [
+      {
+        "change_id": "CHANGE_TASK_001",
+        "issue_ids": [
+          "ISSUE_QUANT_01",
+          "ISSUE_QUANT_02",
+          "ISSUE_QUANT_03",
+          "ISSUE_QUANT_04"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "产品上线了。",
+        "general_value": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+        "targeted_value": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+        "source_refs": [
+          "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r"
+        ],
+        "introduced_terms": [],
+        "rationale": "采用包含具体跟踪周期、样本量及对比指标的完整结果数据，并保留归因限制说明。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "f48620561ad630de0e45b600d38ff3b1e32a0243be552f6713775af8e32d8633",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "修改内容与提供的来源完全一致。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_0",
+        "issue_ids": [
+          "ISSUE_STAR_02"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "产品上线了。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_1",
+        "issue_ids": [
+          "ISSUE_PROF_05"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "产品上线了。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_2",
+        "issue_ids": [
+          "ISSUE_LOGIC_01"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "产品上线了。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002",
+        "issue_ids": [
+          "ISSUE_QUANT_01",
+          "ISSUE_QUANT_02",
+          "ISSUE_QUANT_04"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "周报做好了。",
+        "general_value": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。",
+        "targeted_value": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。",
+        "source_refs": [
+          "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r"
+        ],
+        "introduced_terms": [],
+        "rationale": "采用包含观测周期、工时对比及使用规模的完整量化成果。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "5b6d58f730a1b3e6b0894b8b4fdef65e2a91efde6ac96f7c12b6ce941c64c8df",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "修改内容与提供的来源完全一致。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_002_RELATED_0",
+        "issue_ids": [
+          "ISSUE_STAR_02"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "周报做好了。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002_RELATED_1",
+        "issue_ids": [
+          "ISSUE_PROF_05"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "周报做好了。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002_RELATED_2",
+        "issue_ids": [
+          "ISSUE_LOGIC_01"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "周报做好了。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003",
+        "issue_ids": [
+          "ISSUE_READ_05",
+          "ISSUE_READ_02",
+          "ISSUE_READ_03",
+          "ISSUE_READ_04"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+        "general_value": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+        "targeted_value": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+        "source_refs": [
+          "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "消除重复口语词，补充完整、专业的操作过程与数据处理细节。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "f0060f06b8eb4dbd1db26d583af87961897a3c968491409e2525bc6a2513a9a7",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "修改内容与提供的来源完全一致。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_0",
+        "issue_ids": [
+          "ISSUE_PROF_03",
+          "ISSUE_PROF_01",
+          "ISSUE_PROF_02"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_1",
+        "issue_ids": [
+          "ISSUE_LOGIC_01"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_2",
+        "issue_ids": [
+          "ISSUE_STAR_01"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_004",
+        "issue_ids": [
+          "ISSUE_READ_05",
+          "ISSUE_READ_03"
+        ],
+        "dimension": "内容可读",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+        "general_value": "具备产品经验，掌握需求分析与PRD编写，能使用SQL与Excel进行数据分析。",
+        "targeted_value": "具备产品经验，掌握需求分析与PRD编写，能使用SQL与Excel进行数据分析。",
+        "source_refs": [
+          "/currentResume/personal_summary",
+          "/currentResume/skills/0/name",
+          "/currentResume/skills/1/name",
+          "/currentResume/skills/2/name"
+        ],
+        "introduced_terms": [],
+        "rationale": "去除重复语句与主观空泛陈述，结合已有技能事实客观总结。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "99a49006c9b1cc30bee10cf10b23dc9400d7b323134174c157b18682b477eab7",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "各项技能与经验均在来源中有明确提及，表达忠实于来源。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_004_RELATED_0",
+        "issue_ids": [
+          "ISSUE_PROF_05"
+        ],
+        "dimension": "专业表达",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_004_RELATED_1",
+        "issue_ids": [
+          "ISSUE_LOGIC_02"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_005",
+        "issue_ids": [
+          "ISSUE_PROF_03",
+          "ISSUE_PROF_01",
+          "ISSUE_PROF_04"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+        "general_value": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+        "targeted_value": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+        "source_refs": [
+          "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "消除模糊代词和重复动作，完整呈现需求分析与交付协作过程。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "5b4ca656cd246c04672b0be6c78d17547f5faf870d05153ff4ded1c0badde827",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "修改内容与提供的来源完全一致。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_005_RELATED_0",
+        "issue_ids": [
+          "ISSUE_LOGIC_01"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_005_RELATED_1",
+        "issue_ids": [
+          "ISSUE_STAR_01"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_005_RELATED_2",
+        "issue_ids": [
+          "ISSUE_READ_02",
+          "ISSUE_READ_03",
+          "ISSUE_READ_01",
+          "ISSUE_READ_04"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_005_RELATED_3",
+        "issue_ids": [
+          "ISSUE_QUANT_03"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_006",
+        "issue_ids": [
+          "ISSUE_QUANT_02"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.s",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "当前背景已准确表述现状与基线，优化后对比指标已在Result中呈现，保持不变。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_007",
+        "issue_ids": [
+          "ISSUE_QUANT_02"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.s",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "当前背景已准确提供周报现状与基线耗时，保持不变。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_008",
+        "issue_ids": [
+          "ISSUE_PROF_04"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.t",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "当前目标表述明确，职责清晰，保持不变。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_0",
+        "issue_ids": [
+          "RUBRIC_内容完整_0"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_1",
+        "issue_ids": [
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHANGE_TASK_001",
+        "CHANGE_TASK_002",
+        "CHANGE_TASK_003",
+        "CHANGE_TASK_004",
+        "CHANGE_TASK_005"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHANGE_TASK_001_RELATED_0",
+        "CHANGE_TASK_001_RELATED_1",
+        "CHANGE_TASK_001_RELATED_2",
+        "CHANGE_TASK_002_RELATED_0",
+        "CHANGE_TASK_002_RELATED_1",
+        "CHANGE_TASK_002_RELATED_2",
+        "CHANGE_TASK_003_RELATED_0",
+        "CHANGE_TASK_003_RELATED_1",
+        "CHANGE_TASK_003_RELATED_2",
+        "CHANGE_TASK_004_RELATED_0",
+        "CHANGE_TASK_004_RELATED_1",
+        "CHANGE_TASK_005_RELATED_0",
+        "CHANGE_TASK_005_RELATED_1",
+        "CHANGE_TASK_005_RELATED_2",
+        "CHANGE_TASK_005_RELATED_3",
+        "CHANGE_TASK_006",
+        "CHANGE_TASK_007",
+        "CHANGE_TASK_008",
+        "RETAINED_0",
+        "RETAINED_1"
+      ],
+      "findings": []
+    },
+    "answers": [],
+    "accepted": [
+      "CHANGE_TASK_001",
+      "CHANGE_TASK_002",
+      "CHANGE_TASK_003",
+      "CHANGE_TASK_004",
+      "CHANGE_TASK_005"
+    ],
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "具备产品经验，掌握需求分析与PRD编写，能使用SQL与Excel进行数据分析。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "云桥软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "企业试用客户在入驻配置阶段流失较多，2024年1月新客户7日激活率为40%。",
+            "t": "负责入驻流程需求分析与验收，与设计和研发协作降低配置障碍。",
+            "a": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+            "r": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。"
+          },
+          "id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5"
+        },
+        {
+          "category": "project",
+          "title": "运营周报自动化",
+          "org": "云桥软件（虚构）",
+          "start_date": "2024-04-01",
+          "end_date": "2024-06-30",
+          "is_current": false,
+          "star": {
+            "s": "运营团队每周人工汇总3个渠道数据，单次制作周报平均耗时4小时。",
+            "t": "负责统一指标口径和整理数据，减少周报重复劳动。",
+            "a": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+            "r": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。"
+          },
+          "id": "e9f980e1-6883-58c7-aac8-ecaed88b9871"
+        }
+      ]
+    }
+  },
+  "diagnostics": []
+}

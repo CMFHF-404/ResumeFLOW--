@@ -1,9 +1,5 @@
-import { normalizeResumeEvaluation } from '../services/aiNormalizeUtils';
-
 /**
- * Dashboard scores intentionally trust only the versioned full-resume evaluation.
- * Legacy JD matchPercentage values are job-specific and must not leak into this UI.
+ * Resume-quality numbers are intentionally absent from the dashboard. JD matching
+ * remains the only numeric card-level signal and is resolved independently.
  */
-export const resolveDashboardResumeEvaluationScore = (value: unknown): number | null => {
-    return normalizeResumeEvaluation(value)?.overallScore ?? null;
-};
+export const resolveDashboardResumeEvaluationScore = (_value: unknown): number | null => null;

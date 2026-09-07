@@ -1,0 +1,8 @@
+{
+  "blinding": "Unseen content; labels and defects excluded from all scoring/planning calls",
+  "repeats": 3,
+  "optimizations": 2,
+  "post_repeats": 3,
+  "expected": "H4Q1 must retain shared ownership; H9S2 must not invent numeric business results",
+  "original_call_boundary": "same production core services, not HTTP apply"
+}

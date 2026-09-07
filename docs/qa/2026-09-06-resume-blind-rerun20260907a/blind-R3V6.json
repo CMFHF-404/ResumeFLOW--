@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "seconds": 13.02,
+  "value": {
+    "documents": [
+      {
+        "id": "0c7d30b5",
+        "clarity": 2,
+        "specificity": 1,
+        "groundedness": 3,
+        "defects": [
+          "个人总结存在严重重复和语病（'我有产品经验。我有产品经验。擅长相关的产品相关工作。'）",
+          "经历中的Action部分多处重复、空泛且缺失标点（如'做周报，做周报，整理相关东西'、'做相关工作'）",
+          "Result部分极度敷衍（'产品上线了。'、'周报做好了。'），丢失了source中详尽的量化效果和归因说明"
+        ],
+        "unsupportedClaims": [],
+        "reason": "个人总结及经历细节存在大量无意义重复和口语化空泛表述，丢失了数据源中具体的行动步骤和量化成果。"
+      },
+      {
+        "id": "7f9a1578",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "完整忠实于数据源，STAR结构清晰，行动具体，成果数据翔实并客观保留了归因边界说明，总结凝练规范。"
+      }
+    ],
+    "preferredId": "7f9a1578"
+  }
+}

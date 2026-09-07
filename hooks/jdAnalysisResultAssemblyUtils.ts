@@ -1,5 +1,6 @@
 import type { JDAnalysisResult } from "../services/aiService";
 import type { JDAnalysisContext } from "../types/analysis";
+import { isGuidanceAuditEvaluation } from "../types/ai";
 import {
   mergeAnalysisResult,
   shouldResetTrendBase,
@@ -10,8 +11,8 @@ import {
 import { subtractDiff, type JDItemDiff } from "./jdAnalysisDiffUtils";
 import { buildEmptyDiff } from "./jdAnalysisDiffUtils";
 
-const usesCurrentResumeScoreContract = (result: JDAnalysisResult | null) => (
-  result?.resumeEvaluation?.evaluationVersion === "resume_flow_v1"
+const usesCurrentResumeGuidanceContract = (result: JDAnalysisResult | null) => (
+  isGuidanceAuditEvaluation(result?.resumeEvaluation)
 );
 
 export const resolveStableAnalysisDiff = (
@@ -58,16 +59,16 @@ export const assembleJDAnalysisResult = ({
     trendBaseResult,
     nextResult
   );
-  const scoreContractChanged = Boolean(previousResult)
-    && usesCurrentResumeScoreContract(previousResult)
-      !== usesCurrentResumeScoreContract(nextResult);
-  const scoreCompatibleResult = scoreContractChanged
+  const guidanceContractChanged = Boolean(previousResult)
+    && usesCurrentResumeGuidanceContract(previousResult)
+      !== usesCurrentResumeGuidanceContract(nextResult);
+  const guidanceCompatibleResult = guidanceContractChanged
     ? { ...stabilizedResult, matchTrend: undefined }
     : stabilizedResult;
   const finalResult =
     mode === "partial"
-      ? stripTrendsByDiff(scoreCompatibleResult, stableDiff)
-      : scoreCompatibleResult;
+      ? stripTrendsByDiff(guidanceCompatibleResult, stableDiff)
+      : guidanceCompatibleResult;
 
   return {
     nextResult,

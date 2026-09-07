@@ -1,0 +1,184 @@
+{
+  "ok": false,
+  "causes": [
+    {
+      "type": "OptimizationPlanNormalizationError",
+      "message": "unsupported skills-order module or path"
+    }
+  ],
+  "seconds": 8.9,
+  "observed_responses": [
+    {
+      "request_label": "resume_optimization_plan",
+      "response": {
+        "changes": [
+          {
+            "changeId": "CHG_001",
+            "issueIds": [
+              "ISSUE_001"
+            ],
+            "dimension": "逻辑清晰",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "personal_summary",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "具备3年B2B SaaS产品经验，负责企业入驻流程和运营数据分析，使用SQL与Excel支持需求决策。",
+            "generalValue": "具备3年B2B SaaS产品经验，负责企业入驻流程和运营数据分析，使用SQL与Excel支持需求决策。",
+            "targetedValue": "具备3年B2B SaaS产品经验，负责企业入驻流程和运营数据分析，使用SQL与Excel支持需求决策。",
+            "sourceRefs": [
+              "/currentResume/personal_summary"
+            ],
+            "introducedTerms": [],
+            "rationale": "当前个人总结事实完整且与经历一致，暂无补充事实支持进一步修改，维持现状。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_002",
+            "issueIds": [
+              "ISSUE_002"
+            ],
+            "dimension": "STAR应用",
+            "moduleType": "experience_star",
+            "moduleId": "0f823db5-a099-516a-a85b-504681023b54",
+            "fieldPath": "star.t",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "负责统一指标口径和整理数据，减少周报重复劳动。",
+            "generalValue": "负责统一指标口径和整理数据，减少周报重复劳动。",
+            "targetedValue": "负责统一指标口径和整理数据，减少周报重复劳动。",
+            "sourceRefs": [
+              "/currentResume/experiences/0f823db5-a099-516a-a85b-504681023b54/star/t"
+            ],
+            "introducedTerms": [],
+            "rationale": "当前任务描述已准确反映职责范围，无额外输入下保持原样。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_003",
+            "issueIds": [
+              "ISSUE_003"
+            ],
+            "dimension": "内容可读",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "personal_summary",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "具备3年B2B SaaS产品经验，负责企业入驻流程和运营数据分析，使用SQL与Excel支持需求决策。",
+            "generalValue": "具备3年B2B SaaS产品经验，负责企业入驻流程和运营数据分析，使用SQL与Excel支持需求决策。",
+            "targetedValue": "具备3年B2B SaaS产品经验，负责企业入驻流程和运营数据分析，使用SQL与Excel支持需求决策。",
+            "sourceRefs": [
+              "/currentResume/personal_summary"
+            ],
+            "introducedTerms": [],
+            "rationale": "当前内容清晰度良好，无需额外调整。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_004",
+            "issueIds": [
+              "ISSUE_004"
+            ],
+            "dimension": "内容完整",
+            "moduleType": "personal_summary",
+            "moduleId": "current_resume",
+            "fieldPath": "unsupported",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": null,
+            "generalValue": null,
+            "targetedValue": null,
+            "sourceRefs": [],
+            "introducedTerms": [],
+            "rationale": "基础个人信息字段属于受保护模块，通过只读通道保持不变。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_005",
+            "issueIds": [
+              "ISSUE_005"
+            ],
+            "dimension": "内容完整",
+            "moduleType": "skills_order",
+            "moduleId": "current_resume",
+            "fieldPath": "skills.order",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": [
+              "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+              "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+              "febb4316-e4d0-51a8-95db-e81230be7c27"
+            ],
+            "generalValue": [
+              "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+              "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+              "febb4316-e4d0-51a8-95db-e81230be7c27"
+            ],
+            "targetedValue": [
+              "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+              "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+              "febb4316-e4d0-51a8-95db-e81230be7c27"
+            ],
+            "sourceRefs": [
+              "/currentResume/skills"
+            ],
+            "introducedTerms": [],
+            "rationale": "技能列表已包含现有核心技能，未提供新技能项，维持原顺序与内容。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_006",
+            "issueIds": [
+              "ISSUE_006"
+            ],
+            "dimension": "专业表达",
+            "moduleType": "experience_star",
+            "moduleId": "fc41e56d-0eaa-546e-8cb9-87e457b0cb09",
+            "fieldPath": "star.a",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+            "generalValue": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+            "targetedValue": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+            "sourceRefs": [
+              "/currentResume/experiences/fc41e56d-0eaa-546e-8cb9-87e457b0cb09/star/a"
+            ],
+            "introducedTerms": [],
+            "rationale": "当前行动项表达清晰且格式规范，维持现状。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          },
+          {
+            "changeId": "CHG_007",
+            "issueIds": [
+              "ISSUE_007"
+            ],
+            "dimension": "成果量化",
+            "moduleType": "experience_star",
+            "moduleId": "fc41e56d-0eaa-546e-8cb9-87e457b0cb09",
+            "fieldPath": "star.r",
+            "actionKind": "leave_unchanged",
+            "scope": "general",
+            "beforeValue": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+            "generalValue": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+            "targetedValue": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+            "sourceRefs": [
+              "/currentResume/experiences/fc41e56d-0eaa-546e-8cb9-87e457b0cb09/star/r"
+            ],
+            "introducedTerms": [],
+            "rationale": "当前结果陈述具备详实数据及客观归因边界，维持现状。",
+            "expectedScoreGain": 0,
+            "defaultSelected": false
+          }
+        ],
+        "questions": []
+      }
+    }
+  ]
+}

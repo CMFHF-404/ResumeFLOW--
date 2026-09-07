@@ -478,6 +478,9 @@ export type ExperienceTabProps = {
   isAutoAssembling: boolean;
   onBatchPolish: () => void;
   onAutoAssemble: () => void;
+  autoAssemblyFocusRequest?: number;
+  showReturnToOptimizationPlan?: boolean;
+  onReturnToOptimizationPlan?: () => void;
   onResetRenamingCategory: () => void;
   onPolishExperience: (id: string) => void;
   activePolishExperienceId?: string | null;

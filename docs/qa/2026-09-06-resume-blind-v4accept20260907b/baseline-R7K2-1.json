@@ -1,0 +1,99 @@
+{
+  "ok": false,
+  "seconds": 108.0,
+  "error_type": "ResumeEvaluationAuditError",
+  "message": "本次评分依据未通过量表审核，未保存本次结果，请重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 271,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 287,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1527,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1415,
+      "function": "_run_with_total_timeout"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1519,
+      "function": "_analyze_resume_evaluation_consensus"
+    },
+    {
+      "file": "resume_evaluation_audit.py",
+      "line": 268,
+      "function": "reviewed_evaluation"
+    }
+  ],
+  "cause_type": null,
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 1
+    },
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 2
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt",
+      "attempt": 3
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "reviewed",
+      "receipts": [
+        {
+          "input_hash": "0c005f724d88bacc8f030b6b59ca60fc66c85f02b901bac49b801b9b9b975907",
+          "audit_version": "resume_rubric_audit_v2",
+          "approved": true
+        },
+        {
+          "input_hash": "be9ce21ccda975df378874394fdb0927a1c41f2676f3ba0490008100c402cf9e",
+          "audit_version": "resume_rubric_audit_v2",
+          "approved": true
+        }
+      ]
+    },
+    {
+      "stage": "generation",
+      "category": "attempt",
+      "attempt": 4
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt",
+      "attempt": 5
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "reviewed",
+      "receipts": [
+        {
+          "input_hash": "eaa98a8f8a8104408b6cceb0a44ad870ecce2d790feea5bc3964d224166367cc",
+          "audit_version": "resume_rubric_audit_v2",
+          "approved": true
+        }
+      ]
+    },
+    {
+      "stage": "publication",
+      "category": "dispersion",
+      "attempts": 5,
+      "approved": 3
+    }
+  ]
+}

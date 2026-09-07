@@ -26,6 +26,7 @@ import type {
     ResumeExperienceView,
     SkillGroupView,
 } from '../../../types/resume';
+import type { ResumeOptimizationChange } from '../../../types/resumeOptimization';
 import {
     sanitizeRichTextHtml,
     stripRichTextToText,
@@ -100,6 +101,10 @@ import {
     usesDeepHireCertificationCards,
     usesLightDeepHireSidebar,
 } from './ResumePreview/deepHireTemplateStyles';
+import {
+    buildResumeOptimizationExperienceComparisonMap,
+    buildResumeOptimizationPersonalSummaryComparison,
+} from './ResumeOptimization/optimizationDisplayUtils.mjs';
 import SummarySection from './ResumePreview/sections/SummarySection';
 import ExperienceSection from './ResumePreview/sections/ExperienceSection';
 import EducationSection from './ResumePreview/sections/EducationSection';
@@ -163,6 +168,11 @@ export type ResumePreviewProps = {
     onEditSkill: (id: string) => void;
     /** 简历文档标题（如「AI产品经理 - 某公司」），用于头像名片等页眉副标题 */
     targetRole?: string;
+    optimizationComparison?: {
+        changes: ResumeOptimizationChange[];
+        acceptedChangeIds: string[];
+        readOnly: boolean;
+    };
 };
 
 const ResumePreview: React.FC<ResumePreviewProps> = ({
@@ -213,6 +223,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     onEditCertification,
     onEditSkill,
     targetRole: targetRoleProp,
+    optimizationComparison,
 }) => {
     const isDashboardCardPreview = previewScope === 'dashboard-card';
     const isDashboardThumbnailPreview = isDashboardCardPreview || previewScope === 'dashboard-row';
@@ -244,6 +255,24 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     const showTouchDragHandles = !isReadOnly
         && (isTouchOnlyInteractionEnvironment || useMobileEditorInteraction);
     const usePageScrollOnMobile = useMobileEditorInteraction;
+    const experienceComparisonMap = React.useMemo(() => (
+        previewScope === 'editor' && optimizationComparison
+            ? buildResumeOptimizationExperienceComparisonMap(
+                optimizationComparison.changes,
+                optimizationComparison.acceptedChangeIds,
+                optimizationComparison.readOnly,
+            )
+            : new Map()
+    ), [optimizationComparison, previewScope]);
+    const personalSummaryComparison = React.useMemo(() => (
+        previewScope === 'editor' && optimizationComparison
+            ? buildResumeOptimizationPersonalSummaryComparison(
+                optimizationComparison.changes,
+                optimizationComparison.acceptedChangeIds,
+                optimizationComparison.readOnly,
+            )
+            : null
+    ), [optimizationComparison, previewScope]);
     const previewTypographyCss = React.useMemo(
         () => buildPreviewTypographyCss(fontSize / FONT_SIZE_DEFAULT, previewScope),
         [fontSize, previewScope]
@@ -275,9 +304,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
         () => Boolean(stripRichTextToText(profile.summary ?? '').trim()),
         [profile.summary]
     );
+    const hasRenderableSummary = hasMeaningfulSummary || Boolean(personalSummaryComparison);
     const visibleSectionOrder = React.useMemo(
-        () => resolveVisibleSectionOrder(sectionOrder, hasMeaningfulSummary),
-        [hasMeaningfulSummary, sectionOrder]
+        () => resolveVisibleSectionOrder(sectionOrder, hasRenderableSummary),
+        [hasRenderableSummary, sectionOrder]
     );
     const contactItems = React.useMemo(
         () => resolveContactItems(profile),
@@ -1539,11 +1569,12 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             onItemDragHover={onItemDragHover}
             onItemDrop={onItemDrop}
             onEditExperience={onEditExperience}
+            experienceComparisonMap={experienceComparisonMap}
         />
     );
 
     const renderSummarySection = () => {
-        if (!hasMeaningfulSummary || !summaryHtml.trim()) {
+        if ((!hasMeaningfulSummary || !summaryHtml.trim()) && !personalSummaryComparison) {
             return null;
         }
 
@@ -1566,6 +1597,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
                 handleNativeDragEnd={handleNativeDragEnd}
                 handleSectionControlTouchStart={handleSectionControlTouchStart}
                 onSectionDrop={onSectionDrop}
+                summaryComparison={personalSummaryComparison}
             />
         );
     };

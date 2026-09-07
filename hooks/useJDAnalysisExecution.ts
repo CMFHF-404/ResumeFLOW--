@@ -34,6 +34,7 @@ export type JDAnalyzeOutcome =
   | { status: "empty" }
   | { status: "no_change" }
   | { status: "missing_attachment" }
+  | { status: "pending_conflict" }
   | { status: "aborted" }
   | { status: "error" };
 
@@ -129,6 +130,9 @@ export const runJDAnalysisExecution = async ({
   if (!shouldContinue()) {
     return { status: "aborted" };
   }
+  if (!canApplyAnalysisResult()) {
+    return { status: "aborted" };
+  }
   if (mode === "partial" && !hasDiff(diff)) {
     return { status: "no_change" };
   }
@@ -145,6 +149,9 @@ export const runJDAnalysisExecution = async ({
     onProgress?.("prepare_context");
     const startSnapshot = buildAnalyzeSnapshot();
     onProgress?.("request_ai");
+    if (!shouldContinue() || !canApplyAnalysisResult()) {
+      return { status: "aborted" };
+    }
     const requestResult: RunJDAnalysisRequestResult = await requestRunner({
       snapshot: startSnapshot,
       mode,
@@ -163,6 +170,9 @@ export const runJDAnalysisExecution = async ({
       return { status: "aborted" };
     }
     const latestSnapshot = buildAnalyzeSnapshot();
+    if (startSnapshot.jdInputSignature !== latestSnapshot.jdInputSignature) {
+      return { status: "aborted" };
+    }
     const changedDuringAnalyze = recordPostAnalyzeDiff(
       startSnapshot.itemSignatures,
       latestSnapshot.itemSignatures

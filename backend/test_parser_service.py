@@ -25,6 +25,7 @@ from app.domain.ai.runtime_budget import (  # noqa: E402
     AiStreamConsumerError,
     AiUsageAccountingError,
 )
+from app.domain.ai.public_errors import AiProviderUnavailableError  # noqa: E402
 
 
 class _FakeStreamResponse:
@@ -350,6 +351,130 @@ class ParserServiceGeminiThinkingTests(unittest.IsolatedAsyncioTestCase):
         )
         stream_mock.assert_awaited_once()
         self.assertEqual(stream_mock.await_args.kwargs["request_label"], "resume_parse")
+
+    async def test_openai_primary_resume_thinking_uses_shared_stream(self) -> None:
+        structured_payload = {
+            "personal_info": {},
+            "work_experiences": [],
+            "project_experiences": [],
+            "education": [],
+            "certifications": [],
+            "skills": [],
+        }
+        openai_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_model="gpt-5.6-luna",
+            ai_api_key="openai-key",
+            gemini_model="gemini-3.5-flash-lite",
+            gemini_api_key="stale-gemini-key",
+        )
+        shared_stream = AsyncMock(return_value=structured_payload)
+        gemini_stream = AsyncMock(return_value={"provider": "gemini"})
+
+        with (
+            patch.object(parser_service, "settings", openai_settings),
+            patch.object(
+                parser_service,
+                "_stream_thinking_json_response",
+                new=shared_stream,
+            ),
+            patch.object(
+                thinking_transport,
+                "stream_resume_thinking_parse",
+                new=gemini_stream,
+            ),
+        ):
+            result = await parser_service._stream_resume_thinking_parse(
+                cleaned_text="候选人简历内容",
+                request_id="req-openai-primary",
+            )
+
+        self.assertEqual(result, structured_payload)
+        shared_stream.assert_awaited_once()
+        gemini_stream.assert_not_awaited()
+
+    async def test_openai_primary_without_ai_key_never_calls_stale_gemini_parser(self) -> None:
+        openai_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_model="gpt-5.6-luna",
+            ai_api_key=None,
+            gemini_model="gemini-3.5-flash-lite",
+            gemini_api_key="stale-gemini-key",
+        )
+        shared_stream = AsyncMock(side_effect=AiProviderUnavailableError("missing key"))
+        gemini_stream = AsyncMock(return_value={"provider": "gemini"})
+
+        with (
+            patch.object(parser_service, "settings", openai_settings),
+            patch.object(
+                parser_service,
+                "_stream_thinking_json_response",
+                new=shared_stream,
+            ),
+            patch.object(
+                thinking_transport,
+                "stream_resume_thinking_parse",
+                new=gemini_stream,
+            ),
+        ):
+            with self.assertRaises(AiProviderUnavailableError):
+                await parser_service._stream_resume_thinking_parse(
+                    cleaned_text="敏感简历正文",
+                    request_id="req-openai-missing-key",
+                )
+
+        shared_stream.assert_awaited_once()
+        gemini_stream.assert_not_awaited()
+
+    async def test_gemini3_resume_thinking_entry_uses_explicit_thinking_level(self) -> None:
+        gemini_settings = SimpleNamespace(
+            ai_route_profile="gemini_primary",
+            ai_api_key=None,
+            ai_model="gemini-3.5-flash-lite",
+            gemini_model="gemini-3.5-flash-lite",
+            gemini_api_key="gemini-key",
+        )
+        structured_payload = {"work_experiences": []}
+        gemini_stream = AsyncMock(return_value=structured_payload)
+
+        with (
+            patch.object(parser_service, "settings", gemini_settings),
+            patch.object(
+                thinking_transport,
+                "stream_resume_thinking_parse",
+                new=gemini_stream,
+            ),
+        ):
+            result = await parser_service._stream_resume_thinking_parse(
+                cleaned_text="候选人简历内容",
+                request_id="req-gemini3-thinking-level",
+            )
+
+        self.assertEqual(result, structured_payload)
+        generation_config = gemini_stream.await_args.kwargs["request_body"][
+            "generationConfig"
+        ]
+        self.assertNotIn("temperature", generation_config)
+        self.assertEqual(
+            generation_config["thinkingConfig"],
+            {"includeThoughts": True, "thinkingLevel": "high"},
+        )
+
+    def test_gemini25_resume_thinking_request_uses_compatible_budget(self) -> None:
+        with patch.object(
+            parser_service,
+            "settings",
+            SimpleNamespace(gemini_model="gemini-2.5-flash"),
+        ):
+            generation_config = parser_service._build_resume_thinking_request(
+                "候选人简历内容"
+            )["generationConfig"]
+
+        self.assertEqual(generation_config["temperature"], 0.2)
+        self.assertEqual(
+            generation_config["thinkingConfig"],
+            {"includeThoughts": True, "thinkingBudget": -1},
+        )
 
     def test_thinking_parse_cache_key_uses_qwen_model_when_qwen_is_primary(self) -> None:
         with patch.object(

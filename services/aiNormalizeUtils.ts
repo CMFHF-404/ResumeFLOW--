@@ -3,6 +3,8 @@ import type {
     JDAnalysisResult,
     JDInterpretation,
     RawJDAnalysisResult,
+    GuidanceAuditEvaluation,
+    LegacyResumeEvaluation,
     ResumeEvaluation,
     ResumeEvaluationDimension,
     ResumeEvaluationDimensionName,
@@ -10,13 +12,17 @@ import type {
     ResumeEvaluationRiskFlag,
 } from '../types/ai';
 import {
+    GUIDANCE_AUDIT_EVALUATION_VERSION,
     RESUME_EVALUATION_DIMENSIONS,
     RESUME_EVALUATION_VERSION,
 } from '../types/ai';
 
 export type { RawJDAnalysisResult } from '../types/ai';
+export { isGuidanceAuditEvaluation } from '../types/ai';
 
 type JsonRecord = Record<string, unknown>;
+
+const ALIAS_CONFLICT = Symbol('alias-conflict');
 
 const toRecord = (value: unknown): JsonRecord | null => (
     value && typeof value === 'object' && !Array.isArray(value)
@@ -24,22 +30,98 @@ const toRecord = (value: unknown): JsonRecord | null => (
         : null
 );
 
-const getAliased = (record: JsonRecord, camel: string, snake: string) => (
-    record[camel] ?? record[snake]
-);
+const areEquivalentJsonValues = (left: unknown, right: unknown): boolean => {
+    if (Object.is(left, right)) {
+        return true;
+    }
+    if (Array.isArray(left) || Array.isArray(right)) {
+        return Array.isArray(left)
+            && Array.isArray(right)
+            && left.length === right.length
+            && left.every((item, index) => areEquivalentJsonValues(item, right[index]));
+    }
+    const leftRecord = toRecord(left);
+    const rightRecord = toRecord(right);
+    if (!leftRecord || !rightRecord) {
+        return false;
+    }
+    const leftKeys = Object.keys(leftRecord).sort();
+    const rightKeys = Object.keys(rightRecord).sort();
+    return leftKeys.length === rightKeys.length
+        && leftKeys.every((key, index) => (
+            key === rightKeys[index]
+            && areEquivalentJsonValues(leftRecord[key], rightRecord[key])
+        ));
+};
+
+const getAliased = (record: JsonRecord, camel: string, snake: string) => {
+    const hasCamel = Object.prototype.hasOwnProperty.call(record, camel);
+    const hasSnake = Object.prototype.hasOwnProperty.call(record, snake);
+    if (
+        hasCamel
+        && hasSnake
+        && !areEquivalentJsonValues(record[camel], record[snake])
+    ) {
+        return ALIAS_CONFLICT;
+    }
+    if (hasCamel) return record[camel];
+    if (hasSnake) return record[snake];
+    return undefined;
+};
 
 const toText = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 
-const toStringArray = (value: unknown) => Array.isArray(value)
-    ? value.map(toText).filter(Boolean)
-    : [];
-
-const toBoundedNumber = (value: unknown, min: number, max: number) => {
-    const numeric = typeof value === 'number' ? value : Number(value);
-    if (!Number.isFinite(numeric)) {
+const toRequiredText = (value: unknown) => {
+    if (typeof value !== 'string') {
         return null;
     }
-    return Math.min(max, Math.max(min, numeric));
+    const normalized = value.trim();
+    return normalized ? normalized : null;
+};
+
+const toOptionalText = (value: unknown) => (
+    typeof value === 'string' ? value.trim() : null
+);
+
+const normalizeUniqueStringArray = <T extends string = string>(
+    value: unknown,
+    normalizeItem: (item: string) => T | null = (item) => item as T
+): T[] | null => {
+    if (!Array.isArray(value)) {
+        return null;
+    }
+    const normalized: T[] = [];
+    const seen = new Set<T>();
+    for (const item of value) {
+        const text = toRequiredText(item);
+        const normalizedItem = text === null ? null : normalizeItem(text);
+        if (normalizedItem === null) {
+            return null;
+        }
+        if (!seen.has(normalizedItem)) {
+            seen.add(normalizedItem);
+            normalized.push(normalizedItem);
+        }
+    }
+    return normalized;
+};
+
+const normalizeRequiredArray = <T>(
+    value: unknown,
+    normalizeItem: (item: unknown) => T | null
+): T[] | null => {
+    if (!Array.isArray(value)) {
+        return null;
+    }
+    const normalized: T[] = [];
+    for (const item of value) {
+        const normalizedItem = normalizeItem(item);
+        if (normalizedItem === null) {
+            return null;
+        }
+        normalized.push(normalizedItem);
+    }
+    return normalized;
 };
 
 const toStrictBoundedNumber = (value: unknown, min: number, max: number) => (
@@ -50,11 +132,6 @@ const toStrictBoundedNumber = (value: unknown, min: number, max: number) => (
         ? value
         : null
 );
-
-const toScore = (value: unknown) => {
-    const score = toBoundedNumber(value, 0, 100);
-    return score === null ? null : Math.round(score);
-};
 
 const toStrictInteger = (value: unknown, min: number, max: number) => (
     typeof value === 'number'
@@ -88,6 +165,10 @@ const resolveEvaluationLevel = (score: number) => {
 
 const isDimensionName = (value: string): value is ResumeEvaluationDimensionName => (
     (RESUME_EVALUATION_DIMENSIONS as readonly string[]).includes(value)
+);
+
+const normalizeDimensionName = (value: string) => (
+    isDimensionName(value) ? value : null
 );
 
 const normalizeDimension = (value: unknown): ResumeEvaluationDimension | null => {
@@ -128,16 +209,30 @@ const normalizeDimension = (value: unknown): ResumeEvaluationDimension | null =>
         if (maxScore !== expectedMaxScore || subscoreValue === null) {
             return null;
         }
+        const evidenceIds = normalizeUniqueStringArray(
+            getAliased(subscore, 'evidenceIds', 'evidence_ids')
+        );
+        if (evidenceIds === null) {
+            return null;
+        }
         calculatedScore += subscoreValue;
         subscores.push({
             name,
             maxScore: expectedMaxScore,
             score: subscoreValue,
-            evidenceIds: toStringArray(getAliased(subscore, 'evidenceIds', 'evidence_ids')),
+            evidenceIds,
         });
     }
     const providedScore = toStrictInteger(record.score, 0, 100);
     if (providedScore === null || providedScore !== calculatedScore) {
+        return null;
+    }
+    const strengths = normalizeUniqueStringArray(record.strengths);
+    const issues = normalizeUniqueStringArray(record.issues);
+    const improvementQuestions = normalizeUniqueStringArray(
+        getAliased(record, 'improvementQuestions', 'improvement_questions')
+    );
+    if (strengths === null || issues === null || improvementQuestions === null) {
         return null;
     }
     return {
@@ -145,11 +240,9 @@ const normalizeDimension = (value: unknown): ResumeEvaluationDimension | null =>
         score: calculatedScore,
         level: resolveEvaluationLevel(calculatedScore),
         subscores,
-        strengths: toStringArray(record.strengths),
-        issues: toStringArray(record.issues),
-        improvementQuestions: toStringArray(
-            getAliased(record, 'improvementQuestions', 'improvement_questions')
-        ),
+        strengths,
+        issues,
+        improvementQuestions,
     };
 };
 
@@ -163,12 +256,30 @@ const normalizeIssue = (value: unknown): ResumeEvaluationIssue | null => {
         getAliased(record, 'primaryDimension', 'primary_dimension')
     );
     const severity = toText(record.severity);
-    const pointsNotEarned = toScore(
-        getAliased(record, 'pointsNotEarned', 'points_not_earned')
+    const pointsNotEarned = toStrictInteger(
+        getAliased(record, 'pointsNotEarned', 'points_not_earned'),
+        0,
+        100
+    );
+    const description = toRequiredText(record.description);
+    const relatedDimensionsValue = getAliased(
+        record,
+        'relatedDimensions',
+        'related_dimensions'
+    );
+    const relatedDimensions = relatedDimensionsValue === undefined
+        || relatedDimensionsValue === null
+        ? []
+        : normalizeUniqueStringArray(relatedDimensionsValue, normalizeDimensionName);
+    const evidenceIds = normalizeUniqueStringArray(
+        getAliased(record, 'evidenceIds', 'evidence_ids')
     );
     if (
         !issueId
+        || description === null
         || !isDimensionName(primaryDimension)
+        || relatedDimensions === null
+        || evidenceIds === null
         || !['high', 'medium', 'low'].includes(severity)
         || pointsNotEarned === null
     ) {
@@ -176,15 +287,53 @@ const normalizeIssue = (value: unknown): ResumeEvaluationIssue | null => {
     }
     return {
         issueId,
-        description: toText(record.description),
+        description,
         primaryDimension,
-        relatedDimensions: toStringArray(
-            getAliased(record, 'relatedDimensions', 'related_dimensions')
-        ).filter(isDimensionName),
-        evidenceIds: toStringArray(getAliased(record, 'evidenceIds', 'evidence_ids')),
+        relatedDimensions: relatedDimensions.filter(
+            (dimension) => dimension !== primaryDimension
+        ),
+        evidenceIds,
         severity: severity as ResumeEvaluationIssue['severity'],
         pointsNotEarned,
     };
+};
+
+// Match only textual identity here; semantic equivalence is a model judgment.
+const issueTextIdentity = (description: string) => description
+    .normalize('NFKC').replace(/\s+/gu, ' ').trim();
+
+const normalizeIdenticalIssues = (issues: ResumeEvaluationIssue[]) => {
+    const rawIssueIds = new Set<string>();
+    const primaryBySignature = new Map<string, ResumeEvaluationDimensionName>();
+    const issueIdBySemanticKey = new Map<string, string>();
+    const remappedIssueIds = new Map<string, string>();
+    const normalized: ResumeEvaluationIssue[] = [];
+    for (const issue of issues) {
+        if (rawIssueIds.has(issue.issueId)) {
+            return null;
+        }
+        rawIssueIds.add(issue.issueId);
+        const signature = JSON.stringify([
+            issueTextIdentity(issue.description), [...issue.evidenceIds].sort(),
+        ]);
+        const existingPrimary = primaryBySignature.get(signature);
+        if (existingPrimary && existingPrimary !== issue.primaryDimension) {
+            return null;
+        }
+        primaryBySignature.set(signature, issue.primaryDimension);
+        const semanticKey = JSON.stringify([
+            issue.primaryDimension, signature, issue.severity,
+            [...issue.relatedDimensions].sort(), issue.pointsNotEarned,
+        ]);
+        const canonicalIssueId = issueIdBySemanticKey.get(semanticKey);
+        if (canonicalIssueId) {
+            remappedIssueIds.set(issue.issueId, canonicalIssueId);
+            continue;
+        }
+        issueIdBySemanticKey.set(semanticKey, issue.issueId);
+        normalized.push(issue);
+    }
+    return { issues: normalized, remappedIssueIds };
 };
 
 const RISK_TYPES: ResumeEvaluationRiskFlag['type'][] = [
@@ -195,7 +344,333 @@ const RISK_TYPES: ResumeEvaluationRiskFlag['type'][] = [
     'duplicated_content',
 ];
 
-export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | undefined => {
+const EVIDENCE_VERIFICATION_STATUSES = new Set([
+    'verified',
+    'user_claimed',
+    'unverified',
+    'inferred',
+]);
+
+const POSITIVE_EVIDENCE_VERIFICATION_STATUSES = new Set([
+    'verified',
+    'user_claimed',
+]);
+
+const normalizeEvidence = (value: unknown): LegacyResumeEvaluation['evidence'][number] | null => {
+    const record = toRecord(value);
+    if (!record) {
+        return null;
+    }
+    const evidenceId = toRequiredText(getAliased(record, 'evidenceId', 'evidence_id'));
+    const sourceText = toRequiredText(getAliased(record, 'sourceText', 'source_text'));
+    const location = record.location === undefined ? '' : toOptionalText(record.location);
+    const factId = toRequiredText(getAliased(record, 'factId', 'fact_id'));
+    const verificationStatus = toRequiredText(
+        getAliased(record, 'verificationStatus', 'verification_status')
+    );
+    const supportedDimensions = normalizeUniqueStringArray(
+        getAliased(record, 'supportedDimensions', 'supported_dimensions'),
+        normalizeDimensionName
+    );
+    if (
+        evidenceId === null
+        || sourceText === null
+        || location === null
+        || factId === null
+        || verificationStatus === null
+        || !EVIDENCE_VERIFICATION_STATUSES.has(verificationStatus)
+        || supportedDimensions === null
+    ) {
+        return null;
+    }
+    return {
+        evidenceId,
+        sourceText,
+        location,
+        factId,
+        verificationStatus,
+        supportedDimensions,
+    };
+};
+
+const normalizeMissingInformation = (
+    value: unknown
+): LegacyResumeEvaluation['missingInformation'][number] | null => {
+    const record = toRecord(value);
+    if (!record) {
+        return null;
+    }
+    const field = toRequiredText(record.field);
+    const reason = toRequiredText(record.reason);
+    const question = toRequiredText(record.question);
+    const rawPotentialDimension = getAliased(
+        record,
+        'potentialDimension',
+        'potential_dimension'
+    );
+    const potentialDimensionValue = rawPotentialDimension === undefined
+        ? ''
+        : toOptionalText(rawPotentialDimension);
+    const potentialScoreGain = toStrictInteger(
+        getAliased(record, 'potentialScoreGain', 'potential_score_gain'),
+        0,
+        100
+    );
+    if (
+        field === null
+        || reason === null
+        || question === null
+        || potentialDimensionValue === null
+        || (potentialDimensionValue !== '' && !isDimensionName(potentialDimensionValue))
+        || potentialScoreGain === null
+    ) {
+        return null;
+    }
+    return {
+        field,
+        reason,
+        question,
+        potentialDimension: potentialDimensionValue,
+        potentialScoreGain,
+    };
+};
+
+const normalizeRiskFlag = (value: unknown): ResumeEvaluationRiskFlag | null => {
+    const record = toRecord(value);
+    if (!record) {
+        return null;
+    }
+    const type = toRequiredText(record.type);
+    const description = toRequiredText(record.description);
+    const evidenceIds = normalizeUniqueStringArray(
+        getAliased(record, 'evidenceIds', 'evidence_ids')
+    );
+    if (
+        type === null
+        || !RISK_TYPES.includes(type as ResumeEvaluationRiskFlag['type'])
+        || description === null
+        || evidenceIds === null
+    ) {
+        return null;
+    }
+    return {
+        type: type as ResumeEvaluationRiskFlag['type'],
+        description,
+        evidenceIds,
+    };
+};
+
+const normalizeTopPriority = (
+    value: unknown
+): LegacyResumeEvaluation['topPriorities'][number] | null => {
+    const record = toRecord(value);
+    if (!record) {
+        return null;
+    }
+    const priority = toStrictInteger(record.priority, 1, 100);
+    const issueId = toRequiredText(getAliased(record, 'issueId', 'issue_id'));
+    const action = toRequiredText(record.action);
+    const expectedScoreGain = toStrictInteger(
+        getAliased(record, 'expectedScoreGain', 'expected_score_gain'),
+        0,
+        100
+    );
+    if (
+        priority === null
+        || issueId === null
+        || action === null
+        || expectedScoreGain === null
+    ) {
+        return null;
+    }
+    return { priority, issueId, action, expectedScoreGain };
+};
+
+export const isResumeEvaluationIntegrityDegraded = (
+    evaluation: Pick<LegacyResumeEvaluation, 'dimensions' | 'issues' | 'topPriorities'>
+) => (
+    evaluation.issues.some((issue) => /^SERVER_GAP_/i.test(issue.issueId))
+    || evaluation.topPriorities.some((priority) => /^SERVER_GAP_/i.test(priority.issueId))
+    || evaluation.dimensions.some((dimension) => (
+        dimension.issues.some((issueId) => /^SERVER_GAP_/i.test(issueId))
+    ))
+    || evaluation.dimensions.some((dimension) => (
+        dimension.score === 0
+        && dimension.strengths.some((strength) => Boolean(strength.trim()))
+    ))
+);
+
+const hasClosedEvaluationReferenceGraph = (evaluation: LegacyResumeEvaluation) => {
+    const evidenceById = new Map(
+        evaluation.evidence.map((evidence) => [evidence.evidenceId, evidence])
+    );
+    if (
+        evidenceById.size !== evaluation.evidence.length
+        || evaluation.evidence.some((evidence) => (
+            !EVIDENCE_VERIFICATION_STATUSES.has(evidence.verificationStatus)
+        ))
+    ) {
+        return false;
+    }
+
+    const evidenceIdsByFactId = new Map<string, string[]>();
+    for (const evidence of evaluation.evidence) {
+        if (!evidence.factId) continue;
+        evidenceIdsByFactId.set(evidence.factId, [
+            ...(evidenceIdsByFactId.get(evidence.factId) ?? []),
+            evidence.evidenceId,
+        ]);
+    }
+    const uniqueFactAliases = new Map(
+        [...evidenceIdsByFactId.entries()]
+            .filter(([, evidenceIds]) => evidenceIds.length === 1)
+            .map(([factId, evidenceIds]) => [factId, evidenceIds[0]])
+    );
+    const resolveEvidenceIds = (references: string[]) => {
+        const resolved: string[] = [];
+        const seen = new Set<string>();
+        for (const reference of references) {
+            const evidenceId = evidenceById.has(reference)
+                ? reference
+                : uniqueFactAliases.get(reference);
+            if (!evidenceId) return null;
+            if (!seen.has(evidenceId)) {
+                seen.add(evidenceId);
+                resolved.push(evidenceId);
+            }
+        }
+        return resolved;
+    };
+
+    for (const dimension of evaluation.dimensions) {
+        for (const subscore of dimension.subscores) {
+            const evidenceIds = resolveEvidenceIds(subscore.evidenceIds);
+            if (
+                !evidenceIds
+                || (subscore.score > 0 && evidenceIds.length === 0)
+                || (
+                    subscore.score > 0
+                    && evidenceIds.some((evidenceId) => (
+                        !POSITIVE_EVIDENCE_VERIFICATION_STATUSES.has(
+                            evidenceById.get(evidenceId)?.verificationStatus ?? ''
+                        )
+                    ))
+                )
+            ) {
+                return false;
+            }
+            if (subscore.score > 0) {
+                for (const evidenceId of evidenceIds) {
+                    const evidence = evidenceById.get(evidenceId);
+                    if (evidence && !evidence.supportedDimensions.includes(dimension.dimension)) {
+                        evidence.supportedDimensions.push(dimension.dimension);
+                    }
+                }
+            }
+            subscore.evidenceIds = evidenceIds;
+        }
+    }
+    for (const issue of evaluation.issues) {
+        const evidenceIds = resolveEvidenceIds(issue.evidenceIds);
+        if (!evidenceIds) return false;
+        issue.evidenceIds = evidenceIds;
+    }
+    for (const risk of evaluation.riskFlags) {
+        const evidenceIds = resolveEvidenceIds(risk.evidenceIds);
+        if (!evidenceIds) return false;
+        risk.evidenceIds = evidenceIds;
+    }
+
+    const issuesById = new Map(evaluation.issues.map((issue) => [issue.issueId, issue]));
+    if (issuesById.size !== evaluation.issues.length) {
+        return false;
+    }
+    const issueReferenceCounts = new Map(evaluation.issues.map((issue) => [issue.issueId, 0]));
+    const issueIdsByDimension = new Map<ResumeEvaluationDimensionName, string[]>();
+    for (const dimension of evaluation.dimensions) {
+        for (const issueId of dimension.issues) {
+            const issue = issuesById.get(issueId);
+            if (!issue || issue.primaryDimension !== dimension.dimension) {
+                return false;
+            }
+            issueReferenceCounts.set(issueId, (issueReferenceCounts.get(issueId) ?? 0) + 1);
+        }
+        issueIdsByDimension.set(dimension.dimension, dimension.issues);
+    }
+    if ([...issueReferenceCounts.values()].some((count) => count !== 1)) {
+        return false;
+    }
+    for (const dimension of evaluation.dimensions) {
+        const issueIds = issueIdsByDimension.get(dimension.dimension) ?? [];
+        const pointsNotEarned = 100 - dimension.score;
+        if (issueIds.length === 0) {
+            if (pointsNotEarned > 0) {
+                return false;
+            }
+            continue;
+        }
+        if (pointsNotEarned === 0) {
+            for (const issueId of issueIds) {
+                const issue = issuesById.get(issueId);
+                if (issue) issue.pointsNotEarned = 0;
+            }
+            continue;
+        }
+        let weights = issueIds.map((issueId) => issuesById.get(issueId)?.pointsNotEarned ?? 0);
+        let weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+        if (weightTotal === 0) {
+            weights = issueIds.map(() => 1);
+            weightTotal = issueIds.length;
+        }
+        const allocations = weights.map((weight) => (
+            Math.floor((pointsNotEarned * weight) / weightTotal)
+        ));
+        const remainders = weights.map((weight) => (
+            (pointsNotEarned * weight) % weightTotal
+        ));
+        let remaining = pointsNotEarned - allocations.reduce((sum, value) => sum + value, 0);
+        const remainderOrder = issueIds.map((_issueId, index) => index).sort((left, right) => (
+            remainders[right] - remainders[left] || left - right
+        ));
+        for (const index of remainderOrder) {
+            if (remaining === 0) break;
+            allocations[index] += 1;
+            remaining -= 1;
+        }
+        issueIds.forEach((issueId, index) => {
+            const issue = issuesById.get(issueId);
+            if (issue) issue.pointsNotEarned = allocations[index];
+        });
+    }
+    for (const evidence of evaluation.evidence) {
+        const supported = new Set(evidence.supportedDimensions);
+        evidence.supportedDimensions = RESUME_EVALUATION_DIMENSIONS.filter(
+            (dimension) => supported.has(dimension)
+        );
+    }
+    const priorityIssueIds = evaluation.topPriorities.map((priority) => priority.issueId);
+    const priorityRanks = evaluation.topPriorities.map((priority) => priority.priority);
+    if (
+        new Set(priorityIssueIds).size !== priorityIssueIds.length
+        || new Set(priorityRanks).size !== priorityRanks.length
+        || !evaluation.topPriorities.every((priority) => issuesById.has(priority.issueId))
+    ) {
+        return false;
+    }
+    const positiveEvidenceIds = new Set(
+        evaluation.dimensions.flatMap((dimension) => (
+            dimension.subscores.flatMap((subscore) => (
+                subscore.score > 0 ? subscore.evidenceIds : []
+            ))
+        ))
+    );
+    return evaluation.evaluationConfidence <= 0.89
+        || ![...positiveEvidenceIds].some((evidenceId) => (
+            evidenceById.get(evidenceId)?.verificationStatus === 'user_claimed'
+        ));
+};
+
+export const normalizeLegacyResumeEvaluation = (value: unknown): LegacyResumeEvaluation | undefined => {
     const record = toRecord(value);
     if (!record) {
         return undefined;
@@ -206,6 +681,9 @@ export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | un
     const evaluationScope = toText(
         getAliased(record, 'evaluationScope', 'evaluation_scope')
     );
+    const scoringVersion = getAliased(record, 'scoringVersion', 'scoring_version');
+    if ((Object.prototype.hasOwnProperty.call(record, 'scoringVersion') || Object.prototype.hasOwnProperty.call(record, 'scoring_version'))
+        && (typeof scoringVersion !== 'string' || !scoringVersion.trim())) return undefined;
     if (
         evaluationVersion !== RESUME_EVALUATION_VERSION
         || evaluationScope !== 'full_resume'
@@ -290,10 +768,62 @@ export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | un
     if (jdMatchValue !== null && jdMatchValue !== undefined && jdMatch === null) {
         return undefined;
     }
-    return {
+    const evidence = normalizeRequiredArray(record.evidence, normalizeEvidence);
+    const rawIssues = normalizeRequiredArray(record.issues, normalizeIssue);
+    const missingInformation = normalizeRequiredArray(
+        getAliased(record, 'missingInformation', 'missing_information'),
+        normalizeMissingInformation
+    );
+    const riskFlags = normalizeRequiredArray(
+        getAliased(record, 'riskFlags', 'risk_flags'),
+        normalizeRiskFlag
+    );
+    const rawTopPriorities = normalizeRequiredArray(
+        getAliased(record, 'topPriorities', 'top_priorities'),
+        normalizeTopPriority
+    );
+    const targetRoleValue = getAliased(record, 'targetRole', 'target_role');
+    const targetRole = targetRoleValue === undefined
+        ? ''
+        : toOptionalText(targetRoleValue);
+    if (
+        evidence === null
+        || rawIssues === null
+        || missingInformation === null
+        || riskFlags === null
+        || rawTopPriorities === null
+        || targetRole === null
+    ) {
+        return undefined;
+    }
+    const semanticIssues = normalizeIdenticalIssues(rawIssues);
+    if (!semanticIssues) {
+        return undefined;
+    }
+    const { issues, remappedIssueIds } = semanticIssues;
+    for (const dimension of typedDimensions) {
+        dimension.issues = [...new Set(
+            dimension.issues.map((issueId) => remappedIssueIds.get(issueId) ?? issueId)
+        )];
+    }
+    const seenPriorityIssueIds = new Set<string>();
+    const topPriorities = rawTopPriorities.flatMap((priority) => {
+        const issueId = remappedIssueIds.get(priority.issueId) ?? priority.issueId;
+        if (seenPriorityIssueIds.has(issueId)) {
+            return [];
+        }
+        seenPriorityIssueIds.add(issueId);
+        return [{ ...priority, issueId }];
+    });
+    topPriorities.sort((left, right) => left.priority - right.priority);
+    topPriorities.forEach((priority, index) => {
+        priority.priority = index + 1;
+    });
+    const normalized: LegacyResumeEvaluation = {
         evaluationVersion: RESUME_EVALUATION_VERSION,
+        ...(typeof scoringVersion === 'string' ? { scoringVersion: scoringVersion.trim() } : {}),
         evaluationScope: 'full_resume',
-        targetRole: toText(getAliased(record, 'targetRole', 'target_role')),
+        targetRole,
         overallScore,
         overallLevel: resolveEvaluationLevel(calculatedFinalScore),
         evaluationConfidence,
@@ -304,91 +834,276 @@ export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | un
             finalScore: calculatedFinalScore,
         },
         dimensions: typedDimensions,
-        evidence: Array.isArray(record.evidence)
-            ? record.evidence.flatMap((item) => {
-                const evidence = toRecord(item);
-                if (!evidence) {
-                    return [];
-                }
-                const evidenceId = toText(getAliased(evidence, 'evidenceId', 'evidence_id'));
-                if (!evidenceId) {
-                    return [];
-                }
-                return [{
-                    evidenceId,
-                    sourceText: toText(getAliased(evidence, 'sourceText', 'source_text')),
-                    location: toText(evidence.location),
-                    factId: toText(getAliased(evidence, 'factId', 'fact_id')),
-                    verificationStatus: toText(
-                        getAliased(evidence, 'verificationStatus', 'verification_status')
-                    ),
-                    supportedDimensions: toStringArray(
-                        getAliased(evidence, 'supportedDimensions', 'supported_dimensions')
-                    ).filter(isDimensionName),
-                }];
-            })
-            : [],
-        issues: Array.isArray(record.issues)
-            ? record.issues.map(normalizeIssue).filter((issue): issue is ResumeEvaluationIssue => Boolean(issue))
-            : [],
+        evidence,
+        issues,
         jdMatch,
-        missingInformation: Array.isArray(getAliased(record, 'missingInformation', 'missing_information'))
-            ? (getAliased(record, 'missingInformation', 'missing_information') as unknown[]).flatMap((item) => {
-                const missing = toRecord(item);
-                if (!missing) {
-                    return [];
-                }
-                const potentialDimension = toText(
-                    getAliased(missing, 'potentialDimension', 'potential_dimension')
-                );
-                const potentialScoreGain = toScore(
-                    getAliased(missing, 'potentialScoreGain', 'potential_score_gain')
-                );
-                return [{
-                    field: toText(missing.field),
-                    reason: toText(missing.reason),
-                    question: toText(missing.question),
-                    potentialDimension: isDimensionName(potentialDimension) ? potentialDimension : '',
-                    potentialScoreGain: potentialScoreGain ?? 0,
-                }];
-            })
-            : [],
-        riskFlags: Array.isArray(getAliased(record, 'riskFlags', 'risk_flags'))
-            ? (getAliased(record, 'riskFlags', 'risk_flags') as unknown[]).flatMap((item) => {
-                const risk = toRecord(item);
-                const type = risk ? toText(risk.type) : '';
-                if (!risk || !RISK_TYPES.includes(type as ResumeEvaluationRiskFlag['type'])) {
-                    return [];
-                }
-                return [{
-                    type: type as ResumeEvaluationRiskFlag['type'],
-                    description: toText(risk.description),
-                    evidenceIds: toStringArray(getAliased(risk, 'evidenceIds', 'evidence_ids')),
-                }];
-            })
-            : [],
-        topPriorities: Array.isArray(getAliased(record, 'topPriorities', 'top_priorities'))
-            ? (getAliased(record, 'topPriorities', 'top_priorities') as unknown[]).flatMap((item) => {
-                const priority = toRecord(item);
-                if (!priority) {
-                    return [];
-                }
-                const priorityValue = toBoundedNumber(priority.priority, 1, 999);
-                const expectedScoreGain = toScore(
-                    getAliased(priority, 'expectedScoreGain', 'expected_score_gain')
-                );
-                if (priorityValue === null) {
-                    return [];
-                }
-                return [{
-                    priority: Math.round(priorityValue),
-                    issueId: toText(getAliased(priority, 'issueId', 'issue_id')),
-                    action: toText(priority.action),
-                    expectedScoreGain: expectedScoreGain ?? 0,
-                }];
-            })
-            : [],
+        missingInformation,
+        riskFlags,
+        topPriorities,
     };
+    return isResumeEvaluationIntegrityDegraded(normalized)
+        || !hasClosedEvaluationReferenceGraph(normalized)
+        ? undefined
+        : normalized;
+};
+
+const GUIDANCE_BANDS = new Set([
+    'strong',
+    'adequate',
+    'needs_attention',
+    'insufficient_evidence',
+]);
+
+const GUIDANCE_CONFIDENCE = new Set(['high', 'medium', 'low']);
+const GUIDANCE_RECEIPT_ID_PATTERN = /^[a-f0-9]{32}$/;
+const GUIDANCE_HASH_PATTERN = /^[a-f0-9]{64}$/;
+const GUIDANCE_AUDIT_VERSION = 'guidance_task_audit_v1';
+
+const GUIDANCE_SCORE_KEYS = new Set([
+    'overallScore', 'overall_score', 'scoreCalculation', 'score_calculation',
+    'overallLevel', 'overall_level', 'evaluationConfidence', 'evaluation_confidence',
+    'dimensions', 'dimensionScores', 'dimension_scores', 'score', 'subscores',
+    'expectedScoreGain', 'expected_score_gain',
+    'pointsNotEarned', 'points_not_earned', 'dimensionDeltas', 'dimension_deltas',
+]);
+
+const hasGuidanceScoreField = (record: JsonRecord) => (
+    Object.keys(record).some((key) => GUIDANCE_SCORE_KEYS.has(key))
+);
+
+const guidanceTextArray = (value: unknown): string[] | null => (
+    normalizeUniqueStringArray(value)
+);
+
+const guidanceRequiredAlias = (
+    record: JsonRecord,
+    camel: string,
+    snake: string,
+) => {
+    const value = getAliased(record, camel, snake);
+    return value === ALIAS_CONFLICT ? null : toRequiredText(value);
+};
+
+const normalizeGuidanceDimension = (
+    value: unknown,
+): GuidanceAuditEvaluation['dimensionGuidance'][number] | null => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return null;
+    const dimension = toText(record.dimension);
+    const status = toText(record.status);
+    const strengths = guidanceTextArray(record.strengths);
+    const issues = guidanceTextArray(record.issues);
+    const actions = guidanceTextArray(record.actions);
+    if (
+        !isDimensionName(dimension)
+        || !GUIDANCE_BANDS.has(status)
+        || strengths === null
+        || issues === null
+        || actions === null
+    ) return null;
+    return {
+        dimension,
+        status: status as GuidanceAuditEvaluation['dimensionGuidance'][number]['status'],
+        strengths,
+        issues,
+        actions,
+    };
+};
+
+const normalizeGuidanceAction = (
+    value: unknown,
+): GuidanceAuditEvaluation['topPriorities'][number] | null => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return null;
+    const taskId = guidanceRequiredAlias(record, 'taskId', 'task_id');
+    const issueId = guidanceRequiredAlias(record, 'issueId', 'issue_id');
+    const dimension = toText(record.dimension);
+    const fieldPath = guidanceRequiredAlias(record, 'fieldPath', 'field_path');
+    const description = guidanceRequiredAlias(record, 'description', 'description');
+    const action = guidanceRequiredAlias(record, 'action', 'action');
+    if (
+        taskId === null
+        || issueId === null
+        || !isDimensionName(dimension)
+        || fieldPath === null
+        || description === null
+        || action === null
+    ) return null;
+    return { taskId, issueId, dimension, fieldPath, description, action };
+};
+
+const normalizeGuidanceRiskFlag = (
+    value: unknown,
+): GuidanceAuditEvaluation['riskFlags'][number] | null => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return null;
+    const taskId = guidanceRequiredAlias(record, 'taskId', 'task_id');
+    const type = toRequiredText(record.type);
+    const description = toRequiredText(record.description);
+    if (taskId === null || type === null || description === null) return null;
+    return { taskId, type, description };
+};
+
+const normalizeGuidanceActionArray = (value: unknown) => {
+    const actions = normalizeRequiredArray(value, normalizeGuidanceAction);
+    if (!actions || new Set(actions.map((action) => action.taskId)).size !== actions.length) {
+        return null;
+    }
+    return actions;
+};
+
+const normalizeGuidanceAuditReceipt = (
+    value: unknown,
+): GuidanceAuditEvaluation['auditReceipt'] | null => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return null;
+    const receiptId = guidanceRequiredAlias(record, 'receiptId', 'receipt_id');
+    const inputHash = guidanceRequiredAlias(record, 'inputHash', 'input_hash');
+    const tasksHash = guidanceRequiredAlias(record, 'tasksHash', 'tasks_hash');
+    const judgmentsHash = guidanceRequiredAlias(record, 'judgmentsHash', 'judgments_hash');
+    const rubricHash = guidanceRequiredAlias(record, 'rubricHash', 'rubric_hash');
+    const schemaHash = guidanceRequiredAlias(record, 'schemaHash', 'schema_hash');
+    const auditVersion = guidanceRequiredAlias(record, 'auditVersion', 'audit_version');
+    if (
+        receiptId === null
+        || inputHash === null
+        || tasksHash === null
+        || judgmentsHash === null
+        || rubricHash === null
+        || schemaHash === null
+        || auditVersion !== GUIDANCE_AUDIT_VERSION
+        || !GUIDANCE_RECEIPT_ID_PATTERN.test(receiptId ?? '')
+        || ![inputHash, tasksHash, judgmentsHash, rubricHash, schemaHash]
+            .every((hash) => GUIDANCE_HASH_PATTERN.test(hash ?? ''))
+    ) return null;
+    return {
+        receiptId,
+        inputHash,
+        tasksHash,
+        judgmentsHash,
+        rubricHash,
+        schemaHash,
+        auditVersion,
+    };
+};
+
+const sameGuidanceAction = (
+    left: GuidanceAuditEvaluation['topPriorities'][number],
+    right: GuidanceAuditEvaluation['topPriorities'][number],
+) => (
+    left.taskId === right.taskId
+    && left.issueId === right.issueId
+    && left.dimension === right.dimension
+    && left.fieldPath === right.fieldPath
+    && left.description === right.description
+    && left.action === right.action
+);
+
+/** Strictly accepts the public, score-free report that has passed the AI audit. */
+export const normalizeGuidanceAuditEvaluation = (
+    value: unknown,
+): GuidanceAuditEvaluation | undefined => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return undefined;
+    const evaluationVersion = toText(
+        getAliased(record, 'evaluationVersion', 'evaluation_version'),
+    );
+    const evaluationScope = toText(
+        getAliased(record, 'evaluationScope', 'evaluation_scope'),
+    );
+    const targetRole = toOptionalText(getAliased(record, 'targetRole', 'target_role'));
+    const overallBand = toText(getAliased(record, 'overallBand', 'overall_band'));
+    const confidence = toText(record.confidence);
+    const dimensionGuidanceValue = getAliased(
+        record,
+        'dimensionGuidance',
+        'dimension_guidance',
+    );
+    const dimensionGuidance = normalizeRequiredArray(
+        dimensionGuidanceValue,
+        normalizeGuidanceDimension,
+    );
+    const guidanceByDimension = new Map(
+        dimensionGuidance?.map((item) => [item.dimension, item]),
+    );
+    const topPriorities = normalizeGuidanceActionArray(
+        getAliased(record, 'topPriorities', 'top_priorities'),
+    );
+    const safeCleanup = normalizeGuidanceActionArray(
+        getAliased(record, 'safeCleanup', 'safe_cleanup'),
+    );
+    const informationNeeded = normalizeGuidanceActionArray(
+        getAliased(record, 'informationNeeded', 'information_needed'),
+    );
+    const riskFlags = normalizeRequiredArray(
+        getAliased(record, 'riskFlags', 'risk_flags'),
+        normalizeGuidanceRiskFlag,
+    );
+    const auditReceipt = normalizeGuidanceAuditReceipt(
+        getAliased(record, 'auditReceipt', 'audit_receipt'),
+    );
+    const jdMatchValue = getAliased(record, 'jdMatch', 'jd_match');
+    const jdMatch = jdMatchValue === null
+        ? null
+        : toStrictInteger(jdMatchValue, 0, 100);
+    const cleanupByTaskId = new Map(safeCleanup?.map((row) => [row.taskId, row]));
+    const informationByTaskId = new Map(informationNeeded?.map((row) => [row.taskId, row]));
+    const conflictingActionClasses = [...cleanupByTaskId.keys()].some(
+        (taskId) => informationByTaskId.has(taskId),
+    );
+    const prioritiesReferenceClassifiedActions = topPriorities?.every((row) => {
+        const classified = cleanupByTaskId.get(row.taskId) ?? informationByTaskId.get(row.taskId);
+        return Boolean(classified && sameGuidanceAction(row, classified));
+    });
+    if (
+        evaluationVersion !== GUIDANCE_AUDIT_EVALUATION_VERSION
+        || evaluationScope !== 'full_resume'
+        || targetRole === null
+        || !GUIDANCE_BANDS.has(overallBand)
+        || !GUIDANCE_CONFIDENCE.has(confidence)
+        || !dimensionGuidance
+        || dimensionGuidance.length !== RESUME_EVALUATION_DIMENSIONS.length
+        || guidanceByDimension.size !== RESUME_EVALUATION_DIMENSIONS.length
+        || RESUME_EVALUATION_DIMENSIONS.some((dimension) => !guidanceByDimension.has(dimension))
+        || topPriorities === null
+        || safeCleanup === null
+        || informationNeeded === null
+        || riskFlags === null
+        || auditReceipt === null
+        || conflictingActionClasses
+        || !prioritiesReferenceClassifiedActions
+        || jdMatch === null && jdMatchValue !== null
+    ) return undefined;
+    return {
+        evaluationVersion: GUIDANCE_AUDIT_EVALUATION_VERSION,
+        evaluationScope: 'full_resume',
+        targetRole,
+        overallBand: overallBand as GuidanceAuditEvaluation['overallBand'],
+        confidence: confidence as GuidanceAuditEvaluation['confidence'],
+        dimensionGuidance: RESUME_EVALUATION_DIMENSIONS.map(
+            (dimension) => guidanceByDimension.get(dimension)!,
+        ),
+        topPriorities,
+        safeCleanup,
+        informationNeeded,
+        riskFlags,
+        auditReceipt,
+        jdMatch,
+    };
+};
+
+/** Reads legacy numeric reports and the new guidance contract without coercing one into the other. */
+export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | undefined => {
+    const record = toRecord(value);
+    if (!record) return undefined;
+    const version = toText(getAliased(record, 'evaluationVersion', 'evaluation_version'));
+    if (version === GUIDANCE_AUDIT_EVALUATION_VERSION) {
+        return normalizeGuidanceAuditEvaluation(record);
+    }
+    if (version === RESUME_EVALUATION_VERSION) {
+        return normalizeLegacyResumeEvaluation(record);
+    }
+    return undefined;
 };
 
 export const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResult => {
@@ -407,8 +1122,9 @@ export const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalys
         : result.capability_analysis && typeof result.capability_analysis === 'object'
             ? (result.capability_analysis as JDCapabilityAnalysis)
             : undefined;
+    const resultRecord = result as unknown as JsonRecord;
     const resumeEvaluation = normalizeResumeEvaluation(
-        result.resumeEvaluation ?? result.resume_evaluation
+        getAliased(resultRecord, 'resumeEvaluation', 'resume_evaluation')
     );
     const normalizedResult = { ...result };
     delete normalizedResult.resumeEvaluation;

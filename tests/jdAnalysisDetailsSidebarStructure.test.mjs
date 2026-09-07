@@ -33,29 +33,34 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.doesNotMatch(detailsSidebarHeader, /onClick=\{handleOpenAssistantSidebar\}/);
 
   assert.match(editor, /import \{ JDAnalysisDetailsSidebar \} from '\.\/components\/JDAnalysisPanel'/);
-  assert.match(editor, /const \[isJDAnalysisDetailsSidebarOpen, setIsJDAnalysisDetailsSidebarOpen\] = useState\(false\)/);
+  assert.match(editor, /const AIAssistant = React\.lazy\(\(\) => import\('\.\.\/AIAssistant'\)\)/);
+  assert.doesNotMatch(editor, /import AIAssistant from '\.\.\/AIAssistant'/);
+  assert.match(editor, /const \[isAssistantSidebarMounted, setIsAssistantSidebarMounted\] = useState\(false\)/);
+  assert.match(editor, /const isJDAnalysisDetailsSidebarOpen = rightSidebarSurface === 'analysis'/);
   assert.match(editor, /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{/);
-  assert.match(editor, /setIsJDAnalysisDetailsSidebarOpen\(true\)/);
+  assert.match(editor, /setRightSidebarSurface\('analysis'\)/);
   const openDetailsHandler = editor.match(
     /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[analysisResult, captureMobileAnalysisReturnFocus\]\);/
   )?.[0] ?? '';
   assert.match(openDetailsHandler, /captureMobileAnalysisReturnFocus\(\)/);
-  assert.doesNotMatch(openDetailsHandler, /setIsAssistantSidebarOpen\(false\)/);
-  assert.doesNotMatch(editor, /handleReturnToAssistantSidebar/);
+  assert.doesNotMatch(openDetailsHandler, /setIsAssistantSidebarMounted\(false\)/);
   const closeDetailsHandler = editor.match(
-    /const handleCloseJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/
+    /const handleCloseJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[isAssistantSidebarMounted\]\);/
   )?.[0] ?? '';
-  assert.match(closeDetailsHandler, /setIsJDAnalysisDetailsSidebarOpen\(false\)/);
-  assert.doesNotMatch(closeDetailsHandler, /handleToggleResumeAssistantSidebar/);
-  assert.doesNotMatch(closeDetailsHandler, /handleReturnToAssistantSidebar/);
+  assert.match(closeDetailsHandler, /if \(isAssistantSidebarMounted\) \{[\s\S]*setRightSidebarSurface\('assistant'\);[\s\S]*return;/);
+  assert.match(closeDetailsHandler, /setRightSidebarSurface\(null\)/);
+  assert.match(closeDetailsHandler, /setWorkspaceLayout\('list'\)/);
   assert.match(editor, /onOpenDetailsSidebar: handleOpenJDAnalysisDetailsSidebar/);
   assert.match(editor, /onOpenAnalysisDetails=\{analysisResult \? handleOpenJDAnalysisDetailsSidebar : undefined\}/);
-  assert.match(editor, /const isRightSidebarOpen = isAssistantSidebarOpen \|\| isJDAnalysisDetailsSidebarOpen/);
+  assert.match(editor, /const isRightSidebarOpen = workspaceLayout !== 'list' && rightSidebarSurface !== null/);
+  assert.match(editor, /const isAssistantSidebarActive = rightSidebarSurface === 'assistant'/);
   assert.match(editor, /const rightSidebarContent = isRightSidebarOpen \? \(/);
   assert.match(editor, /relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950/);
-  assert.match(editor, /aria-hidden=\{isJDAnalysisDetailsSidebarOpen\}/);
-  assert.match(editor, /inert=\{isJDAnalysisDetailsSidebarOpen \? true : undefined\}/);
-  assert.match(editor, /isJDAnalysisDetailsSidebarOpen\s*\?\s*'-translate-y-4'[\s\S]*:\s*'translate-y-0'/);
+  assert.match(editor, /isAssistantSidebarMounted \? \(/);
+  assert.match(editor, /<React\.Suspense/);
+  assert.match(editor, /aria-hidden=\{!isAssistantSidebarActive\}/);
+  assert.match(editor, /inert=\{!isAssistantSidebarActive \? true : undefined\}/);
+  assert.match(editor, /isAssistantSidebarActive\s*\?\s*'translate-y-0 opacity-100'[\s\S]*:\s*'-translate-y-4 opacity-0 pointer-events-none'/);
   assert.match(editor, /aria-hidden=\{!isJDAnalysisDetailsSidebarOpen\}/);
   assert.match(editor, /inert=\{!isJDAnalysisDetailsSidebarOpen \? true : undefined\}/);
   assert.match(editor, /isJDAnalysisDetailsSidebarOpen\s*\?\s*'translate-y-0'[\s\S]*:\s*'translate-y-full pointer-events-none'/);
@@ -67,12 +72,11 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
     (editor.match(/<JDAnalysisDetailsSidebar \{\.\.\.jdAnalysisDetailsSidebarProps\} \/>/g) ?? []).length,
     2,
   );
-  assert.doesNotMatch(editor, /onOpenAssistantSidebar=\{handleReturnToAssistantSidebar\}/);
-  assert.match(editor, /isAssistantSidebarOpen=\{isRightSidebarOpen\}/);
-  assert.match(editor, /assistantSidebar=\{rightSidebarContent\}/);
+  assert.match(editor, /isRightSidebarOpen=\{isRightSidebarOpen\}/);
+  assert.match(editor, /rightSidebar=\{rightSidebarContent\}/);
 
-  assert.match(workspace, /assistantSidebar\?: React\.ReactNode/);
-  assert.match(workspace, /isAssistantSidebarOpen\?: boolean/);
+  assert.match(workspace, /rightSidebar\?: React\.ReactNode/);
+  assert.match(workspace, /isRightSidebarOpen\?: boolean/);
 });
 
 test('JD interpretation renders the independent JD-fit badge and deep-report action', () => {

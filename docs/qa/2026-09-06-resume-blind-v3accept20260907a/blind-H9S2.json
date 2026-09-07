@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "seconds": 4.92,
+  "value": {
+    "documents": [
+      {
+        "id": "167a0c83",
+        "clarity": 5,
+        "specificity": 4,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容清晰精炼，完全基于来源数据，STAR经历中补全了行动项句末的句号，格式规范。"
+      },
+      {
+        "id": "62451518",
+        "clarity": 5,
+        "specificity": 4,
+        "groundedness": 5,
+        "defects": [
+          "行动项（a）末尾缺少句号，标点不一致"
+        ],
+        "unsupportedClaims": [],
+        "reason": "内容真实完整，但工作经历中行动项末尾缺失句号，标点一致性略逊于对比版本。"
+      }
+    ],
+    "preferredId": "167a0c83"
+  },
+  "diagnostics": []
+}

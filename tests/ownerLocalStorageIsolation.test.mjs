@@ -96,6 +96,15 @@ test('JD local cache is isolated by authenticated owner and never reads a legacy
   storage.saveJDAnalysisCache('owner-a', 'resume-1', buildAnalysis('owner A'));
   storage.saveJDAnalysisCache('owner-b', 'resume-1', buildAnalysis('owner B'));
 
+  const ownerARaw = JSON.parse(localStorage.getItem(
+    storage.buildJDAnalysisCacheKey('owner-a', 'resume-1'),
+  ));
+  assert.equal(ownerARaw.schemaVersion, storage.JD_ANALYSIS_CACHE_SCHEMA_VERSION);
+  assert.equal(
+    ownerARaw.basePersistedFingerprintVersion,
+    storage.JD_ANALYSIS_CACHE_SCHEMA_VERSION,
+  );
+
   assert.equal(storage.loadJDAnalysisCache('owner-a', 'resume-1')?.payload.jdText, 'owner A');
   assert.equal(storage.loadJDAnalysisCache('owner-b', 'resume-1')?.payload.jdText, 'owner B');
   assert.equal(storage.loadJDAnalysisCache(null, 'resume-1'), null);

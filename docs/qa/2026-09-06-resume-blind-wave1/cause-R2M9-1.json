@@ -1,0 +1,14 @@
+[
+  {
+    "type": "OptimizationSemanticReviewNormalizationError",
+    "message": "semantic review response violates the optimization contract"
+  },
+  {
+    "type": "AiProviderPayloadError",
+    "message": "omitted"
+  },
+  {
+    "type": "JSONDecodeError",
+    "message": "omitted"
+  }
+]

@@ -178,7 +178,9 @@ def _to_usage_read(event: AITokenUsageEvent) -> TokenUsageEventRead:
         prompt_tokens=event.prompt_tokens,
         completion_tokens=event.completion_tokens,
         total_tokens=event.total_tokens,
-        metadata=event.metadata_json or {},
+        metadata={key: value for key, value in (event.metadata_json or {}).items()
+                  if key not in {"evaluation_audit_id", "evaluation_audit_receipts",
+                                 "guidance_audit_attempt_id", "guidance_receipt_id", "guidance_audit_receipts"}},
         created_at=event.created_at,
     )
 

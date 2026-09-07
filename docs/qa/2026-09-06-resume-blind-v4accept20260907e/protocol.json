@@ -1,0 +1,13 @@
+{
+  "baseline_repeats": 3,
+  "optimization_repeats": 2,
+  "post_repeats": 3,
+  "concurrency": 3,
+  "selection": "first successful numbered baseline and first successful numbered plan, never highest score",
+  "blinding": "labels and expected defects excluded; pairs shuffled without scores or phase names",
+  "scorer": "two independent scores plus one rubric audit normally; all attempts including audit max five, total 150 seconds; publish only a compatible set of at least two audited whole reports; three external repetitions are required for stability claims",
+  "boundary": "production core services and billing, synthetic context; not HTTP apply/finalize",
+  "same_text_controls": "unchanged high-quality resumes are rescored to expose residual variance",
+  "audit_gate": "v4audit20260907e",
+  "external_notifications": false
+}

@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "seconds": 4.06,
+  "value": {
+    "documents": [
+      {
+        "id": "c1d3e4d3",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容完全忠实于来源，补齐了STAR中Action部分的句末标点，整体结构完整且表述清晰。"
+      },
+      {
+        "id": "73f277c8",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "defects": [
+          "经历描述中的Action字段末尾缺少句末标点。"
+        ],
+        "unsupportedClaims": [],
+        "reason": "内容完全忠实于来源，但保留了源文本中Action部分句末缺标点的小缺陷。"
+      }
+    ],
+    "preferredId": "c1d3e4d3"
+  }
+}

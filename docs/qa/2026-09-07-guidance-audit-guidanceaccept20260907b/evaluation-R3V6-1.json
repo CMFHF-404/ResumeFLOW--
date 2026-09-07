@@ -1,0 +1,158 @@
+{
+  "ok": false,
+  "seconds": 20.36,
+  "sample": "R3V6",
+  "repeat": 1,
+  "error_type": "ConnectError",
+  "message": "Guidance evaluation failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 306,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 401,
+      "function": "generate_guidance"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 359,
+      "function": "_stage"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1805,
+      "function": "_stream_gemini_json_response_once"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 214,
+      "function": "__aenter__"
+    },
+    {
+      "file": "_client.py",
+      "line": 1583,
+      "function": "stream"
+    },
+    {
+      "file": "_client.py",
+      "line": 1629,
+      "function": "send"
+    },
+    {
+      "file": "_client.py",
+      "line": 1657,
+      "function": "_send_handling_auth"
+    },
+    {
+      "file": "_client.py",
+      "line": 1694,
+      "function": "_send_handling_redirects"
+    },
+    {
+      "file": "_client.py",
+      "line": 1730,
+      "function": "_send_single_request"
+    },
+    {
+      "file": "default.py",
+      "line": 393,
+      "function": "handle_async_request"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 162,
+      "function": "__exit__"
+    },
+    {
+      "file": "default.py",
+      "line": 118,
+      "function": "map_httpcore_exceptions"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 14.91
+    },
+    {
+      "stage": "generation",
+      "category": "generated"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "transport_failure",
+      "cause_type": "ConnectError"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "duration",
+      "seconds": 5.443
+    }
+  ],
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\n  \"GLOBAL_LOGIC_ORDER\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\"],\n    \"reason\": \"模块顺序清晰合理，符合常规阅读习惯。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_CAUSALITY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"],\n    \"reason\": \"经历中背景问题、目标任务与后续产出之间具备基本的因果承接。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_HIERARCHY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_019\", \"SRC_020\", \"SRC_028\", \"SRC_029\"],\n    \"reason\": \"个人总结、工作经历与项目经历层级划分明确。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_FOCUS\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_019\", \"SRC_023\", \"SRC_028\"],\n    \"reason\": \"内容整体聚焦于产品与数据分析相关工作，方向一致。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_SITUATION\": {\n    \"assessment\": \"clear_context\",\n    \"sourceRefs\": [\"SRC_023\"],\n    \"reason\": \"清晰说明了试用客户在入驻阶段流失及当时的激活率背景。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_TASK\": {\n    \"assessment\": \"clear_task\",\n    \"sourceRefs\": [\"SRC_024\"],\n    \"reason\": \"明确交代了负责需求分析与验收、协作降低障碍的目标任务。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_ACTION\": {\n    \"assessment\": \"concrete_action\",\n    \"sourceRefs\": [\"SRC_025\"],\n    \"reason\": \"包含编写PRD、访谈12家企业、用SQL分析漏斗等具体行动。\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"删除行动中重复的“参与交付，做相关工作”及HTML标签。\"\n    }\n  },\n  \"EXP_001_STAR_RESULT\": {\n    \"assessment\": \"generic_completion\",\n    \"sourceRefs\": [\"SRC_026\"],\n    \"reason\": \"“产品上线了”仅说明了事务完成，缺乏具体产出或业务改善结果。\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"如上线后入驻转化或激活率有所改善，可补充实际结果数据或定性成效。\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_ACTION_VERBS\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_024\", \"SRC_025\"],\n    \"reason\": \"使用了编写、访谈、分析、验收等规范行动动词。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_TERMINOLOGY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\"],\n    \"reason\": \"PRD、SQL、入驻漏斗、激活率等岗位术语使用准确。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_PRECISION\": {\n    \"assessment\": \"minor:ambiguous_action_or_object\",\n    \"sourceRefs\": [\"SRC_025\"],\n    \"reason\": \"存在“做相关工作”等泛化模糊表述，其余动作具体。\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"删去“做相关工作”这一泛化短语。\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_RESPONSIBILITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_024\", \"SRC_025\"],\n    \"reason\": \"清晰界定了负责需求分析/验收及与设计研发协作的职责边界。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_OBJECTIVITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"表述客观克制，边界清楚且无夸大或矛盾。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_RESULT_METRIC\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_025\"],\n    \"reason\": \"未提供项目实施后的结果量化指标（S中的40%为背景指标）。\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"若有上线后的激活率提升或转化数据，可予以补充。\"\n    }\n  },\n  \"EXP_001_QUANT_COVERAGE_SCALE\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_025\"],\n    \"reason\": \"“访谈12家企业”体现了调研覆盖规模。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_TIME_WINDOW\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_023\"],\n    \"reason\": \"“2024年1月”、“7日激活率”提供了清晰的时间观测窗口。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_PROCESS_QUANTITY\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_025\"],\n    \"reason\": \"“12家”量化了过程中的访谈样本数量。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_DATA_CREDIBILITY\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_025\"],\n    \"reason\": \"指标定义与调研样本量具体可信，与日常业务场景相符。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_STAR_SITUATION\": {\n    \"assessment\": \"clear_context\",\n    \"sourceRefs\": [\"SRC_032\"],\n    \"reason\": \"清晰交代了人工汇总3渠道数据及单次耗时4小时的背景问题。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_STAR_TASK\": {\n    \"assessment\": \"clear_task\",\n    \"sourceRefs\": [\"SRC_033\"],\n    \"reason\": \"明确指出了统一指标口径、整理数据以减少重复劳动的目标。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_STAR_ACTION\": {\n    \"assessment\": \"concrete_action\",\n    \"sourceRefs\": [\"SRC_034\"],\n    \"reason\": \"包含使用SQL和Excel制作周报等具体操作工具与行动。\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"删除“做周报”重复字样及“整理相关东西”等泛化用词。\"\n    }\n  },\n  \"EXP_002_STAR_RESULT\": {\n    \"assessment\": \"generic_completion\",\n    \"sourceRefs\": [\"SRC_035\"],\n    \"reason\": \"“周报做好了”仅表示流程结束，未体现周报自动化或耗时减少等成效。\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"如周报制作耗时大幅降低或已被常态化应用，可补充具体效果。\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_ACTION_VERBS\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_033\", \"SRC_034\"],\n    \"reason\": \"使用了统一、整理、制作等常规动作词汇。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_TERMINOLOGY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\"],\n    \"reason\": \"准确使用了指标口径、渠道数据、SQL、Excel等常用专业术语。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_PRECISION\": {\n    \"assessment\": \"minor:ambiguous_action_or_object\",\n    \"sourceRefs\": [\"SRC_034\"],\n    \"reason\": \"“整理相关东西”表述模糊且非专业规范表达。\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"建议将“整理相关东西”清理或具体化为整理对应数据表。\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_RESPONSIBILITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_033\", \"SRC_034\"],\n    \"reason\": \"明确限定了统一口径与整理周报数据的个人职责范围。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_OBJECTIVITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"],\n    \"reason\": \"陈述客观平实，没有夸大或不合逻辑的内容。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_QUANT_RESULT_METRIC\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\"SRC_032\"],\n    \"reason\": \"未提供优化后的耗时对比或效率提升指标（4小时为背景值）。\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"如有周报制作耗时缩短的具体数据（如缩短至X分钟），可补充说明。\"\n    }\n  },\n  \"EXP_002_QUANT_COVERAGE_SCALE\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_032\"],\n    \"reason\": \"“3个渠道数据”明确了周报覆盖的业务渠道规模。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_QUANT_TIME_WINDOW\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_032\"],\n    \"reason\": \"“每周”、“单次耗时4小时”清晰交代了周期与耗时基准。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_QUANT_DATA_CREDIBILITY\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_032\"],\n    \"reason\": \"“3个渠道”、“4小时”等基线数据具体可信，与日常业务相符。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_SCAN\": {\n    \"assessment\": \"minor_issues\",\n    \"sourceRefs\": [\"SRC_025\"],\n    \"reason\": \"经历文本中混入了<br>等HTML标签，略微影响排版扫读体验。\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"清除文本中残留的<br>等格式标签，转为标准换行或列表项。\"\n    }\n  },\n  \"GLOBAL_READABILITY_SENTENCES\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"],\n    \"reason\": \"句子结构简明短小，意思表达通顺直接。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_DENSITY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"],\n    \"reason\": \"信息分布均匀，未出现大量无效堆砌或信息极度拥挤的情况。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_GRAMMAR\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"],\n    \"reason\": \"语言自然，未发现语病或语法结构错误。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_REDUNDANCY\": {\n    \"assessment\": \"needs_revision\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_025\", \"SRC_034\"],\n    \"reason\": \"多处存在同句连续重复，如“我有产品经验”、“参与交付”、“做周报”。\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"删除总结与经历中连续重复的词句，合并精简同义表达。\"\n    }\n  },\n  \"GLOBAL_COMPLETENESS_DIRECTION\": {\n    \"assessment\": \"function\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_019\", \"SRC_028\"],\n    \"reason\": \"经历岗位与个人描述均明确指向产品经理职能方向。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"RISK_EXAGGERATED_CLAIM\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"],\n    \"reason\": \"未发现不切实际的夸大宣传或绝对化结论。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"RISK_CONFLICTING_DATE\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\"SRC_016\", \"SRC_017\", \"SRC_021\", \"SRC_022\", \"SRC_030\", \"SRC_031\"],\n    \"reason\": \"教育背景与工作/项目经历的时间线先后衔接合理，未见冲突。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  }\n}",
+        " {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  }\n}",
+        " [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"],\n    \"reason\": \"未发现不切实际的夸大宣传或绝对化结论。\",\n    \"guidance"
+      ]
+    }
+  ]
+}

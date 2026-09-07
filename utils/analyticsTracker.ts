@@ -442,3 +442,331 @@ export const trackExperienceBankExported = ({
     [ANALYTICS_PROPERTIES.SKILL_COUNT]: skillCount,
   });
 };
+
+type ResumeOptimizationAnalyticsResultAction = 'success' | 'failure';
+type ResumeOptimizationAnalyticsBankAction = 'view_experience' | 'open_auto_assembly';
+
+type ResumeOptimizationAnalyticsContext = {
+  resumeId?: string | null;
+  runId?: string | null;
+};
+
+type ResumeOptimizationAnalyticsPlanMetrics = ResumeOptimizationAnalyticsContext & {
+  directChangeCount?: number;
+  questionCount?: number;
+  blockedChangeCount?: number;
+  bankSuggestionCount?: number;
+  durationMs?: number;
+  failureCode?: string;
+  action?: ResumeOptimizationAnalyticsResultAction;
+};
+
+type ResumeOptimizationAnalyticsAnswerMetrics = ResumeOptimizationAnalyticsContext & {
+  questionCount: number;
+  answeredCount: number;
+  noDataCount: number;
+  unknownCount: number;
+  notMyWorkCount: number;
+  skippedCount: number;
+};
+
+type ResumeOptimizationAnalyticsMutationMetrics = ResumeOptimizationAnalyticsContext & {
+  action?: ResumeOptimizationAnalyticsResultAction;
+  acceptedChangeCount?: number;
+  blockedChangeCount?: number;
+  bankSuggestionCount?: number;
+  durationMs?: number;
+  failureCode?: string;
+};
+
+type ResumeOptimizationAnalyticsRescoreMetrics = ResumeOptimizationAnalyticsContext & {
+  action: ResumeOptimizationAnalyticsResultAction;
+  acceptedChangeCount?: number;
+  blockedChangeCount?: number;
+  bankSuggestionCount?: number;
+  durationMs?: number;
+  failureCode?: string;
+};
+
+const SAFE_RESUME_OPTIMIZATION_FAILURE_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+const SAFE_RESUME_OPTIMIZATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const safeResumeOptimizationNumber = (value: unknown): number | undefined => (
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+);
+
+const safeResumeOptimizationFailureCode = (value: unknown): string | undefined => (
+  typeof value === 'string' && SAFE_RESUME_OPTIMIZATION_FAILURE_CODE.test(value)
+    ? value
+    : undefined
+);
+
+const safeResumeOptimizationId = (value: unknown): string | undefined => (
+  typeof value === 'string' && SAFE_RESUME_OPTIMIZATION_ID.test(value)
+    ? value.toLowerCase()
+    : undefined
+);
+
+const buildSafeResumeOptimizationIdentifiers = ({
+  resumeId,
+  runId,
+}: ResumeOptimizationAnalyticsContext) => {
+  const safeResumeId = safeResumeOptimizationId(resumeId);
+  const safeRunId = safeResumeOptimizationId(runId);
+  return {
+    ...(safeResumeId ? { [ANALYTICS_PROPERTIES.RESUME_ID]: safeResumeId } : {}),
+    ...(safeRunId ? { [ANALYTICS_PROPERTIES.RUN_ID]: safeRunId } : {}),
+  };
+};
+
+export const toResumeOptimizationAnalyticsFailureCode = (cause: unknown): string | undefined => {
+  if (typeof cause !== 'object' || cause === null || !('code' in cause)) return undefined;
+  return safeResumeOptimizationFailureCode((cause as { code?: unknown }).code);
+};
+
+export const trackResumeOptimizationCtaView = () => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_CTA_VIEW, {});
+};
+
+export const trackResumeOptimizationCtaClick = () => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_CTA_CLICK, {});
+};
+
+export const trackResumeOptimizationPlanStart = ({
+  resumeId,
+}: Pick<ResumeOptimizationAnalyticsPlanMetrics, 'resumeId'> = {}) => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_PLAN_START, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId }),
+  });
+};
+
+export const trackResumeOptimizationPlanResult = ({
+  resumeId,
+  runId,
+  action,
+  directChangeCount,
+  questionCount,
+  blockedChangeCount,
+  bankSuggestionCount,
+  durationMs,
+  failureCode,
+}: ResumeOptimizationAnalyticsPlanMetrics) => {
+  const safeFailureCode = safeResumeOptimizationFailureCode(failureCode);
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_PLAN_RESULT, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    ...(action === 'success' || action === 'failure'
+      ? { [ANALYTICS_PROPERTIES.ACTION]: action }
+      : {}),
+    ...(safeResumeOptimizationNumber(directChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.DIRECT_CHANGE_COUNT]: directChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(questionCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.QUESTION_COUNT]: questionCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(blockedChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BLOCKED_CHANGE_COUNT]: blockedChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(bankSuggestionCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BANK_SUGGESTION_COUNT]: bankSuggestionCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(durationMs) !== undefined
+      ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs as number }
+      : {}),
+    ...(safeFailureCode ? { [ANALYTICS_PROPERTIES.FAILURE_CODE]: safeFailureCode } : {}),
+  });
+};
+
+export const trackResumeOptimizationQuestionsView = ({
+  resumeId,
+  runId,
+  questionCount,
+}: Pick<ResumeOptimizationAnalyticsAnswerMetrics, 'resumeId' | 'runId' | 'questionCount'>) => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_QUESTIONS_VIEW, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    ...(safeResumeOptimizationNumber(questionCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.QUESTION_COUNT]: questionCount }
+      : {}),
+  });
+};
+
+export const trackResumeOptimizationQuestionsSubmit = ({
+  resumeId,
+  runId,
+  questionCount,
+  answeredCount,
+  noDataCount,
+  unknownCount,
+  notMyWorkCount,
+  skippedCount,
+}: ResumeOptimizationAnalyticsAnswerMetrics) => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_QUESTIONS_SUBMIT, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    [ANALYTICS_PROPERTIES.QUESTION_COUNT]: questionCount,
+    [ANALYTICS_PROPERTIES.ANSWERED_COUNT]: answeredCount,
+    [ANALYTICS_PROPERTIES.NO_DATA_COUNT]: noDataCount,
+    [ANALYTICS_PROPERTIES.UNKNOWN_COUNT]: unknownCount,
+    [ANALYTICS_PROPERTIES.NOT_MY_WORK_COUNT]: notMyWorkCount,
+    [ANALYTICS_PROPERTIES.SKIPPED_COUNT]: skippedCount,
+  });
+};
+
+export const trackResumeOptimizationChangeToggle = ({
+  resumeId,
+  runId,
+  acceptedChangeCount,
+}: Pick<ResumeOptimizationAnalyticsMutationMetrics, 'resumeId' | 'runId'>
+  & Required<Pick<ResumeOptimizationAnalyticsMutationMetrics, 'acceptedChangeCount'>>) => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_CHANGE_TOGGLE, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    [ANALYTICS_PROPERTIES.ACCEPTED_CHANGE_COUNT]: acceptedChangeCount,
+  });
+};
+
+export const trackResumeOptimizationApplyStart = ({
+  resumeId,
+  runId,
+  acceptedChangeCount,
+  blockedChangeCount,
+  bankSuggestionCount,
+}: ResumeOptimizationAnalyticsMutationMetrics) => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_APPLY_START, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    ...(safeResumeOptimizationNumber(acceptedChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.ACCEPTED_CHANGE_COUNT]: acceptedChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(blockedChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BLOCKED_CHANGE_COUNT]: blockedChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(bankSuggestionCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BANK_SUGGESTION_COUNT]: bankSuggestionCount as number }
+      : {}),
+  });
+};
+
+export const trackResumeOptimizationApplyResult = ({
+  resumeId,
+  runId,
+  action,
+  acceptedChangeCount,
+  blockedChangeCount,
+  bankSuggestionCount,
+  durationMs,
+  failureCode,
+}: ResumeOptimizationAnalyticsMutationMetrics) => {
+  const safeFailureCode = safeResumeOptimizationFailureCode(failureCode);
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_APPLY_RESULT, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    ...(action === 'success' || action === 'failure'
+      ? { [ANALYTICS_PROPERTIES.ACTION]: action }
+      : {}),
+    ...(safeResumeOptimizationNumber(acceptedChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.ACCEPTED_CHANGE_COUNT]: acceptedChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(blockedChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BLOCKED_CHANGE_COUNT]: blockedChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(bankSuggestionCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BANK_SUGGESTION_COUNT]: bankSuggestionCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(durationMs) !== undefined
+      ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs as number }
+      : {}),
+    ...(safeFailureCode ? { [ANALYTICS_PROPERTIES.FAILURE_CODE]: safeFailureCode } : {}),
+  });
+};
+
+export const trackResumeOptimizationRescoreResult = ({
+  resumeId,
+  runId,
+  action,
+  acceptedChangeCount,
+  blockedChangeCount,
+  bankSuggestionCount,
+  durationMs,
+  failureCode,
+}: ResumeOptimizationAnalyticsRescoreMetrics) => {
+  const safeFailureCode = safeResumeOptimizationFailureCode(failureCode);
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_RESCORE_RESULT, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    [ANALYTICS_PROPERTIES.ACTION]: action,
+    ...(safeResumeOptimizationNumber(acceptedChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.ACCEPTED_CHANGE_COUNT]: acceptedChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(blockedChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BLOCKED_CHANGE_COUNT]: blockedChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(bankSuggestionCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BANK_SUGGESTION_COUNT]: bankSuggestionCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(durationMs) !== undefined
+      ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs as number }
+      : {}),
+    ...(safeFailureCode ? { [ANALYTICS_PROPERTIES.FAILURE_CODE]: safeFailureCode } : {}),
+  });
+};
+
+export const trackResumeOptimizationRevertResult = ({
+  resumeId,
+  runId,
+  action,
+  durationMs,
+  failureCode,
+}: Pick<ResumeOptimizationAnalyticsMutationMetrics, 'resumeId' | 'runId' | 'action' | 'durationMs' | 'failureCode'>) => {
+  const safeFailureCode = safeResumeOptimizationFailureCode(failureCode);
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_REVERT_RESULT, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    ...(action === 'success' || action === 'failure'
+      ? { [ANALYTICS_PROPERTIES.ACTION]: action }
+      : {}),
+    ...(safeResumeOptimizationNumber(durationMs) !== undefined
+      ? { [ANALYTICS_PROPERTIES.DURATION_MS]: durationMs as number }
+      : {}),
+    ...(safeFailureCode ? { [ANALYTICS_PROPERTIES.FAILURE_CODE]: safeFailureCode } : {}),
+  });
+};
+
+export const trackResumeOptimizationBankSuggestionClick = ({
+  resumeId,
+  runId,
+  action,
+  bankSuggestionCount,
+}: {
+  resumeId?: string | null;
+  runId?: string | null;
+  action: ResumeOptimizationAnalyticsBankAction;
+  bankSuggestionCount: number;
+}) => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_BANK_SUGGESTION_CLICK, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    [ANALYTICS_PROPERTIES.ACTION]: action,
+    [ANALYTICS_PROPERTIES.BANK_SUGGESTION_COUNT]: bankSuggestionCount,
+  });
+};
+
+export const trackResumeOptimizationPreviewView = ({
+  resumeId,
+  runId,
+  directChangeCount,
+  questionCount,
+  blockedChangeCount,
+  bankSuggestionCount,
+}: Pick<
+  ResumeOptimizationAnalyticsPlanMetrics,
+  'resumeId' | 'runId' | 'directChangeCount' | 'questionCount' | 'blockedChangeCount' | 'bankSuggestionCount'
+>) => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_PREVIEW_VIEW, {
+    ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
+    ...(safeResumeOptimizationNumber(directChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.DIRECT_CHANGE_COUNT]: directChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(questionCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.QUESTION_COUNT]: questionCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(blockedChangeCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BLOCKED_CHANGE_COUNT]: blockedChangeCount as number }
+      : {}),
+    ...(safeResumeOptimizationNumber(bankSuggestionCount) !== undefined
+      ? { [ANALYTICS_PROPERTIES.BANK_SUGGESTION_COUNT]: bankSuggestionCount as number }
+      : {}),
+  });
+};

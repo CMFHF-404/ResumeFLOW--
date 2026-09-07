@@ -20,23 +20,78 @@ export { parseNdjsonLines, resolveApiUrl } from './apiStreamUtils';
 export type StreamEventBase = {
     type: string;
     message?: string;
+    code?: string;
+    requestId?: string;
+    statusCode?: number;
+    retryable?: boolean;
 };
 
-const readStreamErrorMessage = async (response: Response) => {
+export class StreamRequestError extends Error {
+    readonly code: string;
+    readonly statusCode: number;
+    readonly retryable: boolean;
+    readonly requestId?: string;
+
+    constructor(
+        message: string,
+        {
+            code = 'stream_request_failed',
+            statusCode = 500,
+            retryable = false,
+            requestId,
+        }: {
+            code?: string;
+            statusCode?: number;
+            retryable?: boolean;
+            requestId?: string;
+        } = {},
+    ) {
+        super(message);
+        this.name = 'StreamRequestError';
+        this.code = code;
+        this.statusCode = statusCode;
+        this.retryable = retryable;
+        this.requestId = requestId;
+    }
+}
+
+const readStreamErrorDetail = async (response: Response) => {
     try {
         const payload = await response.clone().json();
         const detail = payload?.detail;
         if (typeof detail === 'string' && detail.trim()) {
-            return detail;
+            return { message: detail.trim() };
         }
-        if (detail && typeof detail.message === 'string' && detail.message.trim()) {
-            return detail.message;
+        const detailError = detail && typeof detail === 'object'
+            ? detail.error
+            : undefined;
+        const publicError = payload?.error ?? detailError ?? detail;
+        if (
+            publicError
+            && typeof publicError === 'object'
+            && typeof publicError.message === 'string'
+            && publicError.message.trim()
+        ) {
+            return {
+                code: typeof publicError.code === 'string'
+                    ? publicError.code
+                    : undefined,
+                message: publicError.message.trim(),
+                requestId: typeof publicError.requestId === 'string'
+                    ? publicError.requestId
+                    : undefined,
+                retryable: typeof publicError.retryable === 'boolean'
+                    ? publicError.retryable
+                    : undefined,
+            };
         }
     } catch {
-        return '';
+        return {};
     }
-    return '';
+    return {};
 };
+
+const AI_TOKEN_QUOTA_EXHAUSTED_CODE = 'ai_token_quota_exhausted';
 
 export const ensureStreamResponseOk = async (
     response: Response,
@@ -49,20 +104,37 @@ export const ensureStreamResponseOk = async (
     if (response.status === 401 || response.status === 503) {
         await handleFetchAuthFailure(response, sessionOwnerKey, isCurrentSession);
     }
-    const message = await readStreamErrorMessage(response);
+    const detail = await readStreamErrorDetail(response);
     if (response.status === 402) {
-        const quotaMessage = message || DEFAULT_QUOTA_PURCHASE_MESSAGE;
+        const quotaMessage = DEFAULT_QUOTA_PURCHASE_MESSAGE;
+        const hasKnownQuotaCode = detail.code === AI_TOKEN_QUOTA_EXHAUSTED_CODE;
         dispatchQuotaPurchaseRequired(quotaMessage);
-        throw new Error(quotaMessage);
+        throw new StreamRequestError(quotaMessage, {
+            code: AI_TOKEN_QUOTA_EXHAUSTED_CODE,
+            statusCode: response.status,
+            retryable: false,
+            requestId: hasKnownQuotaCode ? detail.requestId : undefined,
+        });
     }
-    throw new Error(message || `AI stream request failed: ${response.status}`);
+    const message = detail.message || `AI stream request failed: ${response.status}`;
+    throw new StreamRequestError(message, {
+        code: detail.code || 'http_error',
+        statusCode: response.status,
+        retryable: detail.retryable ?? (
+            response.status === 503 || response.status === 504
+        ),
+        requestId: detail.requestId,
+    });
 };
 
 const createStreamHeaders = async (
     contentType?: string | null,
     expectedAuthCacheKey?: string,
+    initialHeaders?: HeadersInit,
 ) => {
-    const headers = new Headers();
+    // Let the platform validate caller-supplied names/values (including CR/LF)
+    // before any auth work or network dispatch.
+    const headers = new Headers(initialHeaders);
     const authHeader = await getAuthorizationHeader(expectedAuthCacheKey);
     if (!authHeader) {
         dispatchLoginRequired('write-operation');
@@ -71,6 +143,8 @@ const createStreamHeaders = async (
     headers.set('Authorization', authHeader);
     if (contentType !== null) {
         headers.set('Content-Type', contentType ?? 'application/json');
+    } else {
+        headers.delete('Content-Type');
     }
     return headers;
 };
@@ -84,16 +158,22 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
     getFinalResult,
     signal,
     expectedAuthCacheKey,
+    headers: initialHeaders,
 }: {
     path: string;
     body: BodyInit;
     contentType?: string | null;
+    headers?: HeadersInit;
     onEvent?: (event: TEvent) => void;
     onParsedEvent?: (event: TEvent) => void;
     getFinalResult: (event: TEvent) => TResult | null;
     signal?: AbortSignal;
 } & AuthOwnerOptions): Promise<TResult> => {
-    const headers = await createStreamHeaders(contentType, expectedAuthCacheKey);
+    const headers = await createStreamHeaders(
+        contentType,
+        expectedAuthCacheKey,
+        initialHeaders,
+    );
     const dispatchSession = readAuthSessionSnapshot();
     const assertStreamSessionCurrent = () => {
         if (
@@ -143,14 +223,21 @@ export const postStreamRequest = async <TEvent extends StreamEventBase, TResult>
             let parsed: TEvent;
             try {
                 parsed = JSON.parse(line) as TEvent;
-            } catch (error) {
-                console.warn('Failed to parse stream line', error);
+            } catch {
+                console.warn('Failed to parse stream line');
                 continue;
             }
             onEvent?.(parsed);
             onParsedEvent?.(parsed);
             if (parsed.type === 'error') {
-                throw new Error(parsed.message || 'AI stream error');
+                throw new StreamRequestError(parsed.message || 'AI stream error', {
+                    code: parsed.code || 'stream_error',
+                    statusCode: typeof parsed.statusCode === 'number'
+                        ? parsed.statusCode
+                        : 500,
+                    retryable: parsed.retryable === true,
+                    requestId: parsed.requestId,
+                });
             }
             const result = getFinalResult(parsed);
             if (result) {

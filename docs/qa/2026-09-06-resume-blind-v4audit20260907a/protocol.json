@@ -1,0 +1,13 @@
+{
+  "audit_version": "resume_rubric_audit_v1",
+  "rounds": 2,
+  "seeds": [
+    4071,
+    9832
+  ],
+  "target_dimension": "专业表达",
+  "expected": "all three labeled verdicts correct in BOTH rounds",
+  "boundary": "live audit-only gate; does not prove whole-report validity or score stability",
+  "external_notifications": false,
+  "no_retry_filtering": true
+}

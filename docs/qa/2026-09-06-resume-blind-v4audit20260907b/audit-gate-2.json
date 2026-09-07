@@ -1,0 +1,204 @@
+{
+  "ok": true,
+  "seconds": 8.08,
+  "value": [
+    {
+      "input_hash": "6d0e6c906a039622989582266b958d3bbafd6dc12d767aec3df2d6d691bcb4dd",
+      "audit_version": "resume_rubric_audit_v2",
+      "approved": true,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "模块顺序清晰，因果逻辑递进合理，评分与证据一致。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "完整具备STAR四要素，定性交付结果符合STAR定义，评分与证据对应准确。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "排版结构清晰，语句简明通顺，评分符合标准。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "针对缺失电话及补充信息进行了合理扣分，核心字段评分与事实一致。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "动词与术语使用准确且客观克制，基础准确动作满足标准，满分评价合理。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "准确识别了仅有过程数量（15名管理员、20条反馈需求）而缺失业务结果指标及基线对比，评分准确。"
+        }
+      ]
+    },
+    {
+      "input_hash": "61870ee69dc318c8d541a0807eead90c1fc8dfb917d02149631fcb4d263a701e",
+      "audit_version": "resume_rubric_audit_v2",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "模块与因果递进逻辑规范，评分符合标准。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "STAR结构完整，定性结果满足结构要求，评分无误。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "语句清晰易读无冗余，评分符合标准。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "字段与模块扣分合理，各项评分有对应事实支持。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "不符合",
+          "subscores": [
+            "行动动词",
+            "岗位术语",
+            "表达精确度",
+            "贡献与责任边界",
+            "客观与可信"
+          ],
+          "evidenceIds": [
+            "E001"
+          ],
+          "reason": "所有专业表达子项均仅引用候选人姓名证据E001（林澈），未能引用经历正文中的实际动词及专业表述（如E024、E025、E026），证据链断裂且与评分不匹配。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "过程数量得分及业务结果指标缺失扣分准确，符合量化准则。"
+        }
+      ]
+    },
+    {
+      "input_hash": "6e0942fc3522d78611ac7518829da12a78425d6a49790c67ac449b9a687c4f88",
+      "audit_version": "resume_rubric_audit_v2",
+      "approved": false,
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "各板块与叙事逻辑整体清晰，评分合理。"
+        },
+        {
+          "dimension": "STAR应用",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "四要素完备，定性交付亦属于合格结果，评分合理。"
+        },
+        {
+          "dimension": "内容可读",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "文本通顺紧凑，评分符合标准。"
+        },
+        {
+          "dimension": "内容完整",
+          "verdict": "符合",
+          "subscores": [],
+          "evidenceIds": [],
+          "reason": "字段完整性评估与证据一致。"
+        },
+        {
+          "dimension": "专业表达",
+          "verdict": "不符合",
+          "subscores": [
+            "行动动词",
+            "岗位术语",
+            "表达精确度",
+            "贡献与责任边界",
+            "客观与可信"
+          ],
+          "evidenceIds": [
+            "E023",
+            "E024",
+            "E025",
+            "E026"
+          ],
+          "reason": "违反了评分准则中对专业表达的规定。准则明确说明基础准确的动词（访谈、整理、完成）即可完全满足要求，不应强制要求架构动词、高级管理职责、RBAC等特定高深术语或跨团队分工细节，该报告进行全维度扣分属于过度苛求。"
+        },
+        {
+          "dimension": "成果量化",
+          "verdict": "不符合",
+          "subscores": [
+            "覆盖规模"
+          ],
+          "evidenceIds": [
+            "E025"
+          ],
+          "reason": "E025中“访谈15名管理员”属于调研过程数量而非业务上线后的覆盖规模（如客户数或用户群体规模），将过程计数错赋给覆盖规模导致不当给分。"
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "rubric_audit",
+      "category": "reviewed",
+      "receipts": [
+        {
+          "input_hash": "6d0e6c906a039622989582266b958d3bbafd6dc12d767aec3df2d6d691bcb4dd",
+          "audit_version": "resume_rubric_audit_v2",
+          "approved": true
+        },
+        {
+          "input_hash": "61870ee69dc318c8d541a0807eead90c1fc8dfb917d02149631fcb4d263a701e",
+          "audit_version": "resume_rubric_audit_v2",
+          "approved": false
+        },
+        {
+          "input_hash": "6e0942fc3522d78611ac7518829da12a78425d6a49790c67ac449b9a687c4f88",
+          "audit_version": "resume_rubric_audit_v2",
+          "approved": false
+        }
+      ]
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "rubric_mismatch",
+      "dimensions": 3
+    }
+  ]
+}

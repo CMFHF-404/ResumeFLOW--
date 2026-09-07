@@ -12,6 +12,7 @@ import {
 import {
     renderStarBlocks,
     renderTimelineBlueLeadMarkers,
+    type ResumeOptimizationStarComparison,
 } from '../previewRenderUtils';
 
 type ExperienceSectionProps = {
@@ -53,6 +54,7 @@ type ExperienceSectionProps = {
     onItemDragHover: (targetId: string, position: 'before' | 'after') => void;
     onItemDrop: (event: React.DragEvent<HTMLElement>) => void;
     onEditExperience: (id: string) => void;
+    experienceComparisonMap?: Map<string, ResumeOptimizationStarComparison[]>;
 };
 
 const ExperienceSection: React.FC<ExperienceSectionProps> = ({
@@ -94,6 +96,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({
     onItemDragHover,
     onItemDrop,
     onEditExperience,
+    experienceComparisonMap,
 }) => {
     if (!items.length) {
         return null;
@@ -255,7 +258,12 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                                         {item.title}
                                     </p>
 
-                                    {renderStarBlocks(item.star, item.id, experienceListMarkerStyle)}
+                                    {renderStarBlocks(
+                                        item.star,
+                                        item.id,
+                                        experienceListMarkerStyle,
+                                        experienceComparisonMap?.get(item.id) ?? [],
+                                    )}
                                 </div>
                             </div>
                         );

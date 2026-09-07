@@ -99,6 +99,9 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     isAutoAssembling,
     onBatchPolish,
     onAutoAssemble,
+    autoAssemblyFocusRequest = 0,
+    showReturnToOptimizationPlan = false,
+    onReturnToOptimizationPlan,
     onResetRenamingCategory,
     onPolishExperience,
     activePolishExperienceId,
@@ -118,6 +121,28 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     const listScrollSnapshotRef = useRef<number | null>(null);
     const shouldRestoreScrollRef = useRef(false);
     const prevEditingExpIdRef = useRef<string | null>(experience.editingExpId);
+    const autoAssemblyButtonRef = useRef<HTMLButtonElement>(null);
+    const handledAutoAssemblyFocusRequestRef = useRef(0);
+
+    useEffect(() => {
+        if (
+            autoAssemblyFocusRequest <= 0
+            || handledAutoAssemblyFocusRequestRef.current === autoAssemblyFocusRequest
+        ) return undefined;
+        handledAutoAssemblyFocusRequestRef.current = autoAssemblyFocusRequest;
+        const frame = window.requestAnimationFrame(() => {
+            const button = autoAssemblyButtonRef.current;
+            if (!button || button.getClientRects().length === 0) return;
+            const prefersReducedMotion = typeof window.matchMedia === 'function'
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            button.scrollIntoView({
+                behavior: prefersReducedMotion ? 'auto' : 'smooth',
+                block: 'center',
+            });
+            button.focus();
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [autoAssemblyFocusRequest]);
 
     const recordListScroll = useCallback(() => {
         const container = scrollContainerRef?.current;
@@ -552,6 +577,16 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                             onChange={onMatchScoreFilterChange}
                             disabled={hasBlockingPolishState}
                         />
+                        {showReturnToOptimizationPlan && onReturnToOptimizationPlan ? (
+                            <button
+                                type="button"
+                                data-resume-optimization-focus-return="true"
+                                onClick={onReturnToOptimizationPlan}
+                                className="inline-flex min-h-[32px] whitespace-nowrap items-center rounded-md border border-indigo-200 bg-indigo-50 px-2 text-[11px] font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+                            >
+                                返回优化方案
+                            </button>
+                        ) : null}
                         {!isDrawerLayout ? (
                             <>
                                 <button
@@ -571,6 +606,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                                     {isBatchPolishing ? '润色中…' : '一键润色'}
                                 </button>
                                 <button
+                                    ref={autoAssemblyButtonRef}
                                     type="button"
                                     onClick={handleAutoAssembleClick}
                                     disabled={isAutoAssembling || hasBlockingPolishState}

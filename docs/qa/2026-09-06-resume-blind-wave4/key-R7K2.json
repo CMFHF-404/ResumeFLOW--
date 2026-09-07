@@ -1,0 +1,11 @@
+{
+  "tier": "低质量且事实不足",
+  "defects": [
+    "摘要绝对化夸大与空泛自评",
+    "行动重复且不具体",
+    "缺少情境和任务",
+    "结果缺失",
+    "无有效量化"
+  ],
+  "expected_answer_policy": "no_data for missing facts; supplied sources only"
+}

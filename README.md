@@ -115,12 +115,12 @@ pnpm dev
 - `LOGTO_ISSUER` / `LOGTO_APP_ID`：后端 ID token 鉴权校验配置；`LOGTO_APP_ID` 与 `FRONTEND_LOGTO_APP_ID` 必须是无首尾空白的非空 `[A-Za-z0-9_-]+`，且不需要自定义 Logto API Resource。
 - `RESUMEFLOW_DEPLOYMENT_MODE`：后端部署模式，默认 `local`；`backend/Dockerfile` 写入不可由普通运行环境变量降级的 production 镜像标记。生产模式启动时要求 `FRONTEND_ORIGIN`、`CORS_ALLOW_ORIGINS` 和全部 `FRONTEND_LOGTO_*`。
 - `FRONTEND_LOGTO_ENDPOINT` / `FRONTEND_LOGTO_APP_ID` / `FRONTEND_LOGTO_REDIRECT_URI`：后端启动时校验的前端公开 Logto 镜像配置；生产模式必须分别与 `VITE_LOGTO_ENDPOINT`、`VITE_LOGTO_APP_ID`、`VITE_LOGTO_REDIRECT_URI` 完全一致。`FRONTEND_LOGTO_REDIRECT_URI` 必须是 `FRONTEND_ORIGIN/callback`，且 `CORS_ALLOW_ORIGINS` 必须包含 `FRONTEND_ORIGIN`。
-- `AI_ROUTE_PROFILE`：后端 AI 路线，默认 `hybrid_gemini_aifast`；可选 `gemini_primary` 或 `qwen_primary` 做灰度切换
-- `GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_MODEL`：默认生成与 thinking 服务；JD 分析、润色、AI 助手、Agent 和 thinking stream 默认走 Gemini
-- `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：OpenAI-compatible / AIFAST 兼容配置；也作为 `qwen_primary` 灰度路线的主配置
-- `AI_FAST_API_KEY` / `AI_FAST_BASE_URL` / `AI_FAST_MODEL`：普通简历解析与解析附属查重 lane；未配置 key/base 时回退 `AI_API_KEY` / `AI_BASE_URL`
-- `AI_DEDUPE_ENABLED` / `AI_DEDUPE_MODEL` / `AI_DEDUPE_MAX_CANDIDATES`：可选经历灰区语义查重配置；规则查重不确定时才调用
-- `AI_RESPONSES_BASE_URL`：可选 Qwen Responses API 地址；仅 `AI_ROUTE_PROFILE=qwen_primary` 时作为 Qwen thinking stream 优先通道
+- `AI_ROUTE_PROFILE`：后端 AI 路线，默认 `gemini_primary`。该路线把生成、解析、查重与 thinking 全部固定到 `GEMINI_*`；遗留的 `AI_FAST_MODEL`、`AI_DEDUPE_MODEL` 不会覆盖 `GEMINI_MODEL`。可显式切换为 `openai_primary`、`qwen_primary` 或 `hybrid_gemini_aifast`。
+- `GEMINI_API_KEY` / `GEMINI_BASE_URL` / `GEMINI_MODEL`：`gemini_primary` 的唯一供应商配置；生产环境使用默认 `gemini_primary` 启动时必须提供非空 `GEMINI_API_KEY`，仅有旧 `AI_API_KEY` 会在 Settings 初始化阶段失败。Gemini 3.x thinking 请求使用 `thinkingLevel` 语义。
+- `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：OpenAI-compatible 主配置。`openai_primary`、`qwen_primary` 与 `hybrid_gemini_aifast` 必须显式提供非 Gemini 的 `AI_MODEL`；`openai_primary` 还要求显式的非 DashScope `AI_BASE_URL`。
+- `AI_FAST_API_KEY` / `AI_FAST_BASE_URL` / `AI_FAST_MODEL`：非 Gemini 路线的普通简历解析 lane。`AI_FAST_API_KEY` 与 `AI_FAST_BASE_URL` 必须同时配置；两者同时省略时才会复用 `AI_API_KEY` / `AI_BASE_URL`。`AI_FAST_MODEL` 仅在非 Gemini 路线生效。
+- `AI_DEDUPE_ENABLED` / `AI_DEDUPE_MODEL` / `AI_DEDUPE_MAX_CANDIDATES`：可选经历灰区语义查重配置；`AI_DEDUPE_MODEL` 仅在非 Gemini 路线生效。
+- `AI_RESPONSES_BASE_URL`：`qwen_primary` 和 `openai_primary` 的 Responses thinking stream 地址。当前没有独立的 Responses key，因此必须与 `AI_BASE_URL` 使用相同协议、主机和端口；可使用同源 relay 的不同路径，不能配置异源 endpoint。DashScope 路线应同时把两项设为对应的兼容模式地址。
 - `EXPORT_TOKEN_SECRET`：导出快照令牌密钥
 - `POSTHOG_*`、`FEISHU_*`：分析和反馈通知相关配置
 

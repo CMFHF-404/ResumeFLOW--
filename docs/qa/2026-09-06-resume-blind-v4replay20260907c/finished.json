@@ -1,0 +1,45 @@
+{
+  "finished_at": "2026-09-07T05:10:35.523608+00:00",
+  "results": [
+    {
+      "sample": "R7K2",
+      "repeat": 1,
+      "ok": true
+    },
+    {
+      "sample": "R7K2",
+      "repeat": 2,
+      "ok": true
+    },
+    {
+      "sample": "R2M9",
+      "repeat": 1,
+      "ok": true
+    },
+    {
+      "sample": "R2M9",
+      "repeat": 2,
+      "ok": true
+    },
+    {
+      "sample": "R3V6",
+      "repeat": 1,
+      "ok": true
+    },
+    {
+      "sample": "R3V6",
+      "repeat": 2,
+      "ok": true
+    },
+    {
+      "sample": "N6D2",
+      "repeat": 1,
+      "ok": true
+    },
+    {
+      "sample": "N6D2",
+      "repeat": 2,
+      "ok": true
+    }
+  ]
+}

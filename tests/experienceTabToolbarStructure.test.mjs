@@ -16,6 +16,12 @@ test('ExperienceTab toolbar keeps add-copy and action buttons on one line', () =
   assert.match(experienceTab, /className="[^"]*whitespace-nowrap[^"]*bg-violet-600/);
   assert.match(experienceTab, /className="[^"]*whitespace-nowrap[^"]*bg-emerald-50/);
   assert.match(matchScoreFilter, /className=\{`inline-flex whitespace-nowrap items-center/);
-  assert.match(desktopWorkspace, /md:w-\[430px\]/);
-  assert.match(desktopWorkspace, /xl:w-\[460px\]/);
+  assert.match(
+    desktopWorkspace,
+    /layoutMode === 'triple'\s*\n\s*\? 'xl:flex xl:w-\[460px\]'/,
+  );
+  assert.doesNotMatch(
+    desktopWorkspace,
+    /layoutMode === 'triple'\s*\n\s*\? '[^']*md:(?:flex|w-)/,
+  );
 });

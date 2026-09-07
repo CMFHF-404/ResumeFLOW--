@@ -1,0 +1,52 @@
+{
+  "ok": false,
+  "seconds": 90.42,
+  "sample": "R2M9",
+  "repeat": 2,
+  "error_type": "TimeoutError",
+  "message": "Guidance evaluation failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 306,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 386,
+      "function": "generate_guidance"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 359,
+      "function": "_stage"
+    },
+    {
+      "file": "tasks.py",
+      "line": 506,
+      "function": "wait_for"
+    },
+    {
+      "file": "timeouts.py",
+      "line": 116,
+      "function": "__aexit__"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "transport_failure",
+      "cause_type": "CancelledError"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 90.012
+    }
+  ],
+  "providerResponses": []
+}

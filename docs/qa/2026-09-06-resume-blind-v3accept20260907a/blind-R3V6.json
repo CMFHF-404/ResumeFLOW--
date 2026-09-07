@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "seconds": 8.84,
+  "value": {
+    "documents": [
+      {
+        "id": "0c7d30b5",
+        "clarity": 2,
+        "specificity": 2,
+        "groundedness": 5,
+        "defects": [
+          "个人总结存在严重车轱辘话和重复表达（'我有产品经验。我有产品经验。擅长相关的产品相关工作。'）",
+          "工作与项目经历中的行动（A）和结果（R）描述极度空泛、重复敷衍（如'做周报，做周报，整理相关东西'、'产品上线了。'、'周报做好了。'），丢失了源数据中详实的量化指标与细节",
+          "部分语句缺少句末标点"
+        ],
+        "unsupportedClaims": [],
+        "reason": "个人总结和经历描述中充斥大量低质重复的口水话与极度空泛的表述，未能有效利用源数据中的具体细节与量化成果。"
+      },
+      {
+        "id": "7f9a1578",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "个人总结凝练得当，经历内容完整保留了源数据中具体、详实且包含客观归因限制的STAR细节，表述规范清晰。"
+      }
+    ],
+    "preferredId": "7f9a1578"
+  },
+  "diagnostics": []
+}

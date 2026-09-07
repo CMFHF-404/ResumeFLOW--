@@ -1,0 +1,34 @@
+{
+  "ok": false,
+  "seconds": 4.23,
+  "error_type": "OptimizationAnswerRewriteNormalizationError",
+  "message": "AI 返回的优化结果结构异常，请重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_answer_probe.py",
+      "line": 25,
+      "function": "probe"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "planner_service.py",
+      "line": 1455,
+      "function": "rewrite_answered_modules"
+    }
+  ],
+  "cause_type": "OptimizationPlanNormalizationError"
+}

@@ -1,0 +1,669 @@
+{
+  "ok": true,
+  "seconds": 25.9,
+  "value": {
+    "initial_plan": {
+      "changes": [
+        {
+          "change_id": "CHG_001",
+          "issue_ids": [
+            "ISSUE_LOGIC_001",
+            "ISSUE_LOGIC_002",
+            "ISSUE_LOGIC_003"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "保持当前经历与逻辑结构暂不直接无据修改，交由专业表达优化与用户澄清处理。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_002",
+          "issue_ids": [
+            "ISSUE_STAR_001"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.s",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [
+            "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/title"
+          ],
+          "introduced_terms": [],
+          "rationale": "当前工作经历缺乏背景（Situation）信息，需向用户确认真实业务背景与痛点。",
+          "expected_score_gain": 15,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_003",
+          "issue_ids": [
+            "ISSUE_STAR_002"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [
+            "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "当前行动描述存在大量空泛重复词汇，缺乏具体产品工作行动事实，需用户提供详细工作内容。",
+          "expected_score_gain": 26,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_004",
+          "issue_ids": [
+            "ISSUE_STAR_003"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.r",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [
+            "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/title"
+          ],
+          "introduced_terms": [],
+          "rationale": "当前经历缺失结果（Result），需向用户征集可量化的实际产出与成果。",
+          "expected_score_gain": 25,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_005",
+          "issue_ids": [
+            "ISSUE_READ_001",
+            "ISSUE_READ_002",
+            "ISSUE_READ_003"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [
+            "/currentResume/experiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "项目经历中的行动描述重复堆砌且信息密度低，需用户补充运营周报自动化项目的实际执行细节。",
+          "expected_score_gain": 20,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_006",
+          "issue_ids": [
+            "ISSUE_EXPR_001",
+            "ISSUE_EXPR_002"
+          ],
+          "dimension": "专业表达",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "经历中的动作动词与专业度需结合用户后续澄清的事实进行重写，暂不盲目臆测改写。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_007",
+          "issue_ids": [
+            "ISSUE_EXPR_003",
+            "RUBRIC_EXAGGERATED_CLAIM"
+          ],
+          "dimension": "专业表达",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+          "general_value": "具备产品经理实务经验，掌握需求分析与PRD编写、SQL及Excel数据处理技能，注重跨团队沟通与业务落地执行。",
+          "targeted_value": "具备B2B SaaS产品经理实务经验，掌握需求分析与PRD编写、SQL及Excel数据处理技能，注重跨团队沟通与业务落地执行。",
+          "source_refs": [
+            "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/title",
+            "/currentResume/skills/0/name",
+            "/currentResume/skills/1/name",
+            "/currentResume/skills/2/name"
+          ],
+          "introduced_terms": [
+            "B2B SaaS",
+            "实务经验",
+            "跨团队沟通",
+            "业务落地执行"
+          ],
+          "rationale": "去除个人总结中主观夸大的无证据表述，基于已有岗位title与已列技能项重构为客观专业的个人概述。",
+          "expected_score_gain": 16,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_008",
+          "issue_ids": [
+            "ISSUE_QUANT_001"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "量化结果依赖用户在经历STAR提问中补充真实数据，暂不直接凭空生成数值。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_009",
+          "issue_ids": [
+            "RUBRIC_内容完整_0",
+            "RUBRIC_内容完整_1"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "教育与技能等基础模块完整，暂无需补充或修改内容完整性缺失项。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      ],
+      "questions": [
+        {
+          "question_id": "QST_001",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.s",
+          "text": "请补充在云桥软件担任产品经理期间，所负责业务的背景或面临的核心挑战：",
+          "reason": "完善工作经历的Situation情境，增强逻辑与上下文背景。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHG_002"
+          ],
+          "priority": 1
+        },
+        {
+          "question_id": "QST_002",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "text": "请补充在云桥软件期间，你具体负责的产品工作与行动措施（如需求调研、PRD编写、功能设计或推进落地等）：",
+          "reason": "替换空泛重复的行动描述，提供具体专业的工作举措。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHG_003"
+          ],
+          "priority": 2
+        },
+        {
+          "question_id": "QST_003",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.r",
+          "text": "请补充在云桥软件任职期间取得的业务结果或量化成效（如上线功能数、效率提升比例、用户增长或满意度等）：",
+          "reason": "补充经历的量化产出与业务成果，提升简历说服力。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHG_004"
+          ],
+          "priority": 3
+        },
+        {
+          "question_id": "QST_004",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "text": "请补充“运营周报自动化”项目中，你具体执行的关键方案与落地行动：",
+          "reason": "消除项目经历中的重复空泛词汇，充实具体执行细节。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHG_005"
+          ],
+          "priority": 4
+        }
+      ],
+      "bank_suggestions": [],
+      "safety_summary": {
+        "allowed_change_ids": [],
+        "blocked_change_ids": [],
+        "pending_change_ids": [],
+        "findings": []
+      }
+    },
+    "changes": [
+      {
+        "change_id": "CHG_001",
+        "issue_ids": [
+          "ISSUE_LOGIC_001",
+          "ISSUE_LOGIC_002",
+          "ISSUE_LOGIC_003"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "保持当前经历与逻辑结构暂不直接无据修改，交由专业表达优化与用户澄清处理。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_002",
+        "issue_ids": [
+          "ISSUE_STAR_001"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.s",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_003",
+        "issue_ids": [
+          "ISSUE_STAR_002"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_004",
+        "issue_ids": [
+          "ISSUE_STAR_003"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_005",
+        "issue_ids": [
+          "ISSUE_READ_001",
+          "ISSUE_READ_002",
+          "ISSUE_READ_003"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_006",
+        "issue_ids": [
+          "ISSUE_EXPR_001",
+          "ISSUE_EXPR_002"
+        ],
+        "dimension": "专业表达",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "经历中的动作动词与专业度需结合用户后续澄清的事实进行重写，暂不盲目臆测改写。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_007",
+        "issue_ids": [
+          "ISSUE_EXPR_003",
+          "RUBRIC_EXAGGERATED_CLAIM"
+        ],
+        "dimension": "专业表达",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+        "general_value": "具备产品经理实务经验，掌握需求分析与PRD编写、SQL及Excel数据处理技能，注重跨团队沟通与业务落地执行。",
+        "targeted_value": "具备产品经理实务经验，掌握需求分析与PRD编写、SQL及Excel数据处理技能，注重跨团队沟通与业务落地执行。",
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/title",
+          "/currentResume/skills/0/name",
+          "/currentResume/skills/1/name",
+          "/currentResume/skills/2/name"
+        ],
+        "introduced_terms": [
+          "实务经验",
+          "跨团队沟通",
+          "业务落地执行"
+        ],
+        "rationale": "去除个人总结中主观夸大的无证据表述，基于已有岗位title与已列技能项重构为客观专业的个人概述。 定向版本未通过审核，已采用重新审核通过的通用版本。",
+        "expected_score_gain": 16,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "e2c10e1d725eb5393a708d9a8ef127d03711062c2a295ac659134b4e35efa673",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "修改内容中所述的产品经理实务经验、需求分析与PRD、SQL、Excel技能以及沟通和落地执行能力，均与提供的事实源和原个人总结内容相符。"
+        }
+      },
+      {
+        "change_id": "CHG_008",
+        "issue_ids": [
+          "ISSUE_QUANT_001"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "量化结果依赖用户在经历STAR提问中补充真实数据，暂不直接凭空生成数值。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_009",
+        "issue_ids": [
+          "RUBRIC_内容完整_0",
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "教育与技能等基础模块完整，暂无需补充或修改内容完整性缺失项。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHG_007"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHG_001",
+        "CHG_002",
+        "CHG_003",
+        "CHG_004",
+        "CHG_005",
+        "CHG_006",
+        "CHG_008",
+        "CHG_009"
+      ],
+      "findings": []
+    },
+    "answers": [
+      {
+        "question_id": "QST_001",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      },
+      {
+        "question_id": "QST_002",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      },
+      {
+        "question_id": "QST_003",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      },
+      {
+        "question_id": "QST_004",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      }
+    ],
+    "accepted": [
+      "CHG_007"
+    ],
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "具备产品经理实务经验，掌握需求分析与PRD编写、SQL及Excel数据处理技能，注重跨团队沟通与业务落地执行。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "云桥软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "",
+            "t": "",
+            "a": "参与产品工作，负责相关工作，参与相关工作",
+            "r": ""
+          },
+          "id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7"
+        },
+        {
+          "category": "project",
+          "title": "运营周报自动化",
+          "org": "云桥软件（虚构）",
+          "start_date": "2024-04-01",
+          "end_date": "2024-06-30",
+          "is_current": false,
+          "star": {
+            "s": "",
+            "t": "",
+            "a": "参与产品工作，负责相关工作，参与相关工作",
+            "r": ""
+          },
+          "id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2"
+        }
+      ]
+    }
+  }
+}

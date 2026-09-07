@@ -3,6 +3,7 @@ const ALLOWED_INLINE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'A', 'BR']);
 const ALLOWED_BLOCK_TAGS = new Set(['UL', 'OL', 'LI']);
 const BLOCK_TAGS = new Set(['DIV', 'P']);
 const LINE_BREAK_TAG = 'BR';
+const SYNTHETIC_LINE_BREAK_ATTRIBUTE = 'data-rich-text-synthetic-break';
 const ORDERED_LIST_LINE_PATTERN = /^\s*\d+[.、)）]\s*(.+)$/;
 const UNORDERED_LIST_LINE_PATTERN = /^\s*[-*＊•·]\s*(.+)$/;
 const RICH_TEXT_DECODE_PATTERN = /&(lt|gt|amp;lt|amp;gt);/i;
@@ -119,6 +120,110 @@ const BOLD_MARKDOWN_PATTERN = /(?:\*\*|＊＊)([^*\r\n＊]+)(?:\*\*|＊＊)/g;
 const UNDERLINE_MARKDOWN_PATTERN = /__([^_\r\n]+)__/g;
 const HTML_TAG_SPLIT_PATTERN = /(<[^>]+>)/g;
 
+const isEscapedMarkdownCharacter = (value: string, index: number) => {
+    let backslashes = 0;
+    for (let cursor = index - 1; cursor >= 0 && value[cursor] === '\\'; cursor -= 1) {
+        backslashes += 1;
+    }
+    return backslashes % 2 === 1;
+};
+
+const findMatchingMarkdownDelimiter = (value: string, start: number, opening: string, closing: string) => {
+    let depth = 1;
+    let quote: string | null = null;
+    for (let cursor = start + 1; cursor < value.length; cursor += 1) {
+        const character = value[cursor];
+        if (character === '\r' || character === '\n') {
+            return -1;
+        }
+        if (character === '\\') {
+            cursor += 1;
+            continue;
+        }
+        if (quote) {
+            if (character === quote) {
+                quote = null;
+            }
+            continue;
+        }
+        if (
+            opening === '('
+            && (character === '"' || character === "'")
+            && (cursor === start + 1 || /\s/u.test(value[cursor - 1]))
+        ) {
+            quote = character;
+            continue;
+        }
+        if (character === opening) {
+            depth += 1;
+        } else if (character === closing) {
+            depth -= 1;
+            if (depth === 0) {
+                return cursor;
+            }
+        }
+    }
+    return -1;
+};
+
+const parseMarkdownLinkTarget = (destination: string) => {
+    let titleQuote: string | null = null;
+    let titleStart = -1;
+    let titleEnd = -1;
+    for (let cursor = 0; cursor < destination.length; cursor += 1) {
+        const character = destination[cursor];
+        if (character === '\\') {
+            cursor += 1;
+            continue;
+        }
+        if (titleQuote) {
+            if (character === titleQuote) {
+                titleQuote = null;
+                titleEnd = cursor;
+            }
+            continue;
+        }
+        if (
+            (character === '"' || character === "'")
+            && (cursor === 0 || /\s/u.test(destination[cursor - 1]))
+        ) {
+            titleQuote = character;
+            titleStart = cursor;
+        }
+    }
+    if (titleQuote || (titleStart >= 0 && destination.slice(titleEnd + 1).trim())) {
+        return null;
+    }
+    const target = (titleStart >= 0 ? destination.slice(0, titleStart) : destination).trim();
+    return target && !/\s/u.test(target) ? target : null;
+};
+
+type MarkdownLink = {
+    labelEnd: number;
+    target: string;
+    urlEnd: number;
+};
+
+const parseMarkdownLinkAt = (value: string, labelStart: number): MarkdownLink | null => {
+    if (isEscapedMarkdownCharacter(value, labelStart)) {
+        return null;
+    }
+    const labelEnd = findMatchingMarkdownDelimiter(value, labelStart, '[', ']');
+    if (
+        labelEnd <= labelStart + 1
+        || labelEnd + 1 >= value.length
+        || value[labelEnd + 1] !== '('
+    ) {
+        return null;
+    }
+    const urlEnd = findMatchingMarkdownDelimiter(value, labelEnd + 1, '(', ')');
+    if (urlEnd < 0) {
+        return null;
+    }
+    const target = parseMarkdownLinkTarget(value.slice(labelEnd + 2, urlEnd));
+    return target ? { labelEnd, target, urlEnd } : null;
+};
+
 const convertMarkdownLinksToHtml = (input: string) => {
     let output = '';
     let index = 0;
@@ -129,39 +234,16 @@ const convertMarkdownLinksToHtml = (input: string) => {
             output += input.slice(index);
             break;
         }
-        const closeBracket = input.indexOf(']', openBracket + 1);
-        if (closeBracket < 0 || input[closeBracket + 1] !== '(') {
+        const link = parseMarkdownLinkAt(input, openBracket);
+        if (!link) {
             output += input.slice(index, openBracket + 1);
             index = openBracket + 1;
             continue;
         }
-
-        let cursor = closeBracket + 2;
-        let depth = 1;
-        while (cursor < input.length && depth > 0) {
-            const ch = input[cursor];
-            if (ch === '(') {
-                depth += 1;
-            } else if (ch === ')') {
-                depth -= 1;
-            }
-            cursor += 1;
-        }
-        if (depth !== 0) {
-            output += input.slice(index, openBracket + 1);
-            index = openBracket + 1;
-            continue;
-        }
-
-        const text = input.slice(openBracket + 1, closeBracket);
-        const href = input.slice(closeBracket + 2, cursor - 1).trim();
+        const text = input.slice(openBracket + 1, link.labelEnd);
         output += input.slice(index, openBracket);
-        if (!text || !href) {
-            output += input.slice(openBracket, cursor);
-        } else {
-            output += `<a href="${href}">${normalizeMarkdownToken(text)}</a>`;
-        }
-        index = cursor;
+        output += `<a href="${escapeHtml(link.target)}">${normalizeMarkdownToken(text)}</a>`;
+        index = link.urlEnd + 1;
     }
 
     return output;
@@ -206,11 +288,17 @@ const isSafeHref = (value: string | null) => {
 };
 
 const appendLineBreak = (parent: HTMLElement) => {
+    parent.appendChild(document.createElement('br'));
+};
+
+const appendSyntheticLineBreak = (parent: HTMLElement) => {
     const last = parent.lastChild;
     if (last && last.nodeType === Node.ELEMENT_NODE && (last as HTMLElement).tagName === LINE_BREAK_TAG) {
         return;
     }
-    parent.appendChild(document.createElement('br'));
+    const lineBreak = document.createElement('br');
+    lineBreak.setAttribute(SYNTHETIC_LINE_BREAK_ATTRIBUTE, '');
+    parent.appendChild(lineBreak);
 };
 
 const appendText = (parent: HTMLElement, text: string) => {
@@ -324,7 +412,11 @@ const sanitizeNodeList = (nodes: ChildNode[], parent: HTMLElement) => {
         const contentParent = appendInlineStyleWrappers(element, parent);
         sanitizeNodeList(Array.from(element.childNodes), contentParent);
         if (isBlock) {
-            appendLineBreak(parent);
+            if (element.childNodes.length === 0) {
+                appendLineBreak(parent);
+            } else {
+                appendSyntheticLineBreak(parent);
+            }
         }
     });
 };
@@ -332,11 +424,17 @@ const sanitizeNodeList = (nodes: ChildNode[], parent: HTMLElement) => {
 const trimTrailingLineBreaks = (parent: HTMLElement) => {
     while (parent.lastChild && parent.lastChild.nodeType === Node.ELEMENT_NODE) {
         const element = parent.lastChild as HTMLElement;
-        if (element.tagName !== LINE_BREAK_TAG) {
+        if (
+            element.tagName !== LINE_BREAK_TAG
+            || !element.hasAttribute(SYNTHETIC_LINE_BREAK_ATTRIBUTE)
+        ) {
             break;
         }
         parent.removeChild(element);
     }
+    parent.querySelectorAll(`[${SYNTHETIC_LINE_BREAK_ATTRIBUTE}]`).forEach((element) => {
+        element.removeAttribute(SYNTHETIC_LINE_BREAK_ATTRIBUTE);
+    });
 };
 
 export type RichTextListType = 'ordered' | 'unordered';
@@ -477,6 +575,12 @@ const extractListData = (sanitized: string): RichTextListData | null => {
             return null;
         }
         const listType = listElement.tagName.toLowerCase() === 'ol' ? 'ordered' : 'unordered';
+        if (Array.from(listElement.childNodes).some((node) => (
+            (node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()))
+            || (node.nodeType === Node.ELEMENT_NODE && !(node instanceof HTMLLIElement))
+        ))) {
+            return null;
+        }
         const items = Array.from(listElement.children).filter((child): child is HTMLLIElement => child instanceof HTMLLIElement);
         if (!items.length) {
             return null;
@@ -554,11 +658,36 @@ export const splitRichTextLines = (input: string) => {
     if (listData) {
         return listData.lines;
     }
-    return sanitized
-        .split(/<br\s*\/?>/i)
-        .flatMap((line) => splitRichTextHtmlLine(line))
-        .map((line) => line.trim())
-        .filter(Boolean);
+    if (typeof document === 'undefined') {
+        return sanitized
+            .split(/<br\s*\/?>/i)
+            .flatMap((line) => splitRichTextHtmlLine(line))
+            .map((line) => line.trim());
+    }
+    const container = document.createElement('div');
+    container.innerHTML = sanitized;
+    const lineBreaks = Array.from(container.querySelectorAll('br'));
+    if (!lineBreaks.length) {
+        return splitRichTextHtmlLine(sanitized).map((line) => line.trim());
+    }
+    const range = document.createRange();
+    range.setStart(container, 0);
+    const lines: string[] = [];
+    const appendRangeLine = () => {
+        const wrapper = document.createElement('div');
+        wrapper.appendChild(range.cloneContents());
+        lines.push(wrapper.innerHTML);
+    };
+    lineBreaks.forEach((lineBreak) => {
+        range.setEndBefore(lineBreak);
+        appendRangeLine();
+        range.setStartAfter(lineBreak);
+    });
+    range.setEnd(container, container.childNodes.length);
+    appendRangeLine();
+    return lines
+        .flatMap((line) => (line ? splitRichTextHtmlLine(line) : ['']))
+        .map((line) => line.trim());
 };
 
 export const parseRichTextList = (input: string): RichTextListData | null => {

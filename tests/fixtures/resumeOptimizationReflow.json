@@ -1,0 +1,11 @@
+[
+  {"before":"完成调研。<br>完成交付。","after":"完成调研并交付。","allowed":true},
+  {"before":"Completed research.<br>Completed delivery.","after":"Completed research and delivery.","allowed":true},
+  {"before":"完成调研&#12290;<BR />完成交付。","after":"完成调研并交付。","allowed":true},
+  {"before":"第一行<br>第二行","after":"第一行第二行","allowed":false},
+  {"before":"完成调研。<br><br>完成交付。","after":"完成调研并交付。","allowed":false},
+  {"before":"<strong>完成调研</strong>。<br>完成交付。","after":"<strong>完成调研</strong>并交付。","allowed":false},
+  {"before":"[调研](https://example.com)。<br>完成交付。","after":"[调研](https://example.com)并完成交付。","allowed":false},
+  {"before":"**完成调研**。<br>完成交付。","after":"**完成调研**并交付。","allowed":false},
+  {"before":"<ul><li>完成调研。</li><li>完成交付。</li></ul>","after":"完成调研并交付。","allowed":false}
+]

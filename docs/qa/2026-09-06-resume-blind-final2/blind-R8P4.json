@@ -1,0 +1,29 @@
+{
+  "ok": false,
+  "seconds": 60.08,
+  "error_type": "TimeoutError",
+  "message": "Service call failed; inspect local diagnostic log",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_final.py",
+      "line": 50,
+      "function": "blind_pair"
+    },
+    {
+      "file": "tasks.py",
+      "line": 506,
+      "function": "wait_for"
+    },
+    {
+      "file": "timeouts.py",
+      "line": 116,
+      "function": "__aexit__"
+    }
+  ],
+  "cause_type": "CancelledError"
+}

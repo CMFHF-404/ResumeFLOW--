@@ -1,0 +1,7 @@
+{
+  "purpose": "paired regression replay; not new baseline or full blind acceptance",
+  "repeats": 2,
+  "no_data": true,
+  "selection": "frozen first successful numbered baseline",
+  "external_notifications": false
+}

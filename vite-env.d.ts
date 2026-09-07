@@ -6,6 +6,7 @@ interface ImportMetaEnv {
     readonly VITE_LOGTO_APP_ID: string
     readonly VITE_LOGTO_REDIRECT_URI: string
     readonly VITE_LOGTO_ACCOUNT_CENTER_URL?: string
+    readonly VITE_ENABLE_RESUME_OPTIMIZATION: string
     readonly VITE_YIFUT_BASE_URL: string
 }
 
