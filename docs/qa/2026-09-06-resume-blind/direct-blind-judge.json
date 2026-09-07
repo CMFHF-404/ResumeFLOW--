@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "seconds": 10.02,
+  "value": {
+    "documents": [
+      {
+        "id": "51ae516a",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "结构完整，完全忠实于来源数据，STAR各要素详实清晰，数据量化准确，且客观指出了归因限制，无车轱辘话及标点缺失。"
+      },
+      {
+        "id": "e919c6fb",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "unsupportedClaims": [],
+        "defects": [
+          "经历中Action部分句末缺少句号",
+          "省略了来源中具体的量化指标，表述较为泛化"
+        ],
+        "reason": "内容真实来源于数据源，但省略了具体的数据指标，行动描述句末缺少句号，整体细节丰富度一般。"
+      },
+      {
+        "id": "a2405091",
+        "clarity": 2,
+        "specificity": 2,
+        "groundedness": 4,
+        "unsupportedClaims": [],
+        "defects": [
+          "个人总结及经历描述中存在大量重复车轱辘话（如“我有产品经验。我有产品经验。”、“做周报，做周报”）",
+          "Action部分末尾缺少句号",
+          "结果（R）描述极度空泛（如“产品上线了”、“周报做好了”），遗失了来源中完整的量化成果与归因逻辑"
+        ],
+        "reason": "语言重复啰嗦，格式不规范，大幅劣化了来源中的有效信息，描述极其空泛。"
+      },
+      {
+        "id": "ee075201",
+        "clarity": 1,
+        "specificity": 1,
+        "groundedness": 2,
+        "unsupportedClaims": [
+          "精通一切产品工作，执行力极强，沟通能力极强，学习能力极强"
+        ],
+        "reason": "个人总结包含无依据的极端自夸词汇，经历部分严重缺少S、T、R要素，Action充斥无意义的机械重复，质量极差。",
+        "defects": [
+          "存在无法证实的主观夸大词汇",
+          "STAR结构严重缺失（S、T、R为空）",
+          "语句重复空泛且句末缺少标点"
+        ]
+      }
+    ],
+    "ranking": [
+      "51ae516a",
+      "e919c6fb",
+      "a2405091",
+      "ee075201"
+    ]
+  }
+}

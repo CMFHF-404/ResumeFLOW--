@@ -155,6 +155,7 @@ export const JD_ANALYSIS_TOAST_MESSAGES = {
     error: '简历评分失败，请稍后重试',
     empty: '当前简历暂无可评分内容',
     missingAttachment: '该分析依赖已丢失的 JD 附件，请重新上传后再分析',
+    pendingConflict: '请先处理未同步的本地 JD 分析，再重新评分',
 } as const;
 export const BOSS_GREETING_TOAST_MESSAGES = {
     loading: '正在生成 BOSS 招呼语...',

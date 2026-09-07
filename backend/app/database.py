@@ -10,6 +10,9 @@ from .runtime_schema.billing_tables import (
     execute_redemption_code_statements,
 )
 from .runtime_schema.agent_api_tables import execute_agent_api_table_statements
+from .runtime_schema.resume_optimization_tables import (
+    execute_resume_optimization_table_statements,
+)
 
 settings = load_settings()
 engine = create_async_engine(
@@ -30,6 +33,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     # SQLModel only knows tables after the model module has registered them.
     from . import models as _models  # noqa: F401
+    from .domain.resume_optimization import models as _resume_optimization_models  # noqa: F401
 
     async with engine.begin() as connection:
         await connection.run_sync(SQLModel.metadata.create_all)
@@ -368,6 +372,18 @@ async def ensure_ai_token_billing_tables() -> None:
         )
 
 
+async def ensure_resume_optimization_tables() -> None:
+    """确保简历优化运行记录表存在，兼容老环境升级。"""
+    if engine.dialect.name != "postgresql":
+        return
+
+    async with engine.begin() as connection:
+        await execute_resume_optimization_table_statements(
+            execute=connection.execute,
+            text=text,
+        )
+
+
 async def ensure_redemption_code_tables() -> None:
     """确保卡密套餐、批次与卡密库表存在，兼容生产环境直接升级。"""
     if engine.dialect.name != "postgresql":
@@ -448,6 +464,7 @@ async def ensure_runtime_schema() -> None:
     await ensure_ai_assistant_tables()
     await ensure_agent_api_keys_table()
     await ensure_ai_token_billing_tables()
+    await ensure_resume_optimization_tables()
     await ensure_redemption_code_tables()
     await ensure_feedback_contact_type_column()
     await ensure_feedback_images_column()

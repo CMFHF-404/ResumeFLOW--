@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "sample": "H9S2",
+  "seconds": 7.08,
+  "value": {
+    "documents": [
+      {
+        "id": "2fe49201d865",
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "语言流畅，标点符号规范完整，内容忠实于来源。"
+      },
+      {
+        "id": "de35e1378c1e",
+        "unsupportedClaims": [],
+        "defects": [
+          "经历中的行动描述末尾缺失句号等终止标点。"
+        ],
+        "reason": "工作经历行动描述末尾缺失标点符号。"
+      }
+    ],
+    "preferredId": "2fe49201d865",
+    "mapping": {
+      "before": "de35e1378c1e",
+      "after": "2fe49201d865"
+    }
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"documents\": [{\"id\": \"2fe49201d865\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"语言流畅，标点符号规范完整，内容忠实于来源。\"}, {\"id\": \"de35e1378c1e\", \"unsupportedClaims\": [], \"defects\": [\"经历中的行动描述末尾缺失句号等终止标点。\"], \"reason\": \"工作经历行动描述末尾缺失标点符号。\"}], \"preferredId\": \"2fe49201d865\"}",
+        "点符号。\"}], \"preferredId\": \"2fe49201d865\"}",
+        " [{\"id\": \"2fe49201d865\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"语言流畅，标点符号规范完整，内容"
+      ]
+    }
+  ]
+}

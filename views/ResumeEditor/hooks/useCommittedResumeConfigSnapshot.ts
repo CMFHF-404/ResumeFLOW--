@@ -14,9 +14,10 @@ import type {
     ResumeThemeColorPresetId,
 } from '../../../constants/resumeTemplates';
 import {
+    graftJDAnalysisAuthority,
     loadJDAnalysisCache,
     normalizeJDAnalysisPersistence,
-    selectPreferredPersistedJDAnalysis,
+    resolveJDAnalysisForConfigSnapshot,
 } from '../../../services/jdAnalysisStorage';
 import { buildResumeConfigSnapshot } from '../helpers';
 
@@ -85,25 +86,21 @@ export const useCommittedResumeConfigSnapshot = ({
     experienceListMarkerStyle,
     skillTagSeparator,
 }: UseCommittedResumeConfigSnapshotParams) => {
-    const hydratingPersistedJDAnalysisSnapshot = useMemo(() => {
-        const backendPersistedJDAnalysis = normalizeJDAnalysisPersistence(
+    const backendPersistedJDAnalysis = useMemo(
+        () => normalizeJDAnalysisPersistence(
             resumeDetail?.resume?.config?.jdAnalysis
-        );
-        return selectPreferredPersistedJDAnalysis(
-            backendPersistedJDAnalysis,
-            resumeId ? loadJDAnalysisCache(authUserKey, resumeId) : null
-        )?.payload ?? null;
-    }, [authUserKey, resumeDetail?.resume?.config?.jdAnalysis, resumeId]);
-
-    const committedPersistedJDAnalysisSnapshot =
-        persistedJDAnalysisSnapshot !== undefined
-            ? persistedJDAnalysisSnapshot
-            : hydratingPersistedJDAnalysisSnapshot;
+        ),
+        [resumeDetail?.resume?.config?.jdAnalysis]
+    );
 
     return useCallback(() => {
         const nextProfile = isEditingProfile ? originalProfile : profile;
         const nextProfileSyncMode = isEditingProfile ? originalProfileSyncMode : profileSyncMode;
-        return buildResumeConfigSnapshot(
+        const authoritativeJDAnalysis = resolveJDAnalysisForConfigSnapshot(
+            backendPersistedJDAnalysis,
+            resumeId ? loadJDAnalysisCache(authUserKey, resumeId) : null
+        );
+        const draft = buildResumeConfigSnapshot(
             nextProfile,
             personalSummary,
             hasPersonalSummaryOverride,
@@ -127,11 +124,13 @@ export const useCommittedResumeConfigSnapshot = ({
             themeColorPresetId,
             experienceListMarkerStyle,
             skillTagSeparator,
-            committedPersistedJDAnalysisSnapshot
+            authoritativeJDAnalysis
         );
+        return graftJDAnalysisAuthority(draft, authoritativeJDAnalysis);
     }, [
+        authUserKey,
+        backendPersistedJDAnalysis,
         bossGreetingSnapshot,
-        committedPersistedJDAnalysisSnapshot,
         density,
         experienceListMarkerStyle,
         fontSize,
@@ -147,6 +146,8 @@ export const useCommittedResumeConfigSnapshot = ({
         personalSummary,
         profile,
         profileSyncMode,
+        persistedJDAnalysisSnapshot,
+        resumeId,
         resumeTemplateId,
         sectionOrder,
         sectionSpacingKey,

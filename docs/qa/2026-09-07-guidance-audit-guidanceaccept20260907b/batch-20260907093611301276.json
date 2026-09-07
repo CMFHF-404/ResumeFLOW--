@@ -1,0 +1,6 @@
+{
+  "complete": false,
+  "new_transactions": 10,
+  "remaining_transactions": 15,
+  "transaction_batch_size": 10
+}

@@ -1,0 +1,6 @@
+{
+  "purpose": "one response-shape diagnostic; not acceptance",
+  "attempts": 1,
+  "timeout_seconds": 40,
+  "external_notifications": false
+}

@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "N4T8",
+  "seconds": 7.75,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导内容与当前简历实际情况一致，指出的电话缺失及量化提示均符合原文，建议附带'如有真实记录，没有则保留原文'的安全保护，各发布版本建议一致无冲突。",
+    "publishedVariantCount": 3
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导内容与当前简历实际情况一致，指出的电话缺失及量化提示均符合原文，建议附带'如有真实记录，没有则保留原文'的安全保护，各发布版本建议一致无冲突。\"}",
+        "，没有则保留原文'的安全保护，各发布版本建议一致无冲突。\"}",
+        "\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导内容"
+      ]
+    }
+  ]
+}

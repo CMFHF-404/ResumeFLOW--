@@ -1,0 +1,24 @@
+[
+  {
+    "id": "73742dee-cf38-4e9a-a47a-c9b23248d0ad",
+    "request_label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "total_tokens": 15283,
+    "case": "audit-gate-2",
+    "audit_attempt_id": "0a219cae8ada414884dd7489ca5b1c03",
+    "receipt_count": 0
+  },
+  {
+    "id": "5c322a61-e8b5-4148-ba95-4c59d6308b8c",
+    "request_label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "total_tokens": 15514,
+    "case": "audit-gate-1",
+    "audit_attempt_id": "c131b8e3c7994fc2ad0e9091c40c9a79",
+    "receipt_count": 0
+  }
+]

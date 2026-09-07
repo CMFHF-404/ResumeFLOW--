@@ -1,0 +1,34 @@
+{
+  "changes": [
+    {
+      "changeId": "CHANGE_001",
+      "actionKind": "leave_unchanged",
+      "generalValue": null,
+      "targetedValue": null,
+      "sourceRefs": [],
+      "introducedTerms": [],
+      "rationale": "用户明确表示没有额外可确认的数据，故保持原内容不变。",
+      "expectedScoreGain": 0
+    },
+    {
+      "changeId": "CHANGE_002",
+      "actionKind": "leave_unchanged",
+      "generalValue": null,
+      "targetedValue": null,
+      "sourceRefs": [],
+      "introducedTerms": [],
+      "rationale": "用户明确表示没有额外可确认的数据，故保持原内容不变。",
+      "expectedScoreGain": 0
+    },
+    {
+      "changeId": "CHANGE_003",
+      "actionKind": "leave_unchanged",
+      "generalValue": null,
+      "targetedValue": null,
+      "sourceRefs": [],
+      "introducedTerms": [],
+      "rationale": "用户明确表示没有额外可确认的数据，故保持原内容不变。",
+      "expectedScoreGain": 0
+    }
+  ]
+}

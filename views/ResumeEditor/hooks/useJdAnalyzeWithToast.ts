@@ -13,6 +13,7 @@ type JDAnalyzeOutcome =
     | { status: 'empty' }
     | { status: 'no_change' }
     | { status: 'missing_attachment' }
+    | { status: 'pending_conflict' }
     | { status: 'aborted' }
     | { status: 'error' };
 
@@ -101,11 +102,14 @@ export const useJdAnalyzeWithToast = ({
                 }
                 const isError = result.status === 'error'
                     || result.status === 'missing_attachment'
+                    || result.status === 'pending_conflict'
                     || result.status === 'empty';
                 const message = result.status === 'empty'
                     ? JD_ANALYSIS_TOAST_MESSAGES.empty
                     : result.status === 'missing_attachment'
                     ? JD_ANALYSIS_TOAST_MESSAGES.missingAttachment
+                    : result.status === 'pending_conflict'
+                    ? JD_ANALYSIS_TOAST_MESSAGES.pendingConflict
                     : isError
                         ? JD_ANALYSIS_TOAST_MESSAGES.error
                         : JD_ANALYSIS_TOAST_MESSAGES.noChange;

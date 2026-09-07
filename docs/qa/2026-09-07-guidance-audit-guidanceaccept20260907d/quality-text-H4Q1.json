@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "sample": "H4Q1",
+  "seconds": 4.27,
+  "error_type": "ValueError",
+  "message": "Anonymous quality judge failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 567,
+      "function": "_quality_call"
+    },
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 724,
+      "function": "_judge_text_pair"
+    },
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 616,
+      "function": "_validate_text_judge"
+    }
+  ]
+}

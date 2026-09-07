@@ -1,0 +1,254 @@
+{
+  "ok": true,
+  "seconds": 26.25,
+  "value": {
+    "changes": [
+      {
+        "change_id": "CHG_001",
+        "issue_ids": [
+          "ISSUE_LOGIC_001",
+          "ISSUE_LOGIC_002",
+          "ISSUE_LOGIC_003"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "用SQL和Excel做周报，做周报，整理相关东西",
+        "general_value": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+        "targeted_value": "整理3个渠道的指标字典，编写SQL汇总查询，用Excel模板输出周报；邀请运营同事核对计算口径。",
+        "source_refs": [
+          "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/a"
+        ],
+        "introduced_terms": [
+          "指标字典",
+          "汇总查询",
+          "模板",
+          "计算口径"
+        ],
+        "rationale": "根据已选库中该经历的完整Action，补充具体的指标整理与SQL/Excel周报自动化流程，消除无序与重复表达。",
+        "expected_score_gain": 10,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "f617820dd62ece1f47a7680f9ef98af34cfee29150c4c7dbae91c7919d437713",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容与提供的参考来源完全一致，表述属实。"
+        }
+      },
+      {
+        "change_id": "CHG_002",
+        "issue_ids": [
+          "ISSUE_STAR_001"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "编写PRD并参与交付。<br>参与交付，做相关工作。<br>访谈12家企业，用SQL分析入驻漏斗",
+        "general_value": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+        "targeted_value": "访谈12家试用企业，用SQL按企业统计入驻漏斗，定位权限配置阻塞。<br>编写PRD及验收清单，协调设计和研发交付分步引导，并完成验收。",
+        "source_refs": [
+          "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/a"
+        ],
+        "introduced_terms": [
+          "权限配置阻塞",
+          "验收清单",
+          "分步引导"
+        ],
+        "rationale": "依据同经历库中已验证内容，梳理Action的执行逻辑与交付动作，去除重复口水话，并规范段落标点。",
+        "expected_score_gain": 8,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "ae928edb95f18e1fe12d00b4d1751bd497de1370f86f440d9c138f8fbefeb6ae",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容与提供的参考来源完全一致，表述属实。"
+        }
+      },
+      {
+        "change_id": "CHG_003",
+        "issue_ids": [
+          "ISSUE_STAR_002"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "e9f980e1-6883-58c7-aac8-ecaed88b9871",
+        "field_path": "star.r",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "周报做好了。",
+        "general_value": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。",
+        "targeted_value": "连续4周记录，单次周报制作平均耗时从4小时降至1.5小时，模板由5名运营同事使用。",
+        "source_refs": [
+          "/selectedSourceExperiences/e9f980e1-6883-58c7-aac8-ecaed88b9871/star/r"
+        ],
+        "introduced_terms": [
+          "1.5小时",
+          "5名运营同事"
+        ],
+        "rationale": "根据已选库中完整结果补充前后对比与覆盖规模，健全STAR结果项。",
+        "expected_score_gain": 8,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "e076a1253bf410f10c7d34e3081c57e198498f691e4f68896e00ea62ae647fcd",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容与提供的参考来源完全一致，表述属实。"
+        }
+      },
+      {
+        "change_id": "CHG_004",
+        "issue_ids": [
+          "ISSUE_READ_001",
+          "ISSUE_READ_002",
+          "ISSUE_READ_003",
+          "ISSUE_READ_004",
+          "ISSUE_READ_005"
+        ],
+        "dimension": "内容可读",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "我有产品经验。我有产品经验。擅长相关的产品相关工作。",
+        "general_value": "具备产品经理经验，掌握需求分析与PRD编写，掌握SQL与Excel。",
+        "targeted_value": "具备产品经理经验，掌握需求分析与PRD编写，掌握SQL与Excel。",
+        "source_refs": [
+          "/currentResume/personal_summary",
+          "/currentResume/skills/0/name",
+          "/currentResume/skills/1/name",
+          "/currentResume/skills/2/name",
+          "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/title",
+          "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/s"
+        ],
+        "introduced_terms": [],
+        "rationale": "消除个人优势中的重复语句与空泛表达，严格基于已选经历和技能列表提炼专业表述。 已按审核意见收窄摘要，并重新通过来源与事实审核。",
+        "expected_score_gain": 8,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "7a7706cefde7f73e3648530924cb896106c4c97efd596d6b51e0d9139e5740d3",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容（具备产品经理经验，掌握需求分析、PRD编写以及SQL与Excel技能）均在所给源文本中有明确依据。"
+        }
+      },
+      {
+        "change_id": "CHG_005",
+        "issue_ids": [
+          "ISSUE_PROF_001",
+          "ISSUE_PROF_002",
+          "ISSUE_PROF_003",
+          "ISSUE_PROF_004",
+          "ISSUE_PROF_005"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "b87a6304-91c2-52fd-bbda-c45f1ab918e5",
+        "field_path": "star.r",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "产品上线了。",
+        "general_value": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+        "targeted_value": "上线后连续8周跟踪200家新增试用企业，7日激活率由40%升至52%。同期还有销售培训调整，该变化不能全部归因于入驻改版。",
+        "source_refs": [
+          "/selectedSourceExperiences/b87a6304-91c2-52fd-bbda-c45f1ab918e5/star/r"
+        ],
+        "introduced_terms": [
+          "200家新增试用企业",
+          "52%",
+          "销售培训调整"
+        ],
+        "rationale": "使用已选库中的客观指标与边界说明替换单薄表述，体现真实业务结果与专业责任边界。",
+        "expected_score_gain": 9,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "9df8067cee85285973e037d44b9c18ca7c7a4134a057709c5fe2a9af91a15a21",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容与提供的参考来源完全一致，表述属实。"
+        }
+      },
+      {
+        "change_id": "CHG_006",
+        "issue_ids": [
+          "ISSUE_QUANT_001",
+          "ISSUE_QUANT_002",
+          "ISSUE_QUANT_003",
+          "ISSUE_QUANT_004"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "成果量化问题已由工作与项目经历的Result改写完整覆盖，此处对跨模块的量化综合议题做归口闭环。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_007",
+        "issue_ids": [
+          "RUBRIC_内容完整_0",
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "基础完整度Gate A规则守卫，保持非经历核心字段稳定不变。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHG_001",
+        "CHG_002",
+        "CHG_003",
+        "CHG_004",
+        "CHG_005"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHG_006",
+        "CHG_007"
+      ],
+      "findings": []
+    }
+  }
+}

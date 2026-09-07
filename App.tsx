@@ -563,6 +563,7 @@ const App: React.FC = () => {
             onLaunchAssistant={handleLaunchAssistant}
             onOpenAssistantSession={handleOpenAssistantSession}
             onOpenAgentPluginConfig={handleOpenAgentPluginConfig}
+            onJumpToExperienceBank={handleJumpToExperienceBank}
             mobileDrawerOpenRequest={editorMobileDrawerOpenRequest}
             onMobileDrawerOpenRequestConsumed={handleConsumeEditorMobileDrawerOpenRequest}
             focusExperienceRequest={resumeEditorFocusRequest}

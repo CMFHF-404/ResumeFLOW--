@@ -1,0 +1,8 @@
+{
+  "rejected_plan_replays": 2,
+  "fresh_optimizations": 2,
+  "post_repeats": 3,
+  "selection": "first numbered successful fresh optimization; never best score",
+  "baseline": "final4, same scorer code",
+  "boundary": "real core services; synthetic in-memory candidate assembly, not HTTP apply"
+}

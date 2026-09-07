@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "sample": "R8P4",
+  "seconds": 3.06,
+  "value": {
+    "documents": [
+      {
+        "id": "0ec651642bf4",
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "内容真实准确，与源数据完全一致，无未支持的事实或夸大描述。"
+      },
+      {
+        "id": "6b120298ced4",
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "内容真实准确，与源数据完全一致，无未支持的事实或夸大描述。"
+      }
+    ],
+    "preferredId": "tie",
+    "mapping": {
+      "before": "6b120298ced4",
+      "after": "0ec651642bf4"
+    }
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"documents\": [{\"id\": \"0ec651642bf4\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"内容真实准确，与源数据完全一致，无未支持的事实或夸大描述。\"}, {\"id\": \"6b120298ced4\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"内容真实准确，与源数据完全一致，无未支持的事实或夸大描述。\"}], \"preferredId\": \"tie\"}",
+        "一致，无未支持的事实或夸大描述。\"}], \"preferredId\": \"tie\"}",
+        " [{\"id\": \"0ec651642bf4\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"内容真实准确，与源数据"
+      ]
+    }
+  ]
+}

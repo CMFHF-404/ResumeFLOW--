@@ -1,0 +1,178 @@
+[
+  {
+    "id": "dad2e5f5-6bbb-45e3-9ecc-782f63d0c473",
+    "label": "resume_optimization_plan",
+    "status": "success",
+    "total_tokens": 2277,
+    "case": "optimization-R7K2-1",
+    "receipts": []
+  },
+  {
+    "id": "2ca52eb6-7df7-4ca1-96ef-ab5aa6114990",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 2573,
+    "case": "optimization-R7K2-1",
+    "receipts": []
+  },
+  {
+    "id": "bb67d1e0-1fa0-4624-b54e-021c386b5454",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 2603,
+    "case": "optimization-R7K2-2",
+    "receipts": []
+  },
+  {
+    "id": "a717194f-b15c-4534-ad61-bfa677318f62",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 1660,
+    "case": "optimization-R2M9-1",
+    "receipts": []
+  },
+  {
+    "id": "7105258e-6b49-4465-90e4-0de6c77adc51",
+    "label": "resume_optimization_summary_repair",
+    "status": "success",
+    "total_tokens": 961,
+    "case": "optimization-R2M9-1",
+    "receipts": []
+  },
+  {
+    "id": "e5f3baa5-1e71-4a1c-be1c-9443f7325c6e",
+    "label": "resume_optimization_plan",
+    "status": "success",
+    "total_tokens": 4388,
+    "case": "optimization-R2M9-2",
+    "receipts": []
+  },
+  {
+    "id": "5900b283-f586-4675-b996-e99a885be46b",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 896,
+    "case": "optimization-R2M9-2",
+    "receipts": []
+  },
+  {
+    "id": "6c6aa96e-5d60-4162-b2af-10b1d0654871",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 733,
+    "case": "optimization-R2M9-2",
+    "receipts": []
+  },
+  {
+    "id": "d671fb59-9b81-4863-bfc7-ce81325b63ab",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 5176,
+    "case": "optimization-R3V6-1",
+    "receipts": []
+  },
+  {
+    "id": "659b5147-f12e-462c-9caa-902eb23ef38a",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 4863,
+    "case": "optimization-R3V6-2",
+    "receipts": []
+  },
+  {
+    "id": "16f930f6-4901-4e7e-b89c-c3f720f35683",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 1153,
+    "case": "optimization-N6D2-1",
+    "receipts": []
+  },
+  {
+    "id": "d187f455-085e-4497-8d5c-ac0bb45f2fdc",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 1176,
+    "case": "optimization-N6D2-2",
+    "receipts": []
+  },
+  {
+    "id": "fcd39374-3ddf-4eb9-8f7e-aa6786245cf3",
+    "label": "resume_optimization_plan",
+    "status": "success",
+    "total_tokens": 2244,
+    "case": "optimization-R7K2-2",
+    "receipts": []
+  },
+  {
+    "id": "641f771a-5170-4b28-bca4-714d0a70d5e5",
+    "label": "resume_optimization_plan",
+    "status": "success",
+    "total_tokens": 4465,
+    "case": "optimization-R2M9-1",
+    "receipts": []
+  },
+  {
+    "id": "af718516-c22f-4d41-8df2-482c6be9f878",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 1128,
+    "case": "optimization-R2M9-1",
+    "receipts": []
+  },
+  {
+    "id": "639d3298-bc85-4ad1-8241-e4df61a5f546",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 708,
+    "case": "optimization-R2M9-1",
+    "receipts": []
+  },
+  {
+    "id": "555dba6d-df19-46f0-b615-86fdfcfce4c9",
+    "label": "resume_optimization_semantic_review",
+    "status": "success",
+    "total_tokens": 1602,
+    "case": "optimization-R2M9-2",
+    "receipts": []
+  },
+  {
+    "id": "33474c41-6ce3-42a8-8925-48bbd888594f",
+    "label": "resume_optimization_summary_repair",
+    "status": "success",
+    "total_tokens": 962,
+    "case": "optimization-R2M9-2",
+    "receipts": []
+  },
+  {
+    "id": "298e9fd0-c2d9-4c52-9641-524327b6ebf2",
+    "label": "resume_optimization_plan",
+    "status": "success",
+    "total_tokens": 8075,
+    "case": "optimization-R3V6-1",
+    "receipts": []
+  },
+  {
+    "id": "dfb845e2-5908-4caf-b153-cc3de05b875d",
+    "label": "resume_optimization_plan",
+    "status": "success",
+    "total_tokens": 8003,
+    "case": "optimization-R3V6-2",
+    "receipts": []
+  },
+  {
+    "id": "f5eb5ddf-1788-4278-b772-70e9e7fb7a86",
+    "label": "resume_optimization_plan",
+    "status": "success",
+    "total_tokens": 3494,
+    "case": "optimization-N6D2-1",
+    "receipts": []
+  },
+  {
+    "id": "b3c3a0aa-fe29-4ef6-ade5-f70cc2e7611a",
+    "label": "resume_optimization_plan",
+    "status": "success",
+    "total_tokens": 3501,
+    "case": "optimization-N6D2-2",
+    "receipts": []
+  }
+]

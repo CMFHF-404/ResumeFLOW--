@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "seconds": 7.76,
+  "value": {
+    "documents": [
+      {
+        "id": "bbe00574",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "结构清晰，内容完全忠实于来源数据，量化指标和因果表述严谨客观。"
+      },
+      {
+        "id": "66935b3d",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "结构清晰，内容完全忠实于来源数据，量化指标和因果表述严谨客观。"
+      }
+    ],
+    "preferredId": "tie"
+  },
+  "diagnostics": []
+}

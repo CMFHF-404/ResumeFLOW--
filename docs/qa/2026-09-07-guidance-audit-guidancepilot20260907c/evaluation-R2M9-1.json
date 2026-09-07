@@ -1,0 +1,592 @@
+{
+  "ok": true,
+  "seconds": 29.47,
+  "sample": "R2M9",
+  "repeat": 1,
+  "transaction": {
+    "generationAttempts": 1,
+    "auditAttempts": 1,
+    "automaticRegeneration": false
+  },
+  "value": {
+    "resumeEvaluation": {
+      "evaluationVersion": "guidance_audit_v1",
+      "evaluationScope": "full_resume",
+      "targetRole": "B2B SaaS 产品经理",
+      "overallBand": "adequate",
+      "confidence": "medium",
+      "dimensionGuidance": [
+        {
+          "dimension": "逻辑清晰",
+          "status": "strong",
+          "strengths": [
+            "信息顺序有原文支持",
+            "因果关系有原文支持",
+            "信息层级有原文支持",
+            "一致性与聚焦有原文支持"
+          ],
+          "issues": [],
+          "actions": []
+        },
+        {
+          "dimension": "STAR应用",
+          "status": "strong",
+          "strengths": [
+            "Situation情境有原文支持",
+            "Task任务有原文支持",
+            "Action行动有原文支持",
+            "Result结果有原文支持"
+          ],
+          "issues": [],
+          "actions": []
+        },
+        {
+          "dimension": "内容可读",
+          "status": "strong",
+          "strengths": [
+            "扫读结构有原文支持",
+            "句子清晰度有原文支持",
+            "信息密度有原文支持",
+            "语法与自然度有原文支持",
+            "重复与冗余有原文支持"
+          ],
+          "issues": [
+            "服务器检测到一处正文缺少句末标点。"
+          ],
+          "actions": [
+            "补齐缺失的句末标点。"
+          ]
+        },
+        {
+          "dimension": "内容完整",
+          "status": "strong",
+          "strengths": [
+            "教育经历有原文支持",
+            "核心经历模块有原文支持",
+            "经历必要字段有原文支持",
+            "技能与资格有原文支持",
+            "求职方向有原文支持",
+            "补充信息有原文支持"
+          ],
+          "issues": [
+            "部分所需字段已有来源，仍有字段缺失。"
+          ],
+          "actions": [
+            "请补充真实的姓名、邮箱或电话等缺失基础信息。"
+          ]
+        },
+        {
+          "dimension": "专业表达",
+          "status": "strong",
+          "strengths": [
+            "行动动词有原文支持",
+            "岗位术语有原文支持",
+            "表达精确度有原文支持",
+            "贡献与责任边界有原文支持",
+            "客观与可信有原文支持"
+          ],
+          "issues": [],
+          "actions": []
+        },
+        {
+          "dimension": "成果量化",
+          "status": "insufficient_evidence",
+          "strengths": [],
+          "issues": [
+            "当前经历没有符合服务器规则的数字候选来源。"
+          ],
+          "actions": [
+            "如有真实记录，可补充与该项有关的具体范围、口径和归属；没有则保留原文。"
+          ]
+        }
+      ],
+      "topPriorities": [
+        {
+          "taskId": "GLOBAL_COMPLETENESS_BASIC",
+          "issueId": "ISSUE_GLOBAL_COMPLETENESS_BASIC",
+          "dimension": "内容完整",
+          "fieldPath": "profile.name,profile.email,profile.phone",
+          "description": "部分所需字段已有来源，仍有字段缺失。",
+          "action": "请补充真实的姓名、邮箱或电话等缺失基础信息。"
+        },
+        {
+          "taskId": "GLOBAL_READABILITY_PUNCTUATION_001",
+          "issueId": "ISSUE_GLOBAL_READABILITY_PUNCTUATION_001",
+          "dimension": "内容可读",
+          "fieldPath": "resume",
+          "description": "服务器检测到一处正文缺少句末标点。",
+          "action": "补齐缺失的句末标点。"
+        },
+        {
+          "taskId": "EXP_001_QUANT_BASELINE_COMPARISON",
+          "issueId": "ISSUE_EXP_001_QUANT_BASELINE_COMPARISON",
+          "dimension": "成果量化",
+          "fieldPath": "experiences[0].star",
+          "description": "当前经历没有符合服务器规则的数字候选来源。",
+          "action": "如有真实记录，可补充与该项有关的具体范围、口径和归属；没有则保留原文。"
+        }
+      ],
+      "safeCleanup": [
+        {
+          "taskId": "GLOBAL_READABILITY_PUNCTUATION_001",
+          "issueId": "ISSUE_GLOBAL_READABILITY_PUNCTUATION_001",
+          "dimension": "内容可读",
+          "fieldPath": "resume",
+          "description": "服务器检测到一处正文缺少句末标点。",
+          "action": "补齐缺失的句末标点。"
+        }
+      ],
+      "informationNeeded": [
+        {
+          "taskId": "GLOBAL_COMPLETENESS_BASIC",
+          "issueId": "ISSUE_GLOBAL_COMPLETENESS_BASIC",
+          "dimension": "内容完整",
+          "fieldPath": "profile.name,profile.email,profile.phone",
+          "description": "部分所需字段已有来源，仍有字段缺失。",
+          "action": "请补充真实的姓名、邮箱或电话等缺失基础信息。"
+        },
+        {
+          "taskId": "EXP_001_QUANT_BASELINE_COMPARISON",
+          "issueId": "ISSUE_EXP_001_QUANT_BASELINE_COMPARISON",
+          "dimension": "成果量化",
+          "fieldPath": "experiences[0].star",
+          "description": "当前经历没有符合服务器规则的数字候选来源。",
+          "action": "如有真实记录，可补充与该项有关的具体范围、口径和归属；没有则保留原文。"
+        },
+        {
+          "taskId": "EXP_002_QUANT_BASELINE_COMPARISON",
+          "issueId": "ISSUE_EXP_002_QUANT_BASELINE_COMPARISON",
+          "dimension": "成果量化",
+          "fieldPath": "experiences[1].star",
+          "description": "当前经历没有符合服务器规则的数字候选来源。",
+          "action": "如有真实记录，可补充与该项有关的具体范围、口径和归属；没有则保留原文。"
+        }
+      ],
+      "riskFlags": [],
+      "auditReceipt": {
+        "receiptId": "1498da2136ee48f0b0b2525e8327a6bb",
+        "inputHash": "6c085edd2a1d445ada5f6b10f41f67d56dd60acf81553fe924b4aeaa6cb7a5a3",
+        "tasksHash": "2da189bdd770d58b5292eee2b8ea737083e243cde62b541bfc845d723deb5252",
+        "judgmentsHash": "fb181df4fe01aecd858538ef210cdff3a2149fe6089772309a735b87c3c5ebae",
+        "rubricHash": "202be9ba408aa5e8da35863670c63823e817fab6e50f0270eff9112382abd0d9",
+        "schemaHash": "dd9cded4b1a3d6c3f03e4dadd96c6cd1b2f1df40c22dc243ca3951ecf5d7a20b",
+        "auditVersion": "guidance_task_audit_v1"
+      },
+      "jdMatch": null
+    }
+  },
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 13.621
+    },
+    {
+      "stage": "generation",
+      "category": "generated"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "duration",
+      "seconds": 15.449
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "task_verdicts",
+      "tasks": {
+        "GLOBAL_LOGIC_ORDER": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_LOGIC_CAUSALITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_LOGIC_HIERARCHY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_LOGIC_FOCUS": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_STAR_SITUATION": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_STAR_TASK": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_STAR_ACTION": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_STAR_RESULT": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_PROFESSIONAL_ACTION_VERBS": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_PROFESSIONAL_TERMINOLOGY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_PROFESSIONAL_PRECISION": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_PROFESSIONAL_RESPONSIBILITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_PROFESSIONAL_OBJECTIVITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_QUANT_RESULT_METRIC": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_QUANT_BASELINE_COMPARISON": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_QUANT_COVERAGE_SCALE": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_QUANT_TIME_WINDOW": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_QUANT_PROCESS_QUANTITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_001_QUANT_DATA_CREDIBILITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_STAR_SITUATION": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_STAR_TASK": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_STAR_ACTION": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_STAR_RESULT": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_PROFESSIONAL_ACTION_VERBS": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_PROFESSIONAL_TERMINOLOGY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_PROFESSIONAL_PRECISION": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_PROFESSIONAL_RESPONSIBILITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_PROFESSIONAL_OBJECTIVITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_QUANT_RESULT_METRIC": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_QUANT_BASELINE_COMPARISON": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_QUANT_COVERAGE_SCALE": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_QUANT_TIME_WINDOW": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_QUANT_PROCESS_QUANTITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "EXP_002_QUANT_DATA_CREDIBILITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_READABILITY_SCAN": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_READABILITY_SENTENCES": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_READABILITY_DENSITY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_READABILITY_GRAMMAR": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_READABILITY_REDUNDANCY": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_READABILITY_PUNCTUATION_001": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_READABILITY_PUNCTUATION_002": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_COMPLETENESS_BASIC": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_COMPLETENESS_EDUCATION": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_COMPLETENESS_CORE_EXPERIENCE": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_COMPLETENESS_EXPERIENCE_FIELDS": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_COMPLETENESS_SKILLS": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_COMPLETENESS_DIRECTION": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "GLOBAL_COMPLETENESS_SUPPLEMENTAL": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "RISK_EXAGGERATED_CLAIM": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        },
+        "RISK_CONFLICTING_DATE": {
+          "sourceSupported": true,
+          "assessmentSupported": true,
+          "guidanceActionable": true,
+          "guidanceSafe": true,
+          "verdict": "approved"
+        }
+      }
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "audit_received",
+      "schema_valid": true,
+      "safe_items": 50,
+      "total_items": 50
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "reviewed",
+      "safe_items": 50,
+      "total_items": 50
+    },
+    {
+      "stage": "publication",
+      "category": "approved",
+      "attempts": 2
+    }
+  ],
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\n  \"GLOBAL_LOGIC_ORDER\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_005\",\n      \"SRC_006\",\n      \"SRC_007\",\n      \"SRC_008\",\n      \"SRC_009\",\n      \"SRC_010\",\n      \"SRC_011\",\n      \"SRC_012\",\n      \"SRC_013\",\n      \"SRC_014\",\n      \"SRC_015\",\n      \"SRC_016\",\n      \"SRC_017\",\n      \"SRC_019\",\n      \"SRC_020\",\n      \"SRC_021\",\n      \"SRC_022\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_028\",\n      \"SRC_029\",\n      \"SRC_030\",\n      \"SRC_031\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"模块排序清晰，经历时间与内容发展符合常规阅读逻辑。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_CAUSALITY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"各经历中背景、任务、行动与交付结果之间的因果推导合理连贯。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_HIERARCHY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_005\",\n      \"SRC_006\",\n      \"SRC_007\",\n      \"SRC_008\",\n      \"SRC_009\",\n      \"SRC_010\",\n      \"SRC_011\",\n      \"SRC_012\",\n      \"SRC_013\",\n      \"SRC_014\",\n      \"SRC_015\",\n      \"SRC_019\",\n      \"SRC_020\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_028\",\n      \"SRC_029\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"主次结构分明，经历分类与子项层级清晰。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_FOCUS\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_010\",\n      \"SRC_011\",\n      \"SRC_012\",\n      \"SRC_019\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_028\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"各板块内容紧密围绕产品与数据支持职责展开，主题聚焦。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_SITUATION\": {\n    \"assessment\": \"clear_context\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"明确交代了企业入驻配置存在障碍的业务背景。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_TASK\": {\n    \"assessment\": \"clear_task\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"明确给出了负责入驻需求及验收的目标任务。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_ACTION\": {\n    \"assessment\": \"concrete_action\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"列举了访谈客户、分析漏斗、撰写PRD及协调交付等具体行动。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_RESULT\": {\n    \"assessment\": \"clear_result\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"明确交代了改版上线并通过验收的定性交付结果。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_ACTION_VERBS\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"使用了访谈、分析、编写、协调等具体清晰的行动动词。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_TERMINOLOGY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"PRD、漏斗分析、验收等专业术语使用准确恰当。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_PRECISION\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"行动与对象表达具体明确，没有模糊代称。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_RESPONSIBILITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"个人在需求、撰写与协调交付中的职责边界交代清楚。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_OBJECTIVITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"陈述克制客观，无夸大或前后矛盾表述。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_STAR_SITUATION\": {\n    \"assessment\": \"clear_context\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"说明了运营每周需要汇总数据的业务背景。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_STAR_TASK\": {\n    \"assessment\": \"clear_task\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"明确提出了减少周报重复劳动的具体任务目标。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_STAR_ACTION\": {\n    \"assessment\": \"concrete_action\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"具体说明了整理指标并用SQL和Excel输出周报的动作。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_STAR_RESULT\": {\n    \"assessment\": \"clear_result\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"交代了交付周报模板供运营使用的具体成果。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_ACTION_VERBS\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"使用了整理、输出、交付等准确具体的动词。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_TERMINOLOGY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"SQL、Excel、指标、模板等术语使用规范恰当。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_PRECISION\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"行动和交付对象明确，表达准确。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_RESPONSIBILITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"明确体现了个人负责指标整理与模板交付的支持性职责。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_OBJECTIVITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"内容客观平实，没有夸大收益或虚构因果。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_SCAN\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_005\",\n      \"SRC_006\",\n      \"SRC_007\",\n      \"SRC_008\",\n      \"SRC_009\",\n      \"SRC_019\",\n      \"SRC_020\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_028\",\n      \"SRC_029\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"结构层次清晰，便于快速抓取核心工作内容与技能。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_SENTENCES\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"语句简练通顺，语义传达清晰明了。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_DENSITY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"信息密度适中，内容紧凑且无冗余填充词。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_GRAMMAR\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"语言表达自然规范，无明显语法或语病问题。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_REDUNDANCY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"各部分内容无不必要的重复赘述。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_COMPLETENESS_DIRECTION\": {\n    \"assessment\": \"function\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_019\",\n      \"SRC_028\"\n    ],\n    \"reason\": \"岗位及简介明确指向产品经理职能方向。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"RISK_EXAGGERATED_CLAIM\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_032\",\n      \"SRC_033\",\n      \"SRC_034\",\n      \"SRC_035\"\n    ],\n    \"reason\": \"未发现不切实际或缺乏支撑的夸大陈述。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"RISK_CONFLICTING_DATE\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_013\",\n      \"SRC_016\",\n      \"SRC_017\",\n      \"SRC_019\",\n      \"SRC_020\",\n      \"SRC_021\",\n      \"SRC_022\",\n      \"SRC_028\",\n      \"SRC_029\",\n      \"SRC_030\",\n      \"SRC_031\"\n    ],\n    \"reason\": \"教育经历与工作/项目经历时间线合理，无时间冲突。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  }\n}",
+        "\",\n      \"prompt\": \"\"\n    }\n  }\n}",
+        " [\n      \"SRC_004\",\n      \"SRC_005\",\n      \"SRC_006\",\n      \"SRC_007\",\n      \"SRC_008\",\n      \"SRC_009\",\n      \"SRC_019\",\n      \"SRC_020\",\n      \"SRC_023\",\n      \"SRC_024\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_028\",\n      \""
+      ]
+    },
+    {
+      "candidates": [
+        "```json\n{\n  \"GLOBAL_LOGIC_ORDER\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"各模块及经历时间线排序合理清晰。\"\n  },\n  \"GLOBAL_LOGIC_CAUSALITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"背景、行动与结果间因果逻辑连贯。\"\n  },\n  \"GLOBAL_LOGIC_HIERARCHY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"层级分明，主次关系清楚。\"\n  },\n  \"GLOBAL_LOGIC_FOCUS\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"经历内容围绕岗位职责，聚焦明确。\"\n  },\n  \"EXP_001_STAR_SITUATION\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"背景交代明确具体。\"\n  },\n  \"EXP_001_STAR_TASK\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"目标任务明确。\"\n  },\n  \"EXP_001_STAR_ACTION\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"行动具体明确，符合要求。\"\n  },\n  \"EXP_001_STAR_RESULT\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"定性交付结果明确。\"\n  },\n  \"EXP_001_PROFESSIONAL_ACTION_VERBS\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"动词选用具体恰当。\"\n  },\n  \"EXP_001_PROFESSIONAL_TERMINOLOGY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"术语使用准确专业。\"\n  },\n  \"EXP_001_PROFESSIONAL_PRECISION\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"表达明确，无模糊指代。\"\n  },\n  \"EXP_001_PROFESSIONAL_RESPONSIBILITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"职责边界清晰合理。\"\n  },\n  \"EXP_001_PROFESSIONAL_OBJECTIVITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"陈述客观平实，无夸大。\"\n  },\n  \"EXP_001_QUANT_RESULT_METRIC\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无量化指标，提示仅限有真实数据时补充。\"\n  },\n  \"EXP_001_QUANT_BASELINE_COMPARISON\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无对比基线，提示合理。\"\n  },\n  \"EXP_001_QUANT_COVERAGE_SCALE\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无覆盖规模数据，判断准确。\"\n  },\n  \"EXP_001_QUANT_TIME_WINDOW\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无观测时间窗口，判断准确。\"\n  },\n  \"EXP_001_QUANT_PROCESS_QUANTITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无过程数量，判断准确。\"\n  },\n  \"EXP_001_QUANT_DATA_CREDIBILITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无数据源信息，判断准确。\"\n  },\n  \"EXP_002_STAR_SITUATION\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"背景交代明确。\"\n  },\n  \"EXP_002_STAR_TASK\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"任务目标清晰。\"\n  },\n  \"EXP_002_STAR_ACTION\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"具体行动描述清晰。\"\n  },\n  \"EXP_002_STAR_RESULT\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"交付成果定性描述明确。\"\n  },\n  \"EXP_002_PROFESSIONAL_ACTION_VERBS\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"动词准确具体。\"\n  },\n  \"EXP_002_PROFESSIONAL_TERMINOLOGY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"术语规范准确。\"\n  },\n  \"EXP_002_PROFESSIONAL_PRECISION\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"行动与对象表述明确。\"\n  },\n  \"EXP_002_PROFESSIONAL_RESPONSIBILITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"支持性职责边界清晰。\"\n  },\n  \"EXP_002_PROFESSIONAL_OBJECTIVITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"客观平实，无夸大。\"\n  },\n  \"EXP_002_QUANT_RESULT_METRIC\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无量化指标，提示仅限有真实数据时补充。\"\n  },\n  \"EXP_002_QUANT_BASELINE_COMPARISON\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无基线对比，提示合规。\"\n  },\n  \"EXP_002_QUANT_COVERAGE_SCALE\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无覆盖规模数据，判断准确。\"\n  },\n  \"EXP_002_QUANT_TIME_WINDOW\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无时间窗口数据，判断准确。\"\n  },\n  \"EXP_002_QUANT_PROCESS_QUANTITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无过程数量，判断准确。\"\n  },\n  \"EXP_002_QUANT_DATA_CREDIBILITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无数据源信息，判断准确。\"\n  },\n  \"GLOBAL_READABILITY_SCAN\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"结构清晰，便于扫读。\"\n  },\n  \"GLOBAL_READABILITY_SENTENCES\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"语句清晰通顺。\"\n  },\n  \"GLOBAL_READABILITY_DENSITY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"信息密度适中。\"\n  },\n  \"GLOBAL_READABILITY_GRAMMAR\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"语法通顺自然。\"\n  },\n  \"GLOBAL_READABILITY_REDUNDANCY\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"无冗余重复。\"\n  },\n  \"GLOBAL_READABILITY_PUNCTUATION_001\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"缺少句末标点，建议安全。\"\n  },\n  \"GLOBAL_READABILITY_PUNCTUATION_002\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"缺少句末标点，建议安全。\"\n  },\n  \"GLOBAL_COMPLETENESS_BASIC\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"电话缺失，提示补充真实信息。\"\n  },\n  \"GLOBAL_COMPLETENESS_EDUCATION\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"教育经历要素完整。\"\n  },\n  \"GLOBAL_COMPLETENESS_CORE_EXPERIENCE\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"核心经历模块完整。\"\n  },\n  \"GLOBAL_COMPLETENESS_EXPERIENCE_FIELDS\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"经历必要字段齐全。\"\n  },\n  \"GLOBAL_COMPLETENESS_SKILLS\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"技能清单明确齐全。\"\n  },\n  \"GLOBAL_COMPLETENESS_DIRECTION\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"求职方向明确指向产品经理。\"\n  },\n  \"GLOBAL_COMPLETENESS_SUPPLEMENTAL\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"补充信息字段完整。\"\n  },\n  \"RISK_EXAGGERATED_CLAIM\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"未见夸大陈述风险。\"\n  },\n  \"RISK_CONFLICTING_DATE\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true,\n    \"guidanceSafe\": true,\n    \"verdict\": \"approved\",\n    \"reason\": \"时间线无冲突。\"\n  }\n}\n```",
+        "verdict\": \"approved\",\n    \"reason\": \"时间线无冲突。\"\n  }\n}\n```",
+        "COVERAGE_SCALE\": {\n    \"sourceSupported\": true,\n    \"assessmentSupported\": true,\n    \"guidanceActionable\": true"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1600 @@
+{
+  "ok": true,
+  "seconds": 23.81,
+  "value": {
+    "initial_plan": {
+      "changes": [
+        {
+          "change_id": "CHANGE_TASK_001",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.r",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "改版已上线并通过验收。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "当前结果仅说明了功能交付与验收，缺少上线后的具体业务效果或成效数据，需向用户确认。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.r",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "交付周报模板供运营使用。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "当前结果仅停留在模板交付阶段，缺少使用后的具体业务收益或效率提升量化数据，需向用户确认。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "有产品工作经验，参与入驻改版和运营周报。",
+          "general_value": "具备产品与数据分析经验，熟练掌握需求分析、PRD编写及SQL、Excel数据处理；曾主导企业入驻配置改版与运营周报标准化，推动功能交付与流程提效。",
+          "targeted_value": "具备SaaS产品设计与数据分析经验，熟练掌握客户访谈、漏斗分析、PRD编写及SQL数据处理；曾主导企业入驻配置流程改版与运营周报交付，有效提升业务效率。",
+          "source_refs": [
+            "/currentResume/personal_summary",
+            "/currentResume/skills/0/name",
+            "/currentResume/skills/1/name",
+            "/currentResume/skills/2/name",
+            "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+            "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+            "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "综合已有的技能点与项目经历，强化产品专业能力与项目成果的概括，提升总结的聚焦度与信息密度。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_0",
+          "issue_ids": [
+            "ISSUE_READ_03"
+          ],
+          "dimension": "内容可读",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "有产品工作经验，参与入驻改版和运营周报。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_004",
+          "issue_ids": [
+            "ISSUE_READ_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.s",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "企业入驻配置存在障碍。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "现有来源信息不足以在不臆造细节的前提下扩充背景，保持现状。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_005",
+          "issue_ids": [
+            "ISSUE_READ_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.s",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "运营需要每周汇总数据。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "现有来源信息有限，无法在不臆测的前提下补充更多背景细节，保持现状。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_006",
+          "issue_ids": [
+            "ISSUE_READ_02"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "访谈客户，分析漏斗，编写PRD并协调交付",
+          "general_value": "访谈客户，分析漏斗，编写PRD并协调交付。",
+          "targeted_value": "访谈客户，分析漏斗，编写PRD并协调交付。",
+          "source_refs": [
+            "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "补齐句末标点符号，规范排版格式。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_007",
+          "issue_ids": [
+            "ISSUE_READ_02"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "整理指标并用SQL和Excel输出周报",
+          "general_value": "整理指标并用SQL和Excel输出周报。",
+          "targeted_value": "整理指标并用SQL和Excel输出周报。",
+          "source_refs": [
+            "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "补齐句末标点符号，规范排版格式。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_0",
+          "issue_ids": [
+            "ISSUE_QUANT_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_1",
+          "issue_ids": [
+            "ISSUE_QUANT_02"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_2",
+          "issue_ids": [
+            "ISSUE_QUANT_03"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_3",
+          "issue_ids": [
+            "ISSUE_QUANT_04"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_4",
+          "issue_ids": [
+            "ISSUE_QUANT_05"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_5",
+          "issue_ids": [
+            "ISSUE_QUANT_06"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_6",
+          "issue_ids": [
+            "RUBRIC_内容完整_0"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_7",
+          "issue_ids": [
+            "RUBRIC_内容完整_1"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      ],
+      "questions": [
+        {
+          "question_id": "QUESTION_TASK_001",
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.r",
+          "text": "改版上线并通过验收后，入驻转化率、入驻耗时或客户反馈等业务指标有哪些具体改善？",
+          "reason": "当前结果仅说明了功能交付与验收，缺少上线后的具体业务效果或成效数据，需向用户确认。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHANGE_TASK_001"
+          ],
+          "priority": 1
+        },
+        {
+          "question_id": "QUESTION_TASK_002",
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.r",
+          "text": "周报模板交付运营使用后，在周报制作耗时、自动化程度或数据准确性方面带来了哪些具体改善？",
+          "reason": "当前结果仅停留在模板交付阶段，缺少使用后的具体业务收益或效率提升量化数据，需向用户确认。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHANGE_TASK_002"
+          ],
+          "priority": 2
+        }
+      ],
+      "bank_suggestions": [],
+      "safety_summary": {
+        "allowed_change_ids": [],
+        "blocked_change_ids": [],
+        "pending_change_ids": [],
+        "findings": []
+      },
+      "coverage": [
+        {
+          "issue_id": "ISSUE_LOGIC_01",
+          "dimension": "逻辑清晰",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "pending_review",
+          "description": "个人总结陈述较为简略，与目标SaaS产品经理岗位的深度聚焦略有不足。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_01",
+          "dimension": "STAR应用",
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "经历的Result（结果）停留在项目交付与功能上线阶段，缺少上线后的业务成效或改善反馈。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_01",
+          "dimension": "STAR应用",
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "经历的Result（结果）停留在项目交付与功能上线阶段，缺少上线后的业务成效或改善反馈。"
+        },
+        {
+          "issue_id": "ISSUE_READ_01",
+          "dimension": "内容可读",
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.s",
+          "status": "uncovered",
+          "description": "情境与背景描述单薄，业务细节信息密度偏低。"
+        },
+        {
+          "issue_id": "ISSUE_READ_01",
+          "dimension": "内容可读",
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.s",
+          "status": "uncovered",
+          "description": "情境与背景描述单薄，业务细节信息密度偏低。"
+        },
+        {
+          "issue_id": "ISSUE_READ_02",
+          "dimension": "内容可读",
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中的Action句子末尾缺失句末标点符号，影响排版规范度。"
+        },
+        {
+          "issue_id": "ISSUE_READ_02",
+          "dimension": "内容可读",
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中的Action句子末尾缺失句末标点符号，影响排版规范度。"
+        },
+        {
+          "issue_id": "ISSUE_READ_03",
+          "dimension": "内容可读",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "pending_review",
+          "description": "个人总结与经历标题文字略有重复，概括性价值较弱。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_01",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_02",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_03",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_04",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_05",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_06",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_0",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_1",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        }
+      ],
+      "planning_tasks": {
+        "TASK_001": {
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.r",
+          "before": "改版已上线并通过验收。",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/s",
+              "text": "企业入驻配置存在障碍。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/t",
+              "text": "负责入驻需求和验收。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+              "text": "访谈客户，分析漏斗，编写PRD并协调交付"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/r",
+              "text": "改版已上线并通过验收。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/s",
+              "text": "企业入驻配置存在障碍。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/t",
+              "text": "负责入驻需求和验收。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+              "text": "访谈客户，分析漏斗，编写PRD并协调交付"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/r",
+              "text": "改版已上线并通过验收。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "经历的Result（结果）停留在项目交付与功能上线阶段，缺少上线后的业务成效或改善反馈。"
+          ]
+        },
+        "TASK_002": {
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.r",
+          "before": "交付周报模板供运营使用。",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/s",
+              "text": "运营需要每周汇总数据。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+              "text": "减少周报重复劳动。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a",
+              "text": "整理指标并用SQL和Excel输出周报"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/r",
+              "text": "交付周报模板供运营使用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/s",
+              "text": "运营需要每周汇总数据。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+              "text": "减少周报重复劳动。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a",
+              "text": "整理指标并用SQL和Excel输出周报"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/r",
+              "text": "交付周报模板供运营使用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "经历的Result（结果）停留在项目交付与功能上线阶段，缺少上线后的业务成效或改善反馈。"
+          ]
+        },
+        "TASK_003": {
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "before": "有产品工作经验，参与入驻改版和运营周报。",
+          "issue_ids": [
+            "ISSUE_LOGIC_01",
+            "ISSUE_READ_03"
+          ],
+          "dimension": "逻辑清晰",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/personal_summary",
+              "text": "有产品工作经验，参与入驻改版和运营周报。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/skills/0/name",
+              "text": "SQL"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/skills/1/name",
+              "text": "Excel"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/skills/2/name",
+              "text": "需求分析与PRD"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/s",
+              "text": "企业入驻配置存在障碍。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/t",
+              "text": "负责入驻需求和验收。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+              "text": "访谈客户，分析漏斗，编写PRD并协调交付"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/r",
+              "text": "改版已上线并通过验收。"
+            },
+            "SOURCE_009": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/s",
+              "text": "运营需要每周汇总数据。"
+            },
+            "SOURCE_010": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+              "text": "减少周报重复劳动。"
+            },
+            "SOURCE_011": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a",
+              "text": "整理指标并用SQL和Excel输出周报"
+            },
+            "SOURCE_012": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/r",
+              "text": "交付周报模板供运营使用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "个人总结陈述较为简略，与目标SaaS产品经理岗位的深度聚焦略有不足。",
+            "个人总结与经历标题文字略有重复，概括性价值较弱。"
+          ]
+        },
+        "TASK_004": {
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.s",
+          "before": "企业入驻配置存在障碍。",
+          "issue_ids": [
+            "ISSUE_READ_01"
+          ],
+          "dimension": "内容可读",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/s",
+              "text": "企业入驻配置存在障碍。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/t",
+              "text": "负责入驻需求和验收。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+              "text": "访谈客户，分析漏斗，编写PRD并协调交付"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/r",
+              "text": "改版已上线并通过验收。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/s",
+              "text": "企业入驻配置存在障碍。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/t",
+              "text": "负责入驻需求和验收。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+              "text": "访谈客户，分析漏斗，编写PRD并协调交付"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/r",
+              "text": "改版已上线并通过验收。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "情境与背景描述单薄，业务细节信息密度偏低。"
+          ]
+        },
+        "TASK_005": {
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.s",
+          "before": "运营需要每周汇总数据。",
+          "issue_ids": [
+            "ISSUE_READ_01"
+          ],
+          "dimension": "内容可读",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/s",
+              "text": "运营需要每周汇总数据。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+              "text": "减少周报重复劳动。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a",
+              "text": "整理指标并用SQL和Excel输出周报"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/r",
+              "text": "交付周报模板供运营使用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/s",
+              "text": "运营需要每周汇总数据。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+              "text": "减少周报重复劳动。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a",
+              "text": "整理指标并用SQL和Excel输出周报"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/r",
+              "text": "交付周报模板供运营使用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "情境与背景描述单薄，业务细节信息密度偏低。"
+          ]
+        },
+        "TASK_006": {
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.a",
+          "before": "访谈客户，分析漏斗，编写PRD并协调交付",
+          "issue_ids": [
+            "ISSUE_READ_02"
+          ],
+          "dimension": "内容可读",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/s",
+              "text": "企业入驻配置存在障碍。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/t",
+              "text": "负责入驻需求和验收。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+              "text": "访谈客户，分析漏斗，编写PRD并协调交付"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/r",
+              "text": "改版已上线并通过验收。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/s",
+              "text": "企业入驻配置存在障碍。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/t",
+              "text": "负责入驻需求和验收。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+              "text": "访谈客户，分析漏斗，编写PRD并协调交付"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/r",
+              "text": "改版已上线并通过验收。"
+            }
+          },
+          "allow_question": false,
+          "problems": [
+            "经历中的Action句子末尾缺失句末标点符号，影响排版规范度。"
+          ]
+        },
+        "TASK_007": {
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.a",
+          "before": "整理指标并用SQL和Excel输出周报",
+          "issue_ids": [
+            "ISSUE_READ_02"
+          ],
+          "dimension": "内容可读",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/s",
+              "text": "运营需要每周汇总数据。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+              "text": "减少周报重复劳动。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a",
+              "text": "整理指标并用SQL和Excel输出周报"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/r",
+              "text": "交付周报模板供运营使用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/s",
+              "text": "运营需要每周汇总数据。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+              "text": "减少周报重复劳动。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a",
+              "text": "整理指标并用SQL和Excel输出周报"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/r",
+              "text": "交付周报模板供运营使用。"
+            }
+          },
+          "allow_question": false,
+          "problems": [
+            "经历中的Action句子末尾缺失句末标点符号，影响排版规范度。"
+          ]
+        },
+        "RETAINED_FIELD_008": {
+          "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+          "field_path": "star.t",
+          "before": "负责入驻需求和验收。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_009": {
+          "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+          "field_path": "star.t",
+          "before": "减少周报重复劳动。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        }
+      },
+      "cleanup_fallbacks": {}
+    },
+    "coverage": [
+      {
+        "issue_id": "ISSUE_LOGIC_01",
+        "dimension": "逻辑清晰",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "unrepaired",
+        "description": "个人总结陈述较为简略，与目标SaaS产品经理岗位的深度聚焦略有不足。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "候选在后续恢复阶段发生变化，原覆盖审核已失效。",
+        "reviewed_candidates": [
+          "f35c21c3a69f422e6a218d87257a1f5130274d23fb9c9fa801ddba672aab2ed3"
+        ],
+        "coverage_input_hash": "f58cc4d273be59e96cdc284786ec2a7ab8dc42c378d9cd24f87cf679c2a57e6e"
+      },
+      {
+        "issue_id": "ISSUE_STAR_01",
+        "dimension": "STAR应用",
+        "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "经历的Result（结果）停留在项目交付与功能上线阶段，缺少上线后的业务成效或改善反馈。"
+      },
+      {
+        "issue_id": "ISSUE_STAR_01",
+        "dimension": "STAR应用",
+        "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "经历的Result（结果）停留在项目交付与功能上线阶段，缺少上线后的业务成效或改善反馈。"
+      },
+      {
+        "issue_id": "ISSUE_READ_01",
+        "dimension": "内容可读",
+        "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+        "field_path": "star.s",
+        "status": "uncovered",
+        "description": "情境与背景描述单薄，业务细节信息密度偏低。"
+      },
+      {
+        "issue_id": "ISSUE_READ_01",
+        "dimension": "内容可读",
+        "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+        "field_path": "star.s",
+        "status": "uncovered",
+        "description": "情境与背景描述单薄，业务细节信息密度偏低。"
+      },
+      {
+        "issue_id": "ISSUE_READ_02",
+        "dimension": "内容可读",
+        "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "经历中的Action句子末尾缺失句末标点符号，影响排版规范度。",
+        "repair_verdict": "repaired",
+        "repair_reason": "两版候选均在句末成功补全了句号，规范了标点排版。",
+        "reviewed_candidates": [
+          "e4e66984d063c24461d7b7e442c9134be01649b84c9be84841de91f268fd7e6b"
+        ],
+        "coverage_input_hash": "8d0d23ae8f585d00b7409db822b42e9fc55572e1cff0236e1569ba7d4c88faff"
+      },
+      {
+        "issue_id": "ISSUE_READ_02",
+        "dimension": "内容可读",
+        "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "经历中的Action句子末尾缺失句末标点符号，影响排版规范度。",
+        "repair_verdict": "repaired",
+        "repair_reason": "两版候选均在句末成功补全了句号，规范了标点排版。",
+        "reviewed_candidates": [
+          "bd73c436727b8ee6eb39f622838c0be6cf3fa3fa8cf9f37b176f76a225f2d785"
+        ],
+        "coverage_input_hash": "0d45490d20d2415ed55c3f0442c244e7f7774677014e815ce05226cef992b7cd"
+      },
+      {
+        "issue_id": "ISSUE_READ_03",
+        "dimension": "内容可读",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "unrepaired",
+        "description": "个人总结与经历标题文字略有重复，概括性价值较弱。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "候选在后续恢复阶段发生变化，原覆盖审核已失效。",
+        "reviewed_candidates": [
+          "f35c21c3a69f422e6a218d87257a1f5130274d23fb9c9fa801ddba672aab2ed3"
+        ],
+        "coverage_input_hash": "9cfe4465fa8b2419a9f131b133aae731fe864655ff64ae90006b097346d70c22"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_01",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_02",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_03",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_04",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_05",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_06",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_0",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_1",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      }
+    ],
+    "changes": [
+      {
+        "change_id": "CHANGE_TASK_001",
+        "issue_ids": [
+          "ISSUE_STAR_01"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "改版已上线并通过验收。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002",
+        "issue_ids": [
+          "ISSUE_STAR_01"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "交付周报模板供运营使用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003",
+        "issue_ids": [
+          "ISSUE_LOGIC_01"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "有产品工作经验，参与入驻改版和运营周报。",
+        "general_value": "有产品工作经验，掌握需求分析与PRD、SQL及Excel；曾参与入驻改版，开展客户访谈、漏斗分析、编写PRD并协调交付，以及整理指标输出运营周报以减少重复劳动。",
+        "targeted_value": "有产品工作经验，掌握需求分析与PRD、SQL及Excel；曾参与入驻改版，开展客户访谈、漏斗分析、编写PRD并协调交付，以及整理指标输出运营周报以减少重复劳动。",
+        "source_refs": [
+          "/currentResume/personal_summary",
+          "/currentResume/skills/0/name",
+          "/currentResume/skills/1/name",
+          "/currentResume/skills/2/name",
+          "/selectedSourceExperiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a",
+          "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/t",
+          "/selectedSourceExperiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "综合已有的技能点与项目经历，强化产品专业能力与项目成果的概括，提升总结的聚焦度与信息密度。 已按审核意见收窄摘要，并重新通过来源与事实审核。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "40e72951d3a9886797d9b708203c2730560e195a45bfc4cfdcbabc02d40dfff0",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容中的产品经验、掌握技能（需求分析与PRD、SQL、Excel）、参与入驻改版的相关工作（客户访谈、漏斗分析、编写PRD并协调交付）以及整理指标输出周报以减少重复劳动，均在提供的参考信息中有明确支持。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_0",
+        "issue_ids": [
+          "ISSUE_READ_03"
+        ],
+        "dimension": "内容可读",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "有产品工作经验，参与入驻改版和运营周报。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_004",
+        "issue_ids": [
+          "ISSUE_READ_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+        "field_path": "star.s",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "企业入驻配置存在障碍。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "现有来源信息不足以在不臆造细节的前提下扩充背景，保持现状。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_005",
+        "issue_ids": [
+          "ISSUE_READ_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+        "field_path": "star.s",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "运营需要每周汇总数据。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "现有来源信息有限，无法在不臆测的前提下补充更多背景细节，保持现状。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_006",
+        "issue_ids": [
+          "ISSUE_READ_02"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "1839743b-e6c9-5182-8d3c-887927e32c73",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "访谈客户，分析漏斗，编写PRD并协调交付",
+        "general_value": "访谈客户，分析漏斗，编写PRD并协调交付。",
+        "targeted_value": "访谈客户，分析漏斗，编写PRD并协调交付。",
+        "source_refs": [
+          "/currentResume/experiences/1839743b-e6c9-5182-8d3c-887927e32c73/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "补齐句末标点符号，规范排版格式。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "e4e66984d063c24461d7b7e442c9134be01649b84c9be84841de91f268fd7e6b",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写仅补全了句末标点符号，内容与来源完全一致。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_007",
+        "issue_ids": [
+          "ISSUE_READ_02"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "整理指标并用SQL和Excel输出周报",
+        "general_value": "整理指标并用SQL和Excel输出周报。",
+        "targeted_value": "整理指标并用SQL和Excel输出周报。",
+        "source_refs": [
+          "/currentResume/experiences/d9fcc8cb-8530-5f69-bce9-bd00421febf1/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "补齐句末标点符号，规范排版格式。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "bd73c436727b8ee6eb39f622838c0be6cf3fa3fa8cf9f37b176f76a225f2d785",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写仅补全了句末标点符号，内容与来源完全一致。"
+        }
+      },
+      {
+        "change_id": "RETAINED_0",
+        "issue_ids": [
+          "ISSUE_QUANT_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_1",
+        "issue_ids": [
+          "ISSUE_QUANT_02"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_2",
+        "issue_ids": [
+          "ISSUE_QUANT_03"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_3",
+        "issue_ids": [
+          "ISSUE_QUANT_04"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_4",
+        "issue_ids": [
+          "ISSUE_QUANT_05"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_5",
+        "issue_ids": [
+          "ISSUE_QUANT_06"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_6",
+        "issue_ids": [
+          "RUBRIC_内容完整_0"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_7",
+        "issue_ids": [
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHANGE_TASK_003",
+        "CHANGE_TASK_006",
+        "CHANGE_TASK_007"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHANGE_TASK_001",
+        "CHANGE_TASK_002",
+        "CHANGE_TASK_003_RELATED_0",
+        "CHANGE_TASK_004",
+        "CHANGE_TASK_005",
+        "RETAINED_0",
+        "RETAINED_1",
+        "RETAINED_2",
+        "RETAINED_3",
+        "RETAINED_4",
+        "RETAINED_5",
+        "RETAINED_6",
+        "RETAINED_7"
+      ],
+      "findings": []
+    },
+    "answers": [
+      {
+        "question_id": "QUESTION_TASK_001",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      },
+      {
+        "question_id": "QUESTION_TASK_002",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      }
+    ],
+    "accepted": [
+      "CHANGE_TASK_003",
+      "CHANGE_TASK_006",
+      "CHANGE_TASK_007"
+    ],
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "有产品工作经验，掌握需求分析与PRD、SQL及Excel；曾参与入驻改版，开展客户访谈、漏斗分析、编写PRD并协调交付，以及整理指标输出运营周报以减少重复劳动。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "云桥软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "企业入驻配置存在障碍。",
+            "t": "负责入驻需求和验收。",
+            "a": "访谈客户，分析漏斗，编写PRD并协调交付。",
+            "r": "改版已上线并通过验收。"
+          },
+          "id": "1839743b-e6c9-5182-8d3c-887927e32c73"
+        },
+        {
+          "category": "project",
+          "title": "运营周报自动化",
+          "org": "云桥软件（虚构）",
+          "start_date": "2024-04-01",
+          "end_date": "2024-06-30",
+          "is_current": false,
+          "star": {
+            "s": "运营需要每周汇总数据。",
+            "t": "减少周报重复劳动。",
+            "a": "整理指标并用SQL和Excel输出周报。",
+            "r": "交付周报模板供运营使用。"
+          },
+          "id": "d9fcc8cb-8530-5f69-bce9-bd00421febf1"
+        }
+      ]
+    }
+  },
+  "diagnostics": []
+}

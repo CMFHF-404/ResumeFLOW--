@@ -1,0 +1,212 @@
+{
+  "passed": false,
+  "stages": {
+    "baseline": {
+      "scheduled": 30,
+      "executed": 30,
+      "successes": 10,
+      "failures": 20,
+      "blocked": 0,
+      "executed_success_rate": 0.3333333333333333,
+      "scheduled_success_coverage": 0.3333333333333333
+    },
+    "optimization": {
+      "scheduled": 20,
+      "executed": 12,
+      "successes": 4,
+      "failures": 8,
+      "blocked": 8,
+      "executed_success_rate": 0.3333333333333333,
+      "scheduled_success_coverage": 0.2
+    },
+    "post": {
+      "scheduled": 30,
+      "executed": 6,
+      "successes": 5,
+      "failures": 1,
+      "blocked": 24,
+      "executed_success_rate": 0.8333333333333334,
+      "scheduled_success_coverage": 0.16666666666666666
+    },
+    "blind": {
+      "scheduled": 10,
+      "executed": 2,
+      "successes": 2,
+      "failures": 0,
+      "blocked": 8,
+      "executed_success_rate": 1.0,
+      "scheduled_success_coverage": 0.2
+    }
+  },
+  "samples": [
+    {
+      "id": "R7K2",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "planning_failed",
+          "error_type": "OptimizationPlanNormalizationError"
+        },
+        {
+          "repeat": 2,
+          "status": "planning_failed",
+          "error_type": "OptimizationPlanNormalizationError"
+        }
+      ]
+    },
+    {
+      "id": "R2M9",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "planning_failed",
+          "error_type": "OptimizationPlanNormalizationError"
+        },
+        {
+          "repeat": 2,
+          "status": "planning_failed",
+          "error_type": "OptimizationPlanNormalizationError"
+        }
+      ]
+    },
+    {
+      "id": "R8P4",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "unchanged_control",
+          "exact_resume_equal": true,
+          "accepted_count": 0
+        },
+        {
+          "repeat": 2,
+          "status": "unchanged_control",
+          "exact_resume_equal": true,
+          "accepted_count": 0
+        }
+      ]
+    },
+    {
+      "id": "R3V6",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "planning_failed",
+          "error_type": "OptimizationPlanNormalizationError"
+        },
+        {
+          "repeat": 2,
+          "status": "planning_failed",
+          "error_type": "OptimizationPlanNormalizationError"
+        }
+      ]
+    },
+    {
+      "id": "H4Q1",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "unchanged_control",
+          "exact_resume_equal": true,
+          "accepted_count": 0
+        },
+        {
+          "repeat": 2,
+          "status": "unchanged_control",
+          "exact_resume_equal": true,
+          "accepted_count": 0
+        }
+      ]
+    },
+    {
+      "id": "H9S2",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "blocked_by_baseline"
+        },
+        {
+          "repeat": 2,
+          "status": "blocked_by_baseline"
+        }
+      ]
+    },
+    {
+      "id": "N6D2",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "planning_failed",
+          "error_type": "OptimizationPlanNormalizationError"
+        },
+        {
+          "repeat": 2,
+          "status": "planning_failed",
+          "error_type": "OptimizationPlanNormalizationError"
+        }
+      ]
+    },
+    {
+      "id": "N4T8",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "blocked_by_baseline"
+        },
+        {
+          "repeat": 2,
+          "status": "blocked_by_baseline"
+        }
+      ]
+    },
+    {
+      "id": "P5L2",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "blocked_by_baseline"
+        },
+        {
+          "repeat": 2,
+          "status": "blocked_by_baseline"
+        }
+      ]
+    },
+    {
+      "id": "P8C6",
+      "optimization_repeats": [
+        {
+          "repeat": 1,
+          "status": "blocked_by_baseline"
+        },
+        {
+          "repeat": 2,
+          "status": "blocked_by_baseline"
+        }
+      ]
+    }
+  ],
+  "frozen_code_and_artifacts": "unchanged",
+  "gate_revalidated": true,
+  "scoring_budget": {
+    "request_count": 36,
+    "calls_per_request": {
+      "3": 24,
+      "4": 1,
+      "5": 11
+    },
+    "max_seconds": 112.92,
+    "generation_attempts": 84,
+    "audit_attempts": 47
+  },
+  "text_candidate_approval_rate": null,
+  "text_candidate_status": "no_candidates; cannot pass 95% gate",
+  "validation": {
+    "backend_passed": 1050,
+    "backend_skipped": 5,
+    "frontend_tests": 205,
+    "frontend_evidence": "unchanged inputs; prior run passed",
+    "typecheck": "prior passed; unchanged frontend",
+    "build": "prior passed; unchanged frontend"
+  }
+}

@@ -1386,7 +1386,7 @@ class AiRuntimeBudgetTests(unittest.IsolatedAsyncioTestCase):
                     recorder.assert_awaited_once()
                     self.assertEqual(recorder.await_args.args[0]["status"], "failed")
 
-    async def test_all_stream_transports_record_non_sse_failure_once(self):
+    async def test_stream_transports_do_not_bill_responses_compatibility_fallback_as_failure(self):
         fake_settings = SimpleNamespace(
             ai_model="qwen-test",
             ai_base_url="https://provider.example/v1",
@@ -1398,26 +1398,35 @@ class AiRuntimeBudgetTests(unittest.IsolatedAsyncioTestCase):
             ai_timeout_seconds=300,
         )
         operations = (
-            lambda: llm_transport._stream_gemini_json_response_legacy(
-                system_prompt="system",
-                user_parts=[{"text": "hello"}],
-                error_message="failed",
-                request_label="gemini-non-sse",
+            (
+                lambda: llm_transport._stream_gemini_json_response_legacy(
+                    system_prompt="system",
+                    user_parts=[{"text": "hello"}],
+                    error_message="failed",
+                    request_label="gemini-non-sse",
+                ),
+                True,
             ),
-            lambda: llm_transport._stream_qwen_responses_json_response(
-                system_prompt="system",
-                user_parts=[{"text": "hello"}],
-                error_message="failed",
-                request_label="responses-non-sse",
+            (
+                lambda: llm_transport._stream_qwen_responses_json_response(
+                    system_prompt="system",
+                    user_parts=[{"text": "hello"}],
+                    error_message="failed",
+                    request_label="responses-non-sse",
+                ),
+                False,
             ),
-            lambda: llm_transport._stream_qwen_json_response(
-                system_prompt="system",
-                user_parts=[{"text": "hello"}],
-                error_message="failed",
-                request_label="chat-non-sse",
+            (
+                lambda: llm_transport._stream_qwen_json_response(
+                    system_prompt="system",
+                    user_parts=[{"text": "hello"}],
+                    error_message="failed",
+                    request_label="chat-non-sse",
+                ),
+                True,
             ),
         )
-        for operation in operations:
+        for operation, should_record_failure in operations:
             with self.subTest(operation=operation.__code__.co_firstlineno):
                 response = _FakeSseResponse(
                     ['{"unexpected":true}'],
@@ -1438,8 +1447,11 @@ class AiRuntimeBudgetTests(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaises(ValueError):
                         await operation()
 
-                recorder.assert_awaited_once()
-                self.assertEqual(recorder.await_args.args[0]["status"], "failed")
+                if should_record_failure:
+                    recorder.assert_awaited_once()
+                    self.assertEqual(recorder.await_args.args[0]["status"], "failed")
+                else:
+                    recorder.assert_not_awaited()
 
     async def test_all_stream_transports_record_usage_before_empty_answer_failure(self):
         fake_settings = SimpleNamespace(

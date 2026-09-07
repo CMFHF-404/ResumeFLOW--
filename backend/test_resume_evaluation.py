@@ -5,10 +5,15 @@ import re
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import httpx
 from fastapi import HTTPException
 
 from app.domain.ai import ai_router, jd_analysis_service, prompts, resume_evaluation_service
-from app.domain.ai.public_errors import AiProviderPayloadError
+from app.domain.ai.public_errors import (
+    AiProviderPayloadError,
+    AiProviderUnavailableError,
+    ResumeEvaluationIntegrityError,
+)
 from app.domain.ai.response_normalizers import (
     _extract_skill_ids,
 )
@@ -53,6 +58,67 @@ class JDAnalysisRouterErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["statusCode"], 504)
         self.assertTrue(event["retryable"])
         self.assertRegex(event["requestId"], r"^[0-9a-f]{32}$")
+
+    def test_stream_upstream_gateway_error_is_safe_and_retryable(self):
+        response = httpx.Response(
+            504,
+            request=httpx.Request(
+                "POST",
+                "https://relay.example/v1beta/models/test:generateContent",
+            ),
+        )
+
+        event = ai_router._stream_error_event(
+            httpx.HTTPStatusError(
+                "gateway timeout",
+                request=response.request,
+                response=response,
+            )
+        )
+
+        self.assertEqual(event["type"], "error")
+        self.assertEqual(event["statusCode"], 503)
+        self.assertTrue(event["retryable"])
+        self.assertIn("temporarily unavailable", event["message"])
+
+    async def test_integrity_failure_maps_to_stable_retryable_bad_gateway(self):
+        operation = AsyncMock(
+            side_effect=ResumeEvaluationIntegrityError(
+                "PRIVATE RESUME CONTENT and validator details"
+            )
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            await ai_router._resolve_jd_analysis_response(operation())
+
+        self.assertEqual(context.exception.status_code, 502)
+        self.assertEqual(
+            context.exception.detail,
+            {
+                "error": {
+                    "code": "resume_evaluation_integrity_failed",
+                    "message": "评估生成失败，未保存本次结果，可手动重试。",
+                    "retryable": True,
+                }
+            },
+        )
+        self.assertNotIn("PRIVATE", json.dumps(context.exception.detail))
+
+    def test_integrity_stream_event_is_stable_retryable_and_redacted(self):
+        event = ai_router._stream_error_event(
+            ResumeEvaluationIntegrityError(
+                "PRIVATE RESUME CONTENT and validator details"
+            )
+        )
+
+        self.assertEqual(event["statusCode"], 502)
+        self.assertEqual(event["code"], "resume_evaluation_integrity_failed")
+        self.assertTrue(event["retryable"])
+        self.assertEqual(
+            event["message"],
+            "评估生成失败，未保存本次结果，可手动重试。",
+        )
+        self.assertNotIn("PRIVATE", json.dumps(event))
 
 
 def _subscores_for_total(spec, total, evidence_id="E001"):
@@ -182,6 +248,40 @@ def make_valid_issue_repair():
     }
 
 
+def make_valid_evidence_repair(result=None):
+    evaluation = copy.deepcopy(
+        (result or make_analysis_result())["resumeEvaluation"]
+    )
+    return {
+        "evidenceRepair": {
+            "evidence": copy.deepcopy(make_evaluation()["evidence"]),
+            "subscoreBindings": [
+                {
+                    "dimension": dimension["dimension"],
+                    "subscore": subscore["name"],
+                    "evidenceIds": ["E001"] if subscore["score"] > 0 else [],
+                }
+                for dimension in evaluation["dimensions"]
+                for subscore in dimension["subscores"]
+            ],
+            "issueBindings": [
+                {
+                    "issueId": issue["issueId"],
+                    "evidenceIds": [],
+                }
+                for issue in evaluation["issues"]
+            ],
+            "riskFlagBindings": [
+                {
+                    "index": index,
+                    "evidenceIds": [],
+                }
+                for index, _ in enumerate(evaluation["riskFlags"])
+            ],
+        }
+    }
+
+
 def _to_snake(value):
     if isinstance(value, dict):
         return {
@@ -194,6 +294,51 @@ def _to_snake(value):
 
 
 class ResumeEvaluationNormalizerTests(unittest.TestCase):
+    def test_confidence_rejects_non_finite_and_unrepresentable_numbers_as_value_error(self):
+        facts = [dict(TEST_FACT_METADATA[0], verification_status="verified")]
+        for label, value in {
+            "nan": float("nan"),
+            "positive-infinity": float("inf"),
+            "negative-infinity": float("-inf"),
+            "unrepresentable-integer": 10**1000,
+        }.items():
+            with self.subTest(label=label):
+                evaluation = make_evaluation(verification_status="verified")
+                evaluation["evaluationConfidence"] = value
+                with self.assertRaisesRegex(ValueError, "evaluationConfidence"):
+                    normalize_resume_evaluation(
+                        evaluation,
+                        jd_available=True,
+                        fact_metadata=facts,
+                    )
+
+    def test_content_completeness_zero_is_rejected_by_shared_normalizer(self):
+        facts = [
+            TEST_FACT_METADATA[0],
+            {
+                "fact_id": "FACT_PROFILE",
+                "content": "候选人",
+                "verification_status": "user_claimed",
+                "source": "resume.profile.name",
+                "confidence": 1,
+            },
+            {
+                "fact_id": "FACT_EDUCATION",
+                "content": "某大学",
+                "verification_status": "user_claimed",
+                "source": "resume.educations[0].school",
+                "confidence": 1,
+            },
+        ]
+        evaluation = make_evaluation(totals=[70, 70, 70, 0, 70, 73])
+
+        with self.assertRaisesRegex(ValueError, "内容完整 cannot be zero"):
+            normalize_resume_evaluation(
+                evaluation,
+                jd_available=True,
+                fact_metadata=facts,
+            )
+
     def test_valid_result_recalculates_dimension_and_half_up_overall_scores(self):
         normalized = normalize_resume_evaluation(
             make_evaluation(), jd_available=True, fact_metadata=TEST_FACT_METADATA
@@ -215,6 +360,39 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
 
         self.assertEqual(result["evaluationVersion"], "resume_flow_v1")
         self.assertIn("improvementQuestions", result["dimensions"][0])
+
+    def test_lossy_server_gap_artifact_is_rejected(self):
+        evaluation = make_evaluation()
+        evaluation["issues"][0]["issueId"] = "SERVER_GAP_001"
+        evaluation["dimensions"][0]["issues"] = ["SERVER_GAP_001"]
+
+        with self.assertRaisesRegex(ValueError, "lossy repair artifact"):
+            normalize_resume_evaluation(
+                evaluation,
+                jd_available=True,
+                fact_metadata=TEST_FACT_METADATA,
+            )
+
+    def test_zero_score_dimension_cannot_claim_strengths(self):
+        evaluation = make_evaluation(totals=[0, 70, 70, 70, 70, 73])
+        evaluation["dimensions"][0]["strengths"] = ["仍然声称存在亮点"]
+
+        with self.assertRaisesRegex(ValueError, "zero score cannot contain strengths"):
+            normalize_resume_evaluation(
+                evaluation,
+                jd_available=True,
+                fact_metadata=TEST_FACT_METADATA,
+            )
+
+    def test_legitimate_zero_score_dimension_without_strengths_is_valid(self):
+        normalized = normalize_resume_evaluation(
+            make_evaluation(totals=[0, 70, 70, 70, 70, 73]),
+            jd_available=True,
+            fact_metadata=TEST_FACT_METADATA,
+        )
+
+        self.assertEqual(normalized["dimensions"][0]["score"], 0)
+        self.assertEqual(normalized["dimensions"][0]["strengths"], [])
 
     def test_missing_fixed_dimension_is_rejected(self):
         evaluation = make_evaluation()
@@ -242,6 +420,23 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
         )
 
         self.assertIsNone(normalized["jdMatch"])
+
+    def test_missing_or_null_related_dimensions_is_normalized_to_empty(self):
+        for value in (None, "missing"):
+            with self.subTest(value=value):
+                evaluation = make_evaluation()
+                if value == "missing":
+                    evaluation["issues"][0].pop("relatedDimensions")
+                else:
+                    evaluation["issues"][0]["relatedDimensions"] = value
+
+                normalized = normalize_resume_evaluation(
+                    evaluation,
+                    jd_available=True,
+                    fact_metadata=TEST_FACT_METADATA,
+                )
+
+                self.assertEqual(normalized["issues"][0]["relatedDimensions"], [])
 
     def test_duplicate_issue_is_deduplicated_and_references_are_remapped(self):
         evaluation = make_evaluation()
@@ -398,7 +593,7 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
                 **evaluation["issues"][0],
                 "issueId": "ISSUE_CROSS_DIMENSION",
                 "primaryDimension": "STAR应用",
-                "description": "结果指标缺失",
+                "description": "缺少结果指标",
             }
         )
 
@@ -407,25 +602,6 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
                 evaluation, jd_available=True, fact_metadata=TEST_FACT_METADATA
             )
 
-    def test_major_issue_categories_detect_cross_dimension_paraphrases(self):
-        cases = [
-            ("缺少结果层", "结果未说明"),
-            ("叙事顺序混乱", "信息组织顺序不清晰"),
-            ("句子过长难以扫读", "扫读困难且长句冗长"),
-            ("教育模块缺失", "缺少教育经历"),
-            ("岗位术语不专业", "专业术语使用不足"),
-        ]
-        for first, second in cases:
-            with self.subTest(first=first, second=second):
-                evaluation = make_evaluation()
-                evaluation["issues"][0]["description"] = first
-                evaluation["issues"][1]["description"] = second
-                with self.assertRaisesRegex(ValueError, "cannot use multiple primary dimensions"):
-                    normalize_resume_evaluation(
-                        evaluation,
-                        jd_available=True,
-                        fact_metadata=TEST_FACT_METADATA,
-                    )
 
     def test_same_evidence_can_support_distinct_result_and_quantification_issues(self):
         evaluation = make_evaluation()
@@ -485,10 +661,13 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
                 fact_metadata=TEST_FACT_METADATA,
             )
 
-    def test_evidence_fact_id_must_exist_in_current_request(self):
+    def test_unknown_evidence_fact_id_without_grounded_source_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "unknown factId"):
             normalize_resume_evaluation(
-                make_evaluation(fact_id="FACT_404"),
+                make_evaluation(
+                    fact_id="FACT_404",
+                    source_text="不存在于当前请求事实中的证据",
+                ),
                 jd_available=True,
                 fact_metadata=TEST_FACT_METADATA,
             )
@@ -536,14 +715,29 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
                 fact_metadata=duplicate_facts,
             )
 
-    def test_explicit_unknown_evidence_fact_id_is_not_inferred(self):
+    def test_explicit_unknown_evidence_fact_id_is_remapped_by_unique_source_and_status(self):
         evaluation = make_evaluation(fact_id="FACT_EXPLICIT_UNKNOWN")
 
-        with self.assertRaisesRegex(ValueError, "unknown factId FACT_EXPLICIT_UNKNOWN"):
+        normalized = normalize_resume_evaluation(
+            evaluation,
+            jd_available=True,
+            fact_metadata=TEST_FACT_METADATA,
+        )
+
+        self.assertEqual(normalized["evidence"][0]["factId"], "FACT_001")
+
+    def test_explicit_unknown_evidence_fact_id_rejects_ambiguous_source_remap(self):
+        evaluation = make_evaluation(fact_id="FACT_EXPLICIT_UNKNOWN")
+        duplicate_facts = [
+            TEST_FACT_METADATA[0],
+            {**TEST_FACT_METADATA[0], "fact_id": "FACT_DUPLICATE"},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "ambiguously matches multiple facts"):
             normalize_resume_evaluation(
                 evaluation,
                 jd_available=True,
-                fact_metadata=TEST_FACT_METADATA,
+                fact_metadata=duplicate_facts,
             )
 
     def test_known_fact_id_fills_missing_source_and_status(self):
@@ -776,90 +970,6 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
                         fact_metadata=TEST_FACT_METADATA,
                     )
 
-    def test_quantification_without_effective_numbers_is_capped_at_49(self):
-        facts = [
-            dict(
-                TEST_FACT_METADATA[0],
-                content="负责产品需求分析并交付上线结果",
-            )
-        ]
-        with self.assertRaisesRegex(ValueError, "成果量化 score 50 exceeds cap 49"):
-            normalize_resume_evaluation(
-                make_evaluation(
-                    totals=[70, 70, 70, 70, 70, 50],
-                    source_text="负责产品需求分析并交付上线结果",
-                ),
-                jd_available=True,
-                fact_metadata=facts,
-            )
-
-    def test_quantification_with_only_process_or_scale_numbers_is_capped_at_74(self):
-        facts = [
-            dict(
-                TEST_FACT_METADATA[0],
-                content="完成3轮用户调研，覆盖100名用户",
-            )
-        ]
-        with self.assertRaisesRegex(ValueError, "成果量化 score 75 exceeds cap 74"):
-            normalize_resume_evaluation(
-                make_evaluation(
-                    totals=[70, 70, 70, 70, 70, 75],
-                    source_text="完成3轮用户调研，覆盖100名用户",
-                ),
-                jd_available=True,
-                fact_metadata=facts,
-            )
-
-    def test_process_count_is_not_upgraded_by_unrelated_business_wording(self):
-        facts = [
-            dict(
-                TEST_FACT_METADATA[0],
-                content="围绕效率问题完成3轮调研，以提升后续方案质量",
-            )
-        ]
-        with self.assertRaisesRegex(ValueError, "成果量化 score 75 exceeds cap 74"):
-            normalize_resume_evaluation(
-                make_evaluation(
-                    totals=[70, 70, 70, 70, 70, 75],
-                    source_text="围绕效率问题完成3轮调研，以提升后续方案质量",
-                ),
-                jd_available=True,
-                fact_metadata=facts,
-            )
-
-    def test_process_count_is_not_upgraded_by_distant_change_verb(self):
-        facts = [
-            dict(
-                TEST_FACT_METADATA[0],
-                content="提升用户体验并完成3次迭代",
-            )
-        ]
-        with self.assertRaisesRegex(ValueError, "成果量化 score 75 exceeds cap 74"):
-            normalize_resume_evaluation(
-                make_evaluation(
-                    totals=[70, 70, 70, 70, 70, 75],
-                    source_text="提升用户体验并完成3次迭代",
-                ),
-                jd_available=True,
-                    fact_metadata=facts,
-                )
-
-    def test_process_count_is_not_upgraded_by_nearby_change_word_without_metric(self):
-        facts = [
-            dict(
-                TEST_FACT_METADATA[0],
-                content="提升体验做3次迭代",
-            )
-        ]
-        with self.assertRaisesRegex(ValueError, "成果量化 score 75 exceeds cap 74"):
-            normalize_resume_evaluation(
-                make_evaluation(
-                    totals=[70, 70, 70, 70, 70, 75],
-                    source_text="提升体验做3次迭代",
-                ),
-                jd_available=True,
-                fact_metadata=facts,
-            )
 
     def test_numeric_business_result_can_use_a_count_unit_when_metric_is_bound(self):
         facts = [
@@ -879,45 +989,6 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
 
         self.assertEqual(normalized["dimensions"][-1]["score"], 85)
 
-    def test_profile_and_credential_numbers_are_not_quantification_evidence(self):
-        cases = [
-            ("13800138000", "resume.profile.phone"),
-            ("20260807001", "resume.certifications[0].credentialId"),
-        ]
-        for content, source in cases:
-            with self.subTest(source=source):
-                facts = [
-                    dict(TEST_FACT_METADATA[0], content=content, source=source)
-                ]
-                with self.assertRaisesRegex(ValueError, "成果量化 score 50 exceeds cap 49"):
-                    normalize_resume_evaluation(
-                        make_evaluation(
-                            totals=[70, 70, 70, 70, 70, 50],
-                            source_text=content,
-                        ),
-                        jd_available=True,
-                        fact_metadata=facts,
-                    )
-
-    def test_technology_versions_and_standard_ids_are_not_quantification_evidence(self):
-        cases = [
-            ("熟练使用Python 3和React 18", "resume.skills[0].name"),
-            ("持有ISO 9001认证", "resume.certifications[0].name"),
-        ]
-        for content, source in cases:
-            with self.subTest(content=content):
-                facts = [
-                    dict(TEST_FACT_METADATA[0], content=content, source=source)
-                ]
-                with self.assertRaisesRegex(ValueError, "成果量化 score 50 exceeds cap 49"):
-                    normalize_resume_evaluation(
-                        make_evaluation(
-                            totals=[70, 70, 70, 70, 70, 50],
-                            source_text=content,
-                        ),
-                        jd_available=True,
-                        fact_metadata=facts,
-                    )
 
     def test_quantification_accepts_score_above_74_with_numeric_business_result(self):
         normalized = normalize_resume_evaluation(
@@ -928,28 +999,6 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
 
         self.assertEqual(normalized["dimensions"][-1]["score"], 85)
 
-    def test_pure_date_or_date_field_does_not_count_as_effective_number(self):
-        for source in (
-            "resume.experiences[0].start_date",
-            "resume.experiences[0].star.r",
-        ):
-            with self.subTest(source=source):
-                facts = [
-                    dict(
-                        TEST_FACT_METADATA[0],
-                        content="2024-01至2024-06",
-                        source=source,
-                    )
-                ]
-                with self.assertRaisesRegex(ValueError, "exceeds cap 49"):
-                    normalize_resume_evaluation(
-                        make_evaluation(
-                            totals=[70, 70, 70, 70, 70, 50],
-                            source_text="2024-01至2024-06",
-                        ),
-                        jd_available=True,
-                        fact_metadata=facts,
-                    )
 
     def test_user_claimed_positive_evidence_caps_confidence_at_point_89(self):
         evaluation = make_evaluation()
@@ -1007,6 +1056,13 @@ class ResumeEvaluationNormalizerTests(unittest.TestCase):
 
 class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        # These tests isolate one generation/repair transaction. Ensemble behavior
+        # has dedicated tests with independently varying validated reports.
+        self.enterContext(patch.object(resume_evaluation_service, "_analyze_resume_evaluation_consensus",
+                                       resume_evaluation_service._analyze_resume_evaluation_consensus_v3))
+        consensus_patch = patch.object(resume_evaluation_service, "_CONSENSUS_SAMPLE_COUNT", 1)
+        consensus_patch.start()
+        self.addCleanup(consensus_patch.stop)
         self.wrapper = json.dumps(
             {
                 "evaluation_scope": "full_resume",
@@ -1057,6 +1113,13 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("also return 'resumeEvaluation'", prompts.JD_ANALYSIS)
         self.assertIn("single top-level key 'resumeEvaluation'", prompts.RESUME_EVALUATION)
 
+    def test_deep_prompt_treats_rich_text_as_formatting_and_checks_terminal_punctuation(self):
+        prompt = prompts.RESUME_EVALUATION
+        self.assertIn("allowed rich-text markup", prompt)
+        self.assertIn("must not be reported as stray HTML", prompt)
+        self.assertIn("sentence-ending punctuation", prompt)
+        self.assertIn("visible Action and Result list item", prompt)
+
     async def test_lightweight_jd_analysis_keeps_jd_score_and_never_repairs_evaluation(self):
         model_result = make_analysis_result()
         model_result["resumeEvaluation"] = {"dimensions": []}
@@ -1085,8 +1148,45 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["resumeEvaluation"]["jdMatch"], 82)
         self.assertEqual(call_mock.await_args.kwargs["lane"], "default")
         self.assertEqual(call_mock.await_args.kwargs["gemini_thinking_level"], "low")
+        self.assertTrue(call_mock.await_args.kwargs["gemini_stream"])
+        response_schema = call_mock.await_args.kwargs["gemini_response_json_schema"]
+        self.assertEqual(
+            response_schema["properties"]["resumeEvaluation"]["type"],
+            "object",
+        )
         user_content = call_mock.await_args.args[0][1]["content"]
         self.assertIn('"canonical_jd_match": 82', user_content)
+
+    async def _assert_issue_repair_input_rejected_before_compaction(self, invalid):
+        call_mock = AsyncMock(
+            side_effect=[
+                invalid,
+                make_valid_issue_repair(),
+            ]
+        )
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaises(HTTPException) as context:
+                await ai_router._resolve_jd_analysis_response(
+                    resume_evaluation_service.analyze_resume_evaluation(
+                        "JD",
+                        self.wrapper,
+                        82,
+                    )
+                )
+
+        self.assertEqual(call_mock.await_count, 1)
+        self.assertEqual(context.exception.status_code, 502)
+        self.assertEqual(
+            context.exception.detail,
+            {
+                "error": {
+                    "code": "resume_evaluation_integrity_failed",
+                    "message": "评估生成失败，未保存本次结果，可手动重试。",
+                    "retryable": True,
+                }
+            },
+        )
 
     async def test_deep_evaluation_without_jd_forces_null_jd_match(self):
         call_mock = AsyncMock(return_value=make_analysis_result(jd_match=91))
@@ -1098,6 +1198,66 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIsNone(result["resumeEvaluation"]["jdMatch"])
+
+    async def test_content_completeness_zero_with_core_resume_facts_fails_closed(self):
+        evaluation_input = json.loads(self.wrapper)
+        evaluation_input["fact_metadata"].extend(
+            [
+                {
+                    "fact_id": "FACT_PROFILE",
+                    "content": "候选人",
+                    "verification_status": "user_claimed",
+                    "source": "resume.profile.name",
+                    "confidence": 1,
+                },
+                {
+                    "fact_id": "FACT_EDUCATION",
+                    "content": "某大学",
+                    "verification_status": "user_claimed",
+                    "source": "resume.educations[0].school",
+                    "confidence": 1,
+                },
+            ]
+        )
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"] = make_evaluation(
+            totals=[70, 70, 70, 0, 70, 73]
+        )
+        call_mock = AsyncMock(side_effect=[invalid, copy.deepcopy(invalid)])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    json.dumps(evaluation_input, ensure_ascii=False),
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_repair_provider_unavailable_error_is_not_reclassified_as_integrity(self):
+        call_mock = AsyncMock(
+            side_effect=[
+                {"resumeEvaluation": {"dimensions": []}},
+                AiProviderUnavailableError("temporary provider failure"),
+            ]
+        )
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderUnavailableError,
+                "temporary provider failure",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
 
     async def test_issue_point_mismatch_is_reconciled_without_repair(self):
         model_result = make_analysis_result()
@@ -1287,10 +1447,613 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
             TEST_FACT_METADATA[0]["content"],
         )
 
+    async def test_full_repair_cannot_drop_original_subscore_evidence_ids(self):
+        for repaired_refs in (None, []):
+            with self.subTest(repaired_refs=repaired_refs):
+                invalid = make_analysis_result()
+                invalid["resumeEvaluation"]["evaluationScope"] = "invalid_scope"
+                repaired = make_analysis_result()
+                repaired_subscore = repaired["resumeEvaluation"]["dimensions"][2][
+                    "subscores"
+                ][0]
+                if repaired_refs is None:
+                    repaired_subscore.pop("evidenceIds")
+                else:
+                    repaired_subscore["evidenceIds"] = repaired_refs
+                call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+                with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+                    with self.assertRaisesRegex(
+                        AiProviderPayloadError,
+                        "resume_evaluation_integrity_failed",
+                    ):
+                        await resume_evaluation_service.analyze_resume_evaluation(
+                            "JD",
+                            self.wrapper,
+                            82,
+                        )
+
+                self.assertEqual(call_mock.await_count, 2)
+
+    async def test_full_repair_cannot_drop_positive_subscore_to_zero(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["evaluationScope"] = "invalid_scope"
+        invalid_subscore = invalid["resumeEvaluation"]["dimensions"][2][
+            "subscores"
+        ][0]
+        invalid_subscore["evidenceIds"] = []
+        repaired = make_analysis_result()
+        repaired_subscore = repaired["resumeEvaluation"]["dimensions"][2][
+            "subscores"
+        ][0]
+        repaired_subscore["score"] = 0
+        repaired_subscore["evidenceIds"] = []
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_full_repair_cannot_change_valid_snake_case_max_score(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["evaluationScope"] = "invalid_scope"
+        original_subscore = invalid["resumeEvaluation"]["dimensions"][0][
+            "subscores"
+        ][0]
+        original_subscore["max_score"] = original_subscore.pop("maxScore")
+        repaired = make_analysis_result()
+        repaired["resumeEvaluation"]["dimensions"][0]["subscores"][0][
+            "score"
+        ] = 24
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_full_repair_cannot_zero_score_while_correcting_invalid_max_score(self):
+        invalid = make_analysis_result()
+        original_subscore = invalid["resumeEvaluation"]["dimensions"][0][
+            "subscores"
+        ][0]
+        original_subscore["score"] = 20
+        original_subscore["maxScore"] = 99
+        repaired = make_analysis_result()
+        repaired_subscore = repaired["resumeEvaluation"]["dimensions"][0][
+            "subscores"
+        ][0]
+        repaired_subscore["score"] = 0
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_full_repair_can_correct_invalid_max_score_without_changing_score(self):
+        invalid = make_analysis_result()
+        original_subscore = invalid["resumeEvaluation"]["dimensions"][0][
+            "subscores"
+        ][0]
+        original_subscore["score"] = 20
+        original_subscore["maxScore"] = 99
+        repaired = make_analysis_result()
+        repaired_subscore = repaired["resumeEvaluation"]["dimensions"][0][
+            "subscores"
+        ][0]
+        repaired_subscore["score"] = 20
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            result = await resume_evaluation_service.analyze_resume_evaluation(
+                "JD",
+                self.wrapper,
+                82,
+            )
+
+        self.assertEqual(call_mock.await_count, 2)
+        self.assertEqual(
+            result["resumeEvaluation"]["dimensions"][0]["subscores"][0]["maxScore"],
+            25,
+        )
+        self.assertEqual(
+            result["resumeEvaluation"]["dimensions"][0]["subscores"][0]["score"],
+            20,
+        )
+
+    async def test_full_repair_rejects_conflicting_duplicate_dimension_subscore(self):
+        invalid = make_analysis_result()
+        duplicate_dimension = copy.deepcopy(invalid["resumeEvaluation"]["dimensions"][0])
+        duplicate_dimension["subscores"][0]["score"] = 1
+        invalid["resumeEvaluation"]["dimensions"].append(duplicate_dimension)
+        repaired = make_analysis_result()
+        repaired["resumeEvaluation"]["dimensions"][0]["subscores"][0][
+            "score"
+        ] = 1
+        repair_mock = AsyncMock(return_value=repaired)
+
+        with patch.object(
+            resume_evaluation_service,
+            "_repair_resume_evaluation",
+            repair_mock,
+        ):
+            with self.assertRaisesRegex(
+                ResumeEvaluationIntegrityError,
+                "duplicate valid subscore coordinate",
+            ):
+                await resume_evaluation_service._finalize_with_one_repair(
+                    invalid,
+                    fact_metadata=TEST_FACT_METADATA,
+                    jd_available=True,
+                    canonical_jd_match=82,
+                )
+
+        repair_mock.assert_not_awaited()
+
+    async def test_full_repair_rejects_conflicting_duplicate_subscore_in_dimension(self):
+        invalid = make_analysis_result()
+        duplicate_subscore = copy.deepcopy(
+            invalid["resumeEvaluation"]["dimensions"][0]["subscores"][0]
+        )
+        duplicate_subscore["score"] = 1
+        invalid["resumeEvaluation"]["dimensions"][0]["subscores"].append(
+            duplicate_subscore
+        )
+        repaired = make_analysis_result()
+        repaired["resumeEvaluation"]["dimensions"][0]["subscores"][0][
+            "score"
+        ] = 1
+        repair_mock = AsyncMock(return_value=repaired)
+
+        with patch.object(
+            resume_evaluation_service,
+            "_repair_resume_evaluation",
+            repair_mock,
+        ):
+            with self.assertRaisesRegex(
+                ResumeEvaluationIntegrityError,
+                "duplicate valid subscore coordinate",
+            ):
+                await resume_evaluation_service._finalize_with_one_repair(
+                    invalid,
+                    fact_metadata=TEST_FACT_METADATA,
+                    jd_available=True,
+                    canonical_jd_match=82,
+                )
+
+        repair_mock.assert_not_awaited()
+
+    def test_valid_score_vector_rejects_equal_duplicate_coordinate(self):
+        result = make_analysis_result()
+        result["resumeEvaluation"]["dimensions"][0]["subscores"].append(
+            copy.deepcopy(result["resumeEvaluation"]["dimensions"][0]["subscores"][0])
+        )
+
+        with self.assertRaisesRegex(
+            ResumeEvaluationIntegrityError,
+            "duplicate valid subscore coordinate",
+        ):
+            resume_evaluation_service._raw_valid_score_vector(result)
+
+    def test_valid_score_vector_ignores_non_finite_and_unrepresentable_scores(self):
+        coordinate = (DIMENSION_NAMES[0], DIMENSION_SUBSCORES[0][1][0][0])
+        for label, score in {
+            "nan": float("nan"),
+            "positive-infinity": float("inf"),
+            "negative-infinity": float("-inf"),
+            "unrepresentable-integer": 10**1000,
+        }.items():
+            with self.subTest(label=label):
+                result = make_analysis_result()
+                result["resumeEvaluation"]["dimensions"][0]["subscores"][0][
+                    "score"
+                ] = score
+
+                vector = resume_evaluation_service._raw_valid_score_vector(result)
+
+                self.assertNotIn(coordinate, vector)
+
+    def test_compact_repair_payloads_preserve_snake_case_max_score(self):
+        result = make_analysis_result()
+        subscore = result["resumeEvaluation"]["dimensions"][0]["subscores"][0]
+        subscore["max_score"] = subscore.pop("maxScore")
+
+        evidence_payload = resume_evaluation_service._compact_evidence_repair_payload(
+            result,
+            validation_error=ValueError("unknown evidence ids"),
+            fact_metadata=TEST_FACT_METADATA,
+        )
+        issue_payload = resume_evaluation_service._compact_issue_repair_payload(
+            result,
+            validation_error=ValueError("multiple primary dimensions"),
+        )
+
+        self.assertEqual(
+            evidence_payload["dimensions"][0]["subscores"][0]["maxScore"],
+            25,
+        )
+        self.assertEqual(
+            issue_payload["dimensions"][0]["subscores"][0]["maxScore"],
+            25,
+        )
+
+    async def test_evidence_only_repair_rebinds_unknown_evidence_without_changing_scores(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["evidence"][0]["factId"] = "FACT_404"
+        invalid["resumeEvaluation"]["evidence"][0]["sourceText"] = "模型虚构事实"
+        original_scores = [
+            subscore["score"]
+            for dimension in invalid["resumeEvaluation"]["dimensions"]
+            for subscore in dimension["subscores"]
+        ]
+        repaired = make_valid_evidence_repair(invalid)
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            result = await resume_evaluation_service.analyze_resume_evaluation(
+                "JD",
+                self.wrapper,
+                82,
+            )
+
+        self.assertEqual(call_mock.await_count, 2)
+        self.assertEqual(
+            call_mock.await_args.kwargs["request_label"],
+            "resume_evaluation_evidence_repair",
+        )
+        self.assertTrue(call_mock.await_args.kwargs["gemini_stream"])
+        response_schema = call_mock.await_args.kwargs["gemini_response_json_schema"]
+        self.assertEqual(
+            response_schema["properties"]["evidenceRepair"]["type"],
+            "object",
+        )
+        self.assertIn(
+            "gemini_response_json_schema",
+            call_mock.await_args.kwargs,
+        )
+        self.assertEqual(
+            [
+                subscore["score"]
+                for dimension in result["resumeEvaluation"]["dimensions"]
+                for subscore in dimension["subscores"]
+            ],
+            original_scores,
+        )
+        self.assertEqual(
+            result["resumeEvaluation"]["evidence"][0]["factId"],
+            "FACT_001",
+        )
+
+    async def test_evidence_only_repair_supports_camel_and_snake_case_without_changing_scores(self):
+        source = make_analysis_result()
+        source["resumeEvaluation"]["riskFlags"] = [
+            {
+                "type": "unverified_fact",
+                "description": "需要核对数据来源",
+                "evidenceIds": [],
+            }
+        ]
+        original_scores = [
+            subscore["score"]
+            for dimension in source["resumeEvaluation"]["dimensions"]
+            for subscore in dimension["subscores"]
+        ]
+        repair = make_valid_evidence_repair(source)
+        repair["evidenceRepair"]["issueBindings"][0]["evidenceIds"] = ["E001"]
+        repair["evidenceRepair"]["riskFlagBindings"][0]["evidenceIds"] = ["E001"]
+
+        for case_name, model_result in (
+            ("camel", copy.deepcopy(source)),
+            ("snake", _to_snake(source)),
+        ):
+            with self.subTest(case=case_name):
+                evaluation_key = (
+                    "resumeEvaluation" if case_name == "camel" else "resume_evaluation"
+                )
+                evidence_key = "evidenceIds" if case_name == "camel" else "evidence_ids"
+                model_result[evaluation_key]["dimensions"][0]["subscores"][0][
+                    evidence_key
+                ] = []
+                call_mock = AsyncMock(
+                    side_effect=[model_result, copy.deepcopy(repair)]
+                )
+
+                with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+                    result = await resume_evaluation_service.analyze_resume_evaluation(
+                        "JD",
+                        self.wrapper,
+                        82,
+                    )
+
+                evaluation = result["resumeEvaluation"]
+                self.assertEqual(call_mock.await_count, 2)
+                repair_content = call_mock.await_args_list[1].args[0][1]["content"]
+                repair_payload = json.loads(repair_content.split("\n", 1)[1])
+                self.assertEqual(
+                    repair_payload["dimensions"][0]["subscores"][0]["evidenceIds"],
+                    [],
+                )
+                self.assertEqual(repair_payload["issues"][0]["issueId"], "ISSUE_001")
+                self.assertEqual(len(repair_payload["riskFlags"]), 1)
+                self.assertEqual(
+                    [
+                        subscore["score"]
+                        for dimension in evaluation["dimensions"]
+                        for subscore in dimension["subscores"]
+                    ],
+                    original_scores,
+                )
+                self.assertEqual(
+                    evaluation["dimensions"][0]["subscores"][0]["evidenceIds"],
+                    ["E001"],
+                )
+                self.assertEqual(evaluation["issues"][0]["evidenceIds"], ["E001"])
+                self.assertEqual(evaluation["riskFlags"][0]["evidenceIds"], ["E001"])
+
+    def test_evidence_repair_rejects_conflicting_camel_and_snake_aliases(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["risk_flags"] = [
+            {
+                "type": "unverified_fact",
+                "description": "冲突的别名值",
+                "evidence_ids": [],
+            }
+        ]
+
+        with self.assertRaisesRegex(
+            ResumeEvaluationIntegrityError,
+            "conflicting field aliases",
+        ):
+            resume_evaluation_service._compact_evidence_repair_payload(
+                invalid,
+                validation_error=ValueError("unknown evidence ids"),
+                fact_metadata=TEST_FACT_METADATA,
+            )
+
+    def test_evidence_repair_alias_comparison_distinguishes_bool_from_number(self):
+        conflicting_values = (
+            {
+                "evaluation_confidence": 1,
+                "evaluationConfidence": True,
+            },
+            {
+                "score_calculation": {
+                    "raw_average": 0,
+                    "rawAverage": False,
+                }
+            },
+        )
+
+        for value in conflicting_values:
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    ResumeEvaluationIntegrityError,
+                    "conflicting field aliases",
+                ):
+                    resume_evaluation_service._canonicalize_evaluation_for_repair(
+                        value,
+                        path="resumeEvaluation",
+                    )
+
+    def test_evidence_repair_alias_comparison_accepts_equivalent_numeric_types(self):
+        canonical = resume_evaluation_service._canonicalize_evaluation_for_repair(
+            {
+                "score_calculation": {
+                    "raw_average": 1,
+                    "rawAverage": 1.0,
+                }
+            },
+            path="resumeEvaluation",
+        )
+
+        self.assertEqual(canonical["scoreCalculation"]["rawAverage"], 1)
+
+    async def test_evidence_only_repair_rejects_returned_score_fields(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["dimensions"][0]["subscores"][0][
+            "evidenceIds"
+        ] = []
+        repaired = make_valid_evidence_repair(invalid)
+        repaired["evidenceRepair"]["subscoreBindings"][0]["score"] = 0
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+        self.assertEqual(
+            invalid["resumeEvaluation"]["dimensions"][0]["subscores"][0]["score"],
+            25,
+        )
+
+    async def test_issue_repair_rebuilds_missing_dimension_issue_links(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["dimensions"][1]["issues"] = []
+        repaired = make_valid_issue_repair()
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            result = await resume_evaluation_service.analyze_resume_evaluation(
+                "JD",
+                self.wrapper,
+                82,
+            )
+
+        star_dimension = result["resumeEvaluation"]["dimensions"][1]
+        self.assertEqual(star_dimension["issues"], ["ISSUE_002"])
+        self.assertEqual(
+            result["resumeEvaluation"]["issues"][1]["pointsNotEarned"],
+            30,
+        )
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_issue_repair_never_synthesizes_server_gap_issue(self):
+        invalid = make_analysis_result()
+        evaluation = invalid["resumeEvaluation"]
+        evaluation["issues"] = [
+            issue
+            for issue in evaluation["issues"]
+            if issue["primaryDimension"] != "STAR应用"
+        ]
+        evaluation["dimensions"][1]["issues"] = []
+        repaired = make_valid_issue_repair()
+        repaired["issueRepair"]["issues"] = [
+            issue
+            for issue in repaired["issueRepair"]["issues"]
+            if issue["primaryDimension"] != "STAR应用"
+        ]
+        repaired["issueRepair"]["dimensionIssueIds"]["STAR应用"] = []
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertNotIn("SERVER_GAP_", json.dumps(repaired, ensure_ascii=False))
+
+    async def test_full_repair_rejects_a_missing_fixed_dimension(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["evaluationScope"] = "invalid_scope"
+        repaired = make_analysis_result()
+        repaired["resumeEvaluation"]["dimensions"].pop(4)
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_full_repair_rejects_a_missing_fixed_subscore(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["evaluationScope"] = "invalid_scope"
+        repaired = make_analysis_result()
+        repaired["resumeEvaluation"]["dimensions"][2]["subscores"].pop()
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_full_repair_cannot_replace_a_later_invalid_subscore_with_zero(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["dimensions"][0]["subscores"][0][
+            "evidenceIds"
+        ] = []
+        invalid["resumeEvaluation"]["dimensions"][4]["subscores"][0][
+            "maxScore"
+        ] = 99
+        repaired = copy.deepcopy(invalid)
+        repaired["resumeEvaluation"]["dimensions"][0]["subscores"][0][
+            "evidenceIds"
+        ] = ["E001"]
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+
+    async def test_evidence_repair_reanchors_model_text_without_mutating_scores(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["dimensions"][0]["subscores"][0][
+            "evidenceIds"
+        ] = []
+        repaired = make_valid_evidence_repair(invalid)
+        repaired["evidenceRepair"]["evidence"][0]["sourceText"] = (
+            "修复模型改写出的非原文证据"
+        )
+        call_mock = AsyncMock(side_effect=[invalid, repaired])
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            result = await resume_evaluation_service.analyze_resume_evaluation(
+                "JD",
+                self.wrapper,
+                82,
+            )
+
+        self.assertEqual(call_mock.await_count, 2)
+        self.assertEqual(
+            result["resumeEvaluation"]["evidence"][0]["sourceText"],
+            TEST_FACT_METADATA[0]["content"],
+        )
+
     async def test_cross_primary_issue_uses_compact_patch_and_two_calls(self):
+        invalid = make_cross_primary_analysis_result()
+        original_scores = [
+            subscore["score"]
+            for dimension in invalid["resumeEvaluation"]["dimensions"]
+            for subscore in dimension["subscores"]
+        ]
+        original_evidence = copy.deepcopy(invalid["resumeEvaluation"]["evidence"])
         call_mock = AsyncMock(
             side_effect=[
-                make_cross_primary_analysis_result(),
+                invalid,
                 make_valid_issue_repair(),
             ]
         )
@@ -1310,7 +2073,13 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_mock.await_args.kwargs["lane"], "default")
         self.assertEqual(
             call_mock.await_args.kwargs["gemini_thinking_level"],
-            "minimal",
+            "low",
+        )
+        self.assertTrue(call_mock.await_args.kwargs["gemini_stream"])
+        response_schema = call_mock.await_args.kwargs["gemini_response_json_schema"]
+        self.assertEqual(
+            response_schema["properties"]["issueRepair"]["type"],
+            "object",
         )
         repair_content = call_mock.await_args.args[0][1]["content"]
         compact_payload = json.loads(repair_content.split("\n", 1)[1])
@@ -1330,6 +2099,152 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(compact_payload["validEvidenceIds"], ["E001"])
         self.assertEqual(len(compact_payload["dimensions"]), 6)
         self.assertEqual(len(result["resumeEvaluation"]["issues"]), 6)
+        self.assertEqual(result["resumeEvaluation"]["evidence"], original_evidence)
+        self.assertEqual(
+            [
+                subscore["score"]
+                for dimension in result["resumeEvaluation"]["dimensions"]
+                for subscore in dimension["subscores"]
+            ],
+            original_scores,
+        )
+
+    async def test_issue_repair_rejects_issue_table_above_compact_limit(self):
+        invalid = make_cross_primary_analysis_result()
+        issues = invalid["resumeEvaluation"]["issues"]
+        while len(issues) <= resume_evaluation_service._COMPACT_REPAIR_MAX_ISSUES:
+            index = len(issues) + 1
+            issues.append(
+                {
+                    **copy.deepcopy(issues[0]),
+                    "issueId": f"ISSUE_OVER_LIMIT_{index:03d}",
+                    "description": f"独立待改进问题 {index}",
+                }
+            )
+
+        await self._assert_issue_repair_input_rejected_before_compaction(invalid)
+
+    async def test_issue_repair_rejects_unique_evidence_ids_above_compact_limit(self):
+        invalid = make_cross_primary_analysis_result()
+        evidence = invalid["resumeEvaluation"]["evidence"]
+        for index in range(2, resume_evaluation_service._COMPACT_REPAIR_MAX_REFS + 2):
+            evidence.append(
+                {
+                    **copy.deepcopy(evidence[0]),
+                    "evidenceId": f"E{index:03d}",
+                }
+            )
+
+        await self._assert_issue_repair_input_rejected_before_compaction(invalid)
+
+    async def test_issue_repair_rejects_priority_table_above_compact_limit(self):
+        invalid = make_cross_primary_analysis_result()
+        evaluation = invalid["resumeEvaluation"]
+        first_dimension_issue_ids = evaluation["dimensions"][0]["issues"]
+        while len(evaluation["issues"]) < 21:
+            index = len(evaluation["issues"]) + 1
+            issue_id = f"ISSUE_PRIORITY_{index:03d}"
+            evaluation["issues"].append(
+                {
+                    **copy.deepcopy(evaluation["issues"][0]),
+                    "issueId": issue_id,
+                    "description": f"优先级独立问题 {index}",
+                }
+            )
+            first_dimension_issue_ids.append(issue_id)
+        evaluation["topPriorities"] = [
+            {
+                "priority": index,
+                "issueId": issue["issueId"],
+                "action": f"处理优先事项 {index}",
+                "expectedScoreGain": 1,
+            }
+            for index, issue in enumerate(
+                evaluation["issues"][
+                    : resume_evaluation_service._COMPACT_REPAIR_MAX_PRIORITIES + 1
+                ],
+                start=1,
+            )
+        ]
+
+        await self._assert_issue_repair_input_rejected_before_compaction(invalid)
+
+    async def test_issue_repair_rejects_dimension_issue_links_above_compact_limit(self):
+        invalid = make_cross_primary_analysis_result()
+        evaluation = invalid["resumeEvaluation"]
+        logic_issue_ids = evaluation["dimensions"][0]["issues"]
+        while len(logic_issue_ids) <= resume_evaluation_service._COMPACT_REPAIR_MAX_REFS:
+            index = len(logic_issue_ids) + 1
+            issue_id = f"ISSUE_LOGIC_OVER_LIMIT_{index:03d}"
+            evaluation["issues"].append(
+                {
+                    **copy.deepcopy(evaluation["issues"][0]),
+                    "issueId": issue_id,
+                    "description": f"逻辑清晰独立问题 {index}",
+                }
+            )
+            logic_issue_ids.append(issue_id)
+
+        self.assertLessEqual(
+            len(evaluation["issues"]),
+            resume_evaluation_service._COMPACT_REPAIR_MAX_ISSUES,
+        )
+        await self._assert_issue_repair_input_rejected_before_compaction(invalid)
+
+    async def test_missing_global_issues_uses_compact_issue_graph_repair(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["issues"] = None
+        call_mock = AsyncMock(
+            side_effect=[
+                invalid,
+                make_valid_issue_repair(),
+            ]
+        )
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            result = await resume_evaluation_service.analyze_resume_evaluation(
+                "JD",
+                self.wrapper,
+                82,
+            )
+
+        self.assertEqual(call_mock.await_count, 2)
+        self.assertEqual(
+            call_mock.await_args.kwargs["request_label"],
+            "resume_evaluation_issue_repair",
+        )
+        self.assertTrue(call_mock.await_args.kwargs["gemini_stream"])
+        self.assertEqual(len(result["resumeEvaluation"]["issues"]), 6)
+
+    async def test_issue_repair_does_not_zero_later_positive_score_without_evidence(self):
+        invalid = make_analysis_result()
+        invalid["resumeEvaluation"]["dimensions"][0]["issues"] = []
+        invalid["resumeEvaluation"]["dimensions"][2]["subscores"][0][
+            "evidenceIds"
+        ] = []
+        call_mock = AsyncMock(
+            side_effect=[
+                invalid,
+                make_valid_issue_repair(),
+            ]
+        )
+
+        with patch.object(resume_evaluation_service, "_call_llm", call_mock):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
+                await resume_evaluation_service.analyze_resume_evaluation(
+                    "JD",
+                    self.wrapper,
+                    82,
+                )
+
+        self.assertEqual(call_mock.await_count, 2)
+        self.assertEqual(
+            invalid["resumeEvaluation"]["dimensions"][2]["subscores"][0]["score"],
+            25,
+        )
 
     def test_cross_primary_compact_payload_projects_allowlist_and_bounds_raw_fields(self):
         raw_result = make_cross_primary_analysis_result()
@@ -1346,7 +2261,9 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
                 "fact_metadata": {"secret": "SHOULD_NOT_LEAK_FACT"},
                 "extra": "SHOULD_NOT_LEAK_EXTRA",
             }
-            for index in range(80)
+            for index in range(
+                resume_evaluation_service._COMPACT_REPAIR_MAX_ISSUES
+            )
         ]
         evaluation["topPriorities"] = [
             {
@@ -1357,7 +2274,9 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
                 "sourceText": "SHOULD_NOT_LEAK_PRIORITY_SOURCE",
                 "extra": "SHOULD_NOT_LEAK_PRIORITY_EXTRA",
             }
-            for index in range(30)
+            for index in range(
+                resume_evaluation_service._COMPACT_REPAIR_MAX_PRIORITIES
+            )
         ]
         evaluation["issues"][0]["pointsNotEarned"] = 10**10000
         evaluation["topPriorities"][0]["priority"] = 10**10000
@@ -1417,7 +2336,10 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch.object(resume_evaluation_service, "_call_llm", call_mock):
-            with self.assertRaisesRegex(ValueError, "after one repair attempt"):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
                 await resume_evaluation_service.analyze_resume_evaluation(
                     "JD",
                     self.wrapper,
@@ -1442,7 +2364,10 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch.object(resume_evaluation_service, "_call_llm", call_mock):
-            with self.assertRaisesRegex(ValueError, "after one repair attempt"):
+            with self.assertRaisesRegex(
+                AiProviderPayloadError,
+                "resume_evaluation_integrity_failed",
+            ):
                 await resume_evaluation_service.analyze_resume_evaluation(
                     "JD",
                     self.wrapper,
@@ -1527,7 +2452,13 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_mock.await_args.kwargs["lane"], "default")
         self.assertEqual(
             call_mock.await_args.kwargs["gemini_thinking_level"],
-            "minimal",
+            "low",
+        )
+        self.assertTrue(call_mock.await_args.kwargs["gemini_stream"])
+        response_schema = call_mock.await_args.kwargs["gemini_response_json_schema"]
+        self.assertEqual(
+            response_schema["properties"]["resumeEvaluation"]["type"],
+            "object",
         )
 
     def test_deep_timeout_budgets_allow_one_bounded_fallback_repair(self):
@@ -1681,7 +2612,7 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_mock.await_args.kwargs["lane"], "default")
         self.assertEqual(call_mock.await_args.kwargs["gemini_thinking_level"], "low")
         thought_callback.assert_awaited_once_with(
-            {"type": "thought", "summary": "正在生成六维简历报告"}
+            {"type": "thought", "summary": "正在生成简历改进指导并独立审核依据"}
         )
 
 

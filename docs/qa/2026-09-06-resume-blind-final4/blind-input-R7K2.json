@@ -1,0 +1,220 @@
+[
+  {
+    "id": "9e83a981",
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "云桥软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "",
+            "t": "",
+            "a": "参与产品工作，负责相关工作，参与相关工作",
+            "r": ""
+          },
+          "id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7"
+        },
+        {
+          "category": "project",
+          "title": "运营周报自动化",
+          "org": "云桥软件（虚构）",
+          "start_date": "2024-04-01",
+          "end_date": "2024-06-30",
+          "is_current": false,
+          "star": {
+            "s": "",
+            "t": "",
+            "a": "参与产品工作，负责相关工作，参与相关工作",
+            "r": ""
+          },
+          "id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2"
+        }
+      ]
+    },
+    "sources": {
+      "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7": {
+        "category": "work",
+        "title": "产品经理",
+        "org": "云桥软件（虚构）",
+        "start_date": "2022-07-01",
+        "end_date": "2025-06-30",
+        "is_current": false,
+        "star": {
+          "s": "",
+          "t": "",
+          "a": "参与产品工作，负责相关工作，参与相关工作",
+          "r": ""
+        },
+        "id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7"
+      },
+      "ce933d73-b79e-562d-87a2-7b3445fc0aa2": {
+        "category": "project",
+        "title": "运营周报自动化",
+        "org": "云桥软件（虚构）",
+        "start_date": "2024-04-01",
+        "end_date": "2024-06-30",
+        "is_current": false,
+        "star": {
+          "s": "",
+          "t": "",
+          "a": "参与产品工作，负责相关工作，参与相关工作",
+          "r": ""
+        },
+        "id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2"
+      }
+    }
+  },
+  {
+    "id": "766ceb72",
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "具备产品经理工作经验，掌握需求分析与PRD，掌握SQL及Excel技能。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "云桥软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "",
+            "t": "",
+            "a": "参与产品工作，负责相关工作，参与相关工作",
+            "r": ""
+          },
+          "id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7"
+        },
+        {
+          "category": "project",
+          "title": "运营周报自动化",
+          "org": "云桥软件（虚构）",
+          "start_date": "2024-04-01",
+          "end_date": "2024-06-30",
+          "is_current": false,
+          "star": {
+            "s": "",
+            "t": "",
+            "a": "参与产品工作，负责相关工作，参与相关工作",
+            "r": ""
+          },
+          "id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2"
+        }
+      ]
+    },
+    "sources": {
+      "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7": {
+        "category": "work",
+        "title": "产品经理",
+        "org": "云桥软件（虚构）",
+        "start_date": "2022-07-01",
+        "end_date": "2025-06-30",
+        "is_current": false,
+        "star": {
+          "s": "",
+          "t": "",
+          "a": "参与产品工作，负责相关工作，参与相关工作",
+          "r": ""
+        },
+        "id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7"
+      },
+      "ce933d73-b79e-562d-87a2-7b3445fc0aa2": {
+        "category": "project",
+        "title": "运营周报自动化",
+        "org": "云桥软件（虚构）",
+        "start_date": "2024-04-01",
+        "end_date": "2024-06-30",
+        "is_current": false,
+        "star": {
+          "s": "",
+          "t": "",
+          "a": "参与产品工作，负责相关工作，参与相关工作",
+          "r": ""
+        },
+        "id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2"
+      }
+    }
+  }
+]

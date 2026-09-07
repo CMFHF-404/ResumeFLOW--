@@ -7,6 +7,9 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 import uuid
 
+# Callers with a shared generation/audit budget own transport retries themselves.
+provider_retries_managed: ContextVar[bool] = ContextVar('provider_retries_managed', default=False)
+
 from fastapi import HTTPException, Request
 from fastapi.routing import APIRoute
 from starlette.status import HTTP_413_CONTENT_TOO_LARGE
@@ -304,16 +307,40 @@ def build_public_stream_error_event(
     request_id: str,
     preserve_value_error: bool = False,
     preserve_exceptions: tuple[type[Exception], ...] = (),
+    preserve_http_exception_detail: bool = True,
 ) -> dict[str, Any]:
     if isinstance(exc, HTTPException):
-        message = exc.detail if isinstance(exc.detail, str) else "请求处理失败。"
+        structured_detail = (
+            exc.detail.get("error", exc.detail)
+            if isinstance(exc.detail, dict)
+            else None
+        )
+        message = (
+            exc.detail
+            if preserve_http_exception_detail and isinstance(exc.detail, str)
+            else structured_detail.get("message")
+            if preserve_http_exception_detail
+            and isinstance(structured_detail, dict)
+            and isinstance(structured_detail.get("message"), str)
+            else "请求处理失败。"
+        )
         return {
             "type": "error",
-            "code": "http_error",
+            "code": (
+                structured_detail.get("code")
+                if isinstance(structured_detail, dict)
+                and isinstance(structured_detail.get("code"), str)
+                else "http_error"
+            ),
             "message": message,
             "requestId": request_id,
             "statusCode": exc.status_code,
-            "retryable": exc.status_code == 504,
+            "retryable": (
+                structured_detail.get("retryable")
+                if isinstance(structured_detail, dict)
+                and isinstance(structured_detail.get("retryable"), bool)
+                else exc.status_code in {429, 503, 504}
+            ),
         }
     if isinstance(exc, TERMINAL_AI_RUNTIME_ERRORS):
         return {

@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "N6D2",
+  "seconds": 4.29,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导内容准确反映了当前简历事实（如缺少电话、缺少句末标点），量化建议均以'如有真实记录'为前提并允许保留原文，未诱导编造事实或要求不属于该岗位的过度职责。各匿名版本建议一致，无冲突。",
+    "publishedVariantCount": 3
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "```json\n{\n  \"accurate\": true,\n  \"actionable\": true,\n  \"safe\": true,\n  \"requiresAdvancedResponsibilities\": false,\n  \"introducesFacts\": false,\n  \"contradictoryAdvice\": false,\n  \"reason\": \"指导内容准确反映了当前简历事实（如缺少电话、缺少句末标点），量化建议均以'如有真实记录'为前提并允许保留原文，未诱导编造事实或要求不属于该岗位的过度职责。各匿名版本建议一致，无冲突。\"\n}\n```",
+        "一致，无冲突。\"\n}\n```",
+        "  \"safe\": true,\n  \"requiresAdvancedResponsibilities\": false,\n  \"introducesFacts\": false,"
+      ]
+    }
+  ]
+}

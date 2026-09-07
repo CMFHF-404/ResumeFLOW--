@@ -178,8 +178,13 @@ const virtualModules = {
     export const experienceService = { listAll: async () => [], listAllCached: () => [] };
   `,
   jdAnalysisStorage: `
+    export const graftJDAnalysisAuthority = (draft, authority) => {
+      const { jdAnalysis: _discardedJDAnalysis, ...ordinaryConfig } = draft;
+      return authority ? { ...ordinaryConfig, jdAnalysis: authority } : ordinaryConfig;
+    };
     export const loadJDAnalysisCache = () => null;
     export const normalizeJDAnalysisPersistence = (value) => value ?? null;
+    export const resolveJDAnalysisForConfigSnapshot = () => null;
     export const selectPreferredPersistedJDAnalysis = () => null;
   `,
   skillsService: `

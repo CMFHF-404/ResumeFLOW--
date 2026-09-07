@@ -1,0 +1,17 @@
+{
+  "backend/qa_guidance_audit.py": "29f3e57907ccfdcfbb354955ce2947f71c94a37b7d40be131583b43a38ddc7a8",
+  "backend/test_qa_guidance_audit.py": "5c874ad2a5068b2734f87cfb9a9ac51190084eb4782a62afea275704f14d8767",
+  "backend/test_resume_evaluation.py": "c5faadc57727f5f6bfc001da96f9fa16e398937f051b1ea08f3392699564f85a",
+  "backend/test_resume_evaluation_audit.py": "498db71dfc16611e24f989ca6eac4c0841baef7d99b9c2de37f5e8deae8266d9",
+  "backend/test_resume_evaluation_basis.py": "df57c13c520061d52bc12f9d693bc3f999f9037a40e9544b798865f08455773e",
+  "backend/test_ai_semantic_validation.py": "45fac763523136db415cb91040197afcb2a569b1753afc41365428584419fef7",
+  "docs/qa/guidance_audit_v1_protocol.md": "7405dab772ec111b5c28a9af17216c408dfab87191dd77241e3fd53994f109b7",
+  "backend/app/domain/ai/guidance_evaluation.py": "b7b7822992f1a81ad23990e32a1c488eee6d331051778795eaa23703863313d2",
+  "backend/app/domain/ai/guidance_tasks.py": "12fdd9af9aff07bc65df5fb5faca41ec1b6888b8557b1274f46c0bdde2dbf038",
+  "backend/app/domain/ai/guidance_receipts.py": "06ccda5fc30818d12c7864aa8c0fcfce3fa0a991b896162d20c250e774dcfe0c",
+  "backend/app/domain/ai/resume_evaluation_basis.py": "a3411dc3a7986e7cd04ad33c621c26757c6920ceab2fd626b4c625ce6450aa8c",
+  "backend/app/domain/ai/resume_evaluation_rubric.py": "0a225c3b7631ee25d70b220e086fd48f8c61d071063a7696a3eb84d0e938fab8",
+  "backend/app/domain/ai/resume_evaluation.py": "26b29a0e236eefe0b34fceccb80f922991f6f59fac8df79044ebf39f994400b2",
+  "backend/app/domain/ai/resume_evaluation_service.py": "92055aee2b339b6968853fdd5fc2fca6a67e99a480852b987b0c6d5009f4794a",
+  "backend/app/domain/ai/response_normalizers.py": "097ba78d5a5da074cf93e4f6fb0b26e99ee416ea0ce359e231046946b2407db6"
+}

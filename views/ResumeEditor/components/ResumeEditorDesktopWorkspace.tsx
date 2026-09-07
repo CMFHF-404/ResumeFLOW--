@@ -8,29 +8,43 @@ type ResumeEditorDesktopWorkspaceProps = {
     factorySidebarProps: ResumeFactorySidebarProps;
     layoutAdjustProps: React.ComponentProps<typeof ResumeEditorLayoutAdjustPanel>;
     previewProps: ResumePreviewProps;
-    assistantSidebar?: React.ReactNode;
-    isAssistantSidebarOpen?: boolean;
+    rightSidebar?: React.ReactNode;
+    isRightSidebarOpen?: boolean;
+    layoutMode: ResumeEditorWorkspaceLayout;
 };
 
-const ASSISTANT_SIDEBAR_WIDTH = '390px';
+export type ResumeEditorWorkspaceLayout = 'list' | 'triple' | 'ai';
+
+const DEFAULT_RIGHT_SIDEBAR_WIDTH = '390px';
+const AI_RIGHT_SIDEBAR_WIDTH = '460px';
 
 const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> = ({
     factorySidebarProps,
     layoutAdjustProps,
     previewProps,
-    assistantSidebar,
-    isAssistantSidebarOpen = false,
-}) => (
-    <div className="relative flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row">
+    rightSidebar,
+    isRightSidebarOpen = false,
+    layoutMode,
+}) => {
+    const showRightSidebar = layoutMode !== 'list' && isRightSidebarOpen;
+    const hideFactorySidebar = layoutMode === 'ai';
+    const rightSidebarWidth = layoutMode === 'ai' ? AI_RIGHT_SIDEBAR_WIDTH : DEFAULT_RIGHT_SIDEBAR_WIDTH;
+
+    return (
+      <div className="relative flex flex-1 flex-col overflow-visible md:min-h-0 md:overflow-hidden md:flex-row">
         <div
+            aria-hidden={hideFactorySidebar}
+            inert={hideFactorySidebar ? true : undefined}
             className={[
-                'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
-                'transition-[width] duration-300 ease-in-out',
-                isAssistantSidebarOpen
-                    ? 'md:w-[430px] xl:w-[460px]'
+                'hidden md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
+                'transition-[width,opacity] duration-300 ease-in-out',
+                hideFactorySidebar
+                    ? 'md:w-0 opacity-0 pointer-events-none'
+                    : layoutMode === 'triple'
+                    ? 'xl:flex xl:w-[460px]'
                     : factorySidebarProps.activeTab === 'templates'
-                        ? 'md:w-[384px] lg:w-[562.5px] xl:w-[607.5px]'
-                        : 'md:w-[562.5px] xl:w-[607.5px]',
+                        ? 'md:flex md:w-[384px] lg:w-[562.5px] xl:w-[607.5px]'
+                        : 'md:flex md:w-[562.5px] xl:w-[607.5px]',
             ].join(' ')}
         >
             <ResumeFactorySidebar {...factorySidebarProps} />
@@ -40,25 +54,26 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
             previewProps={previewProps}
         />
         <div
-            data-rf-assistant-sidebar
+            data-rf-right-sidebar
             className={[
                 'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
                 'border-border-light dark:border-border-dark transition-all duration-300 ease-in-out',
-                isAssistantSidebarOpen
+                showRightSidebar
                     ? 'w-[390px] opacity-100 md:border-l shadow-[0_18px_60px_-36px_rgba(15,23,42,0.55)]'
                     : 'w-0 opacity-0 md:border-l-0 pointer-events-none'
             ].join(' ')}
             style={{
-                width: isAssistantSidebarOpen ? ASSISTANT_SIDEBAR_WIDTH : 0,
-                opacity: isAssistantSidebarOpen ? 1 : 0,
+                width: showRightSidebar ? rightSidebarWidth : 0,
+                opacity: showRightSidebar ? 1 : 0,
                 flexShrink: 0,
             }}
         >
-            <div className="h-full shrink-0" style={{ width: ASSISTANT_SIDEBAR_WIDTH }}>
-                {assistantSidebar}
+            <div className="h-full shrink-0" style={{ width: rightSidebarWidth }}>
+                {rightSidebar}
             </div>
         </div>
-    </div>
-);
+      </div>
+    );
+};
 
 export default ResumeEditorDesktopWorkspace;

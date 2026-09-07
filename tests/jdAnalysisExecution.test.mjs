@@ -251,6 +251,7 @@ test('full execution applies result, persists state, and tracks analytics lifecy
   });
   const latestSnapshot = buildSnapshot({
     itemSignatures: itemSignatures('latest'),
+    jdInputSignature: 'jd-start',
   });
   let snapshotCalls = 0;
   const { calls, params } = buildDeps({
@@ -349,6 +350,99 @@ test('authority changes abort a provider result before any local state is applie
   assert.deepEqual(calls.scores, []);
   assert.deepEqual(calls.updates, []);
   assert.deepEqual(calls.diffUpdates, []);
+  assert.deepEqual(calls.promotions, []);
+  assert.deepEqual(calls.completes, []);
+});
+
+test('JD input changes while the provider is pending abort the stale result before any local state is applied', async () => {
+  const { runJDAnalysisExecution } = await importJDAnalysisExecution();
+  const file = { name: 'original.pdf', size: 100, lastModified: 1, type: 'application/pdf' };
+  const startSnapshot = buildSnapshot({
+    jdText: 'Original extracted JD\n\n补充 JD 说明：\nOriginal supplement',
+    jdFile: file,
+    attachmentExtractedText: 'Original extracted JD',
+    inputMode: 'attachment',
+    attachmentName: file.name,
+    jdInputSignature: 'attachment-with-original-supplement',
+  });
+  const latestSnapshot = buildSnapshot({
+    jdText: 'Original extracted JD\n\n补充 JD 说明：\nEdited supplement',
+    jdFile: file,
+    attachmentExtractedText: 'Original extracted JD',
+    inputMode: 'attachment',
+    attachmentName: file.name,
+    jdInputSignature: 'attachment-with-edited-supplement',
+  });
+  let snapshotCalls = 0;
+  let resolveRequest;
+  const requestStarted = new Promise((resolve) => {
+    resolveRequest = resolve;
+  });
+  const { calls, params } = buildDeps({
+    buildAnalyzeSnapshot: () => {
+      snapshotCalls += 1;
+      return snapshotCalls === 1 ? startSnapshot : latestSnapshot;
+    },
+    requestRunner: async () => {
+      calls.requestRuns += 1;
+      resolveRequest();
+      return await new Promise((resolve) => {
+        resolveRequest = () => resolve({
+          result: buildResult(),
+          currentFile: file,
+          attachmentSupplementalJdText: 'Original supplement',
+          extractedAttachmentText: 'New extracted JD',
+          shouldPersistAttachmentAsText: true,
+        });
+      });
+    },
+  });
+
+  const execution = runJDAnalysisExecution(params);
+  await requestStarted;
+  resolveRequest();
+  const outcome = await execution;
+
+  assert.deepEqual(outcome, { status: 'aborted' });
+  assert.equal(calls.requestRuns, 1);
+  assert.deepEqual(calls.scores, []);
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.promotions, []);
+  assert.deepEqual(calls.completes, []);
+  assert.deepEqual(calls.diffUpdates, []);
+});
+
+test('missing persistence authority aborts before starting the JD provider', async () => {
+  const { runJDAnalysisExecution } = await importJDAnalysisExecution();
+  const { calls, params } = buildDeps({
+    canApplyAnalysisResult: () => false,
+  });
+
+  const outcome = await runJDAnalysisExecution(params);
+
+  assert.deepEqual(outcome, { status: 'aborted' });
+  assert.equal(calls.requestRuns, 0);
+  assert.deepEqual(calls.analyzing, []);
+  assert.deepEqual(calls.starts, []);
+});
+
+test('authority lost at the request boundary aborts before starting the JD provider', async () => {
+  const { runJDAnalysisExecution } = await importJDAnalysisExecution();
+  let canPersist = true;
+  const { calls, params } = buildDeps({
+    canApplyAnalysisResult: () => canPersist,
+    onProgress: (node) => {
+      calls.progress.push(node);
+      if (node === 'request_ai') canPersist = false;
+    },
+  });
+
+  const outcome = await runJDAnalysisExecution(params);
+
+  assert.deepEqual(outcome, { status: 'aborted' });
+  assert.equal(calls.requestRuns, 0);
+  assert.deepEqual(calls.scores, []);
+  assert.deepEqual(calls.updates, []);
   assert.deepEqual(calls.promotions, []);
   assert.deepEqual(calls.completes, []);
 });
@@ -475,4 +569,41 @@ test('attachment execution promotes extracted JD text and persists text-mode fie
     'update-analysis-state',
     'update-diff-state',
   ]);
+});
+
+test('restored attachment execution analyzes and persists the canonical recovered JD as text', async () => {
+  const { runJDAnalysisExecution } = await importJDAnalysisExecution();
+  const startSnapshot = buildSnapshot({
+    jdText: '需要英语流利',
+    jdFile: null,
+    attachmentExtractedText: '完整附件 JD 正文',
+    inputMode: 'attachment',
+    attachmentName: 'restored.pdf',
+    jdInputSignature: 'restored-attachment-signature',
+  });
+  const providerCalls = [];
+  const { calls, params } = buildDeps({
+    buildAnalyzeSnapshot: () => startSnapshot,
+    requestRunner: undefined,
+    service: {
+      analyzeJD: async (request) => {
+        providerCalls.push(request);
+        return buildResult();
+      },
+      analyzeJDWithAttachment: async () => {
+        throw new Error('restored attachment should use canonical text');
+      },
+    },
+  });
+
+  const outcome = await runJDAnalysisExecution(params);
+
+  assert.equal(outcome.status, 'success');
+  assert.equal(providerCalls[0].text, '完整附件 JD 正文\n\n补充 JD 说明：\n需要英语流利');
+  assert.deepEqual(calls.promotions, [[
+    '完整附件 JD 正文\n\n补充 JD 说明：\n需要英语流利',
+  ]]);
+  assert.equal(calls.updates[0].inputMode, 'text');
+  assert.equal(calls.updates[0].attachmentName, undefined);
+  assert.equal(calls.updates[0].attachmentExtractedText, '完整附件 JD 正文');
 });

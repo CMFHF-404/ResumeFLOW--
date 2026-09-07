@@ -1,6 +1,8 @@
 import hashlib
 import json
 import logging
+import re
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional
 
 from .public_errors import AiProviderPayloadError
@@ -9,6 +11,21 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MATCH_SCORE = 0
 RESUME_SKILLS_KEY = "skills"
+strict_response_objects: ContextVar[bool] = ContextVar('strict_response_objects', default=False)
+response_evidence_sink: ContextVar[list | None] = ContextVar('response_evidence_sink', default=None)
+
+
+def _unique_object_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise AiProviderPayloadError('Duplicate object key in model response')
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value):
+    raise AiProviderPayloadError('Non-finite value in model response')
 
 
 def _hash_text(text: str) -> str:
@@ -52,10 +69,56 @@ def _extract_json_payload(text: str) -> str:
     return cleaned[start : end + 1]
 
 
-def _parse_json_content(text: str) -> Dict[str, Any]:
-    payload = _extract_json_payload(text)
+def _loads_json_with_trailing_closer_recovery(payload: str) -> Any:
     try:
-        parsed = json.loads(payload)
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        if exc.msg != "Extra data":
+            raise
+        try:
+            parsed, end = json.JSONDecoder().raw_decode(payload)
+        except json.JSONDecodeError:
+            raise exc
+        trailing = payload[end:].strip()
+        if trailing and len(trailing) <= 8 and all(char in "}]" for char in trailing):
+            return parsed
+
+        candidates = [parsed]
+        while trailing:
+            if len(candidates) >= 3:
+                raise exc
+            try:
+                candidate, candidate_end = json.JSONDecoder().raw_decode(trailing)
+            except json.JSONDecodeError:
+                raise exc
+            if (
+                not isinstance(parsed, dict)
+                or not isinstance(candidate, dict)
+                or set(candidate) != set(parsed)
+            ):
+                raise exc
+            candidates.append(candidate)
+            trailing = trailing[candidate_end:].strip()
+            if trailing and len(trailing) <= 8 and all(
+                char in "}]" for char in trailing
+            ):
+                trailing = ""
+        if len(candidates) > 1:
+            return candidates[-1]
+        raise exc
+
+
+def _parse_json_content(text: str) -> Dict[str, Any]:
+    if strict_response_objects.get():
+        payload = text.strip()
+        envelope = re.fullmatch(r'```(?:json)?\s*(.*?)\s*```', payload, re.DOTALL | re.IGNORECASE)
+        if envelope:
+            payload = envelope[1]
+    else:
+        payload = _extract_json_payload(text)
+    try:
+        parsed = (json.loads(payload, object_pairs_hook=_unique_object_pairs, parse_constant=_reject_json_constant)
+                  if strict_response_objects.get() else _loads_json_with_trailing_closer_recovery(payload))
     except json.JSONDecodeError as exc:
         logger.error("JSON Parse Error: %s", exc)
         logger.error("Raw Text Summary: %s", _summarize_text(text))
@@ -69,6 +132,10 @@ def _parse_json_content(text: str) -> Dict[str, Any]:
 
 
 def _parse_json_content_candidates(candidates: List[str]) -> Dict[str, Any]:
+    evidence = response_evidence_sink.get()
+    if evidence is not None:
+        # Only explicit synthetic QA opts in; production diagnostics never retain text.
+        evidence.append({'candidates': list(candidates[:3])})
     last_error: AiProviderPayloadError | None = None
     for candidate in candidates:
         cleaned = candidate.strip()

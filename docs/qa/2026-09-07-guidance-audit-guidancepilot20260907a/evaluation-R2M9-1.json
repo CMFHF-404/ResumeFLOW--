@@ -1,0 +1,63 @@
+{
+  "ok": false,
+  "seconds": 51.86,
+  "sample": "R2M9",
+  "repeat": 1,
+  "error_type": "TimeoutError",
+  "message": "Guidance evaluation failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 293,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 367,
+      "function": "generate_guidance"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 325,
+      "function": "_stage"
+    },
+    {
+      "file": "tasks.py",
+      "line": 506,
+      "function": "wait_for"
+    },
+    {
+      "file": "timeouts.py",
+      "line": 116,
+      "function": "__aexit__"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 16.203
+    },
+    {
+      "stage": "generation",
+      "category": "generated"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "transport_failure"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "duration",
+      "seconds": 35.016
+    }
+  ]
+}

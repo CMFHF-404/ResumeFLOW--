@@ -15,6 +15,7 @@ import {
     X,
 } from 'lucide-react';
 import type { JDAnalysisResult, JDCoreCapability, JDInterpretation } from '../../../services/aiService';
+import { isGuidanceAuditEvaluation } from '../../../types/ai';
 import { JD_PANEL_BOTTOM_SPACING_CLASS, JD_PANEL_STICKY_CLASS } from '../constants';
 import { ResumeScoreBadge } from './Badges';
 import { ResumeEvaluationReport } from './ResumeEvaluationReport/ResumeEvaluationReport';
@@ -340,6 +341,7 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
 
 type JDAnalysisPanelProps = {
     jdText: string;
+    jdContextText: string;
     analysisResult: JDAnalysisResult | null;
     isAnalyzing: boolean;
     isCollapsed: boolean;
@@ -369,6 +371,11 @@ type JDAnalysisPanelProps = {
     evaluationError?: string | null;
     onGenerateEvaluation?: () => void;
     onStopEvaluation?: () => void;
+    isOptimizationEnabled?: boolean;
+    isOptimizationBusy?: boolean;
+    canStartOptimization?: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
     thinkingText?: string;
     onStopAnalyze?: () => void;
     onOpenDetailsSidebar?: () => void;
@@ -385,6 +392,11 @@ type JDAnalysisDetailsModalProps = {
     evaluationError?: string | null;
     onGenerateEvaluation?: () => void;
     onStopEvaluation?: () => void;
+    isOptimizationEnabled: boolean;
+    isOptimizationBusy: boolean;
+    canStartOptimization: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
     copyStatus: StrategyCopyStatus;
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
@@ -466,6 +478,11 @@ type JDAnalysisDetailsContentProps = {
     evaluationError?: string | null;
     onGenerateEvaluation?: () => void;
     onStopEvaluation?: () => void;
+    isOptimizationEnabled: boolean;
+    isOptimizationBusy: boolean;
+    canStartOptimization: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
     copyStatus: StrategyCopyStatus;
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
@@ -481,12 +498,17 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
     evaluationError,
     onGenerateEvaluation,
     onStopEvaluation,
+    isOptimizationEnabled,
+    isOptimizationBusy,
+    canStartOptimization,
+    optimizationDisabledReason,
+    onStartOptimization,
     copyStatus,
     manualCopyText,
     onCopyText,
 }) => {
     const evaluation = analysisResult.resumeEvaluation;
-    const isCurrentEvaluation = evaluation?.evaluationVersion === 'resume_flow_v1';
+    const isCurrentEvaluation = isGuidanceAuditEvaluation(evaluation);
     const shouldShowJdAnalysis = Boolean(jdText.trim())
         && (!isCurrentEvaluation || evaluation.jdMatch !== null);
     const [activeReport, setActiveReport] = useState<'jd' | 'resume'>(() => shouldShowJdAnalysis ? 'jd' : 'resume');
@@ -543,6 +565,11 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
                     error={evaluationError}
                     onGenerate={onGenerateEvaluation}
                     onStop={onStopEvaluation}
+                    isOptimizationEnabled={isOptimizationEnabled}
+                    isOptimizationBusy={isOptimizationBusy}
+                    canStartOptimization={canStartOptimization}
+                    optimizationDisabledReason={optimizationDisabledReason}
+                    onStartOptimization={onStartOptimization}
                 />
             </div>
         )}
@@ -560,6 +587,11 @@ type JDAnalysisDetailsSidebarProps = {
     evaluationError?: string | null;
     onGenerateEvaluation?: () => void;
     onStopEvaluation?: () => void;
+    isOptimizationEnabled: boolean;
+    isOptimizationBusy: boolean;
+    canStartOptimization: boolean;
+    optimizationDisabledReason?: string | null;
+    onStartOptimization?: () => void;
     onClose: () => void;
     onOpenAgentPluginConfig?: () => void;
 };
@@ -574,6 +606,11 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
     evaluationError,
     onGenerateEvaluation,
     onStopEvaluation,
+    isOptimizationEnabled,
+    isOptimizationBusy,
+    canStartOptimization,
+    optimizationDisabledReason,
+    onStartOptimization,
     onClose,
     onOpenAgentPluginConfig,
 }) => {
@@ -614,6 +651,7 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
                         type="button"
                         onClick={handleClose}
                         aria-label="关闭分析报告"
+                        data-resume-optimization-focus-return="true"
                         className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-100"
                     >
                         <X className="h-4 w-4" />
@@ -631,6 +669,11 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
                     evaluationError={evaluationError}
                     onGenerateEvaluation={onGenerateEvaluation}
                     onStopEvaluation={onStopEvaluation}
+                    isOptimizationEnabled={isOptimizationEnabled}
+                    isOptimizationBusy={isOptimizationBusy}
+                    canStartOptimization={canStartOptimization}
+                    optimizationDisabledReason={optimizationDisabledReason}
+                    onStartOptimization={onStartOptimization}
                     copyStatus={strategyCopyStatus}
                     manualCopyText={manualStrategyCopyText}
                     onCopyText={handleCopyStrategyText}
@@ -651,6 +694,11 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
     evaluationError,
     onGenerateEvaluation,
     onStopEvaluation,
+    isOptimizationEnabled,
+    isOptimizationBusy,
+    canStartOptimization,
+    optimizationDisabledReason,
+    onStartOptimization,
     copyStatus,
     manualCopyText,
     onCopyText,
@@ -703,6 +751,11 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                         evaluationError={evaluationError}
                         onGenerateEvaluation={onGenerateEvaluation}
                         onStopEvaluation={onStopEvaluation}
+                        isOptimizationEnabled={isOptimizationEnabled}
+                        isOptimizationBusy={isOptimizationBusy}
+                        canStartOptimization={canStartOptimization}
+                        optimizationDisabledReason={optimizationDisabledReason}
+                        onStartOptimization={onStartOptimization}
                         copyStatus={copyStatus}
                         manualCopyText={manualCopyText}
                         onCopyText={onCopyText}
@@ -954,6 +1007,7 @@ const BossGreetingSection: React.FC<BossGreetingSectionProps> = ({
 
 const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     jdText,
+    jdContextText,
     analysisResult,
     isAnalyzing,
     isCollapsed,
@@ -982,6 +1036,12 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
     evaluationThinkingText,
     evaluationError,
     onGenerateEvaluation,
+    onStopEvaluation,
+    isOptimizationEnabled = false,
+    isOptimizationBusy = false,
+    canStartOptimization = false,
+    optimizationDisabledReason,
+    onStartOptimization,
     thinkingText,
     onStopAnalyze,
     onOpenDetailsSidebar,
@@ -1094,9 +1154,9 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 <Wand2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
                                 <span
                                     className="min-w-0 flex-1 truncate font-medium leading-5"
-                                    title={`思考中：${thinkingText || '正在分析岗位要求...'}`}
+                                    title={`思考中：${thinkingText?.trim() || '正在分析岗位要求...'}`}
                                 >
-                                    思考中：{thinkingText || '正在分析岗位要求...'}
+                                    思考中：{thinkingText?.trim() || '正在分析岗位要求...'}
                                 </span>
                             </div>
                             <button
@@ -1119,7 +1179,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                     <button
                                         type="button"
                                         onClick={onAnalyze}
-                                        disabled={isAnalyzing}
+                                        disabled={isAnalyzing || isEvaluating}
                                         aria-label={isOutdated ? '重新进行 JD 匹配' : '刷新 JD 匹配'}
                                         title={isOutdated ? '重新进行 JD 匹配' : '刷新 JD 匹配'}
                                         className="p-1 text-gray-400 hover:text-emerald-600"
@@ -1214,9 +1274,9 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                         <Wand2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
                                         <span
                                             className="min-w-0 flex-1 truncate font-medium leading-5"
-                                            title={`思考中：${thinkingText || '正在分析岗位要求...'}`}
+                                            title={`思考中：${thinkingText?.trim() || '正在分析岗位要求...'}`}
                                         >
-                                            思考中：{thinkingText || '正在分析岗位要求...'}
+                                            思考中：{thinkingText?.trim() || '正在分析岗位要求...'}
                                         </span>
                                     </div>
                                     <button
@@ -1238,7 +1298,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                     />
                                     <button
                                         onClick={onAnalyze}
-                                        disabled={isAnalyzing}
+                                        disabled={isAnalyzing || isEvaluating}
                                         className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-white shadow transition-colors hover:bg-primary-dark disabled:opacity-60"
                                     >
                                         <Wand2 className="h-3 w-3" />
@@ -1310,13 +1370,19 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
             <JDAnalysisDetailsModal
                 isOpen={isDetailsModalOpen}
                 analysisResult={analysisResult}
-                jdText={jdText}
+                jdText={jdContextText}
                 isOutdated={isOutdated}
                 isEvaluationOutdated={isEvaluationOutdated}
                 isEvaluating={isEvaluating}
                 evaluationThinkingText={evaluationThinkingText}
                 evaluationError={evaluationError}
                 onGenerateEvaluation={onGenerateEvaluation}
+                onStopEvaluation={onStopEvaluation}
+                isOptimizationEnabled={isOptimizationEnabled}
+                isOptimizationBusy={isOptimizationBusy}
+                canStartOptimization={canStartOptimization}
+                optimizationDisabledReason={optimizationDisabledReason}
+                onStartOptimization={onStartOptimization}
                 copyStatus={strategyCopyStatus}
                 manualCopyText={manualStrategyCopyText}
                 onCopyText={handleCopyStrategyText}

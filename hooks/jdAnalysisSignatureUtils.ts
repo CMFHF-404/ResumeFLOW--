@@ -194,6 +194,132 @@ export const splitAttachmentDerivedJdText = (
   };
 };
 
+export const resolveReplacementJDAttachmentText = (
+  jdText: string,
+  previousAttachmentExtractedText?: string | null
+) => splitAttachmentDerivedJdText(
+  jdText,
+  previousAttachmentExtractedText
+).supplementalText;
+
+export type RestoredJDAttachmentContext = {
+  jdText: string;
+  jdInputSignature: string;
+  attachmentName?: string;
+  attachmentExtractedText?: string | null;
+};
+
+export type JDAttachmentReplacementState = {
+  jdText: string;
+  attachmentExtractedText: string | null;
+  restoredAttachmentContext: RestoredJDAttachmentContext | null;
+};
+
+export type JDAttachmentReplacement = JDAttachmentReplacementState & {
+  backup: JDAttachmentReplacementState;
+};
+
+/**
+ * Keep the exact prior attachment provenance while a replacement file is
+ * selected but has not yet produced a persisted analysis.
+ */
+export const beginJDAttachmentReplacement = (
+  state: JDAttachmentReplacementState
+): JDAttachmentReplacement => ({
+  jdText: resolveReplacementJDAttachmentText(
+    state.jdText,
+    state.attachmentExtractedText
+  ),
+  attachmentExtractedText: null,
+  restoredAttachmentContext: state.restoredAttachmentContext,
+  backup: {
+    jdText: state.jdText,
+    attachmentExtractedText: state.attachmentExtractedText,
+    restoredAttachmentContext: state.restoredAttachmentContext,
+  },
+});
+
+export const restoreJDAttachmentReplacement = (
+  backup: JDAttachmentReplacementState,
+  currentJdText?: string
+): JDAttachmentReplacementState => {
+  const initialReplacementText = resolveReplacementJDAttachmentText(
+    backup.jdText,
+    backup.attachmentExtractedText
+  );
+  // Removing a file restores its provenance, but does not undo later typing.
+  const hasTextEdits = currentJdText !== undefined
+    && currentJdText !== initialReplacementText;
+  return {
+    jdText: hasTextEdits ? currentJdText : backup.jdText,
+    attachmentExtractedText: backup.attachmentExtractedText,
+    restoredAttachmentContext: backup.restoredAttachmentContext,
+  };
+};
+
+export type ResumeEvaluationJDContext = {
+  /** Exact JD text sent to the text-only six-dimension endpoint. */
+  text: string;
+  jdAvailable: boolean;
+  jdMatchPercentage: number | undefined;
+  /** Attachment mode cannot be evaluated safely until its body is extracted. */
+  hasMissingAttachmentText: boolean;
+};
+
+/**
+ * Resolve the canonical JD input for the text-only six-dimension endpoint.
+ *
+ * Attachment textarea content is supplemental context, not the attachment
+ * body.  Never reinterpret it as a complete JD when extraction is missing.
+ */
+export const resolveResumeEvaluationJDContext = ({
+  jdText,
+  inputMode,
+  attachmentExtractedText,
+  matchPercentage,
+}: {
+  jdText: string;
+  inputMode: "text" | "attachment";
+  attachmentExtractedText?: string | null;
+  matchPercentage?: unknown;
+}): ResumeEvaluationJDContext => {
+  let text = jdText;
+  let hasMissingAttachmentText = false;
+
+  if (inputMode === "attachment") {
+    const extractedText = attachmentExtractedText?.trim() ?? "";
+    if (!extractedText) {
+      text = "";
+      hasMissingAttachmentText = true;
+    } else {
+      const { supplementalText } = splitAttachmentDerivedJdText(
+        jdText,
+        extractedText
+      );
+      const normalizedSupplement = supplementalText.trim();
+      text = normalizedSupplement
+        ? `${extractedText}${JD_ATTACHMENT_SUPPLEMENT_PREFIX}${normalizedSupplement}`
+        : extractedText;
+    }
+  }
+
+  const jdAvailable = !hasMissingAttachmentText && Boolean(text.trim());
+  const jdMatchPercentage = (
+    jdAvailable
+    && typeof matchPercentage === "number"
+    && Number.isFinite(matchPercentage)
+    && matchPercentage >= 0
+    && matchPercentage <= 100
+  ) ? matchPercentage : undefined;
+
+  return {
+    text,
+    jdAvailable,
+    jdMatchPercentage,
+    hasMissingAttachmentText,
+  };
+};
+
 const buildSignatureMap = <T extends { id: string }>(items: T[]) => {
   const map: Record<string, string> = {};
   items.forEach((item) => {

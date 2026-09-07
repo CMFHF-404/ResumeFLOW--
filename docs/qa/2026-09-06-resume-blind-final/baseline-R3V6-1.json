@@ -1,0 +1,29 @@
+{
+  "ok": false,
+  "seconds": 150.02,
+  "error_type": "HTTPException",
+  "message": "Resume evaluation exceeded its 150-second safety limit. Please retry the deep report.",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 91,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 102,
+      "function": "evaluate"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1404,
+      "function": "analyze_resume_evaluation"
+    },
+    {
+      "file": "resume_evaluation_service.py",
+      "line": 1341,
+      "function": "_run_with_total_timeout"
+    }
+  ],
+  "cause_type": "TimeoutError"
+}

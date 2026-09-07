@@ -28,6 +28,88 @@ const importSaveResultUtils = async () => {
   return import(`data:text/javascript;base64,${encoded}`);
 };
 
+const importJDAnalysisStorage = async () => {
+  const result = await build({
+    entryPoints: ['services/jdAnalysisStorage.ts'],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    write: false,
+  });
+  const encoded = Buffer.from(result.outputFiles[0].text).toString('base64');
+  return import(`data:text/javascript;base64,${encoded}`);
+};
+
+const importSaveBoundary = async () => {
+  const source = readFileSync('hooks/useResumeData.ts', 'utf8');
+  const bridgeStart = source.indexOf('// RESUME_OPTIMIZATION_SAVE_BRIDGE_START');
+  const bridgeEnd = source.indexOf('// RESUME_OPTIMIZATION_SAVE_BRIDGE_END');
+  const flusherStart = source.indexOf('const useResumeConfigFlusher =');
+  const flusherEnd = source.indexOf('export const useResumeData =', flusherStart);
+  const saveStart = source.indexOf('const saveResumeConfig = useCallback<SaveResumeConfig>');
+  const saveEnd = source.indexOf('    useResumeAutoSave(', saveStart);
+  assert.ok(bridgeStart >= 0 && bridgeEnd > bridgeStart);
+  assert.ok(flusherStart >= 0 && flusherEnd > flusherStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart);
+  const result = await build({
+    stdin: {
+      contents: `
+        import { graftJDAnalysisAuthority, resolveJDAnalysisForConfigSnapshot }
+          from './services/jdAnalysisStorage';
+        const useCallback = (callback) => callback;
+        ${source.slice(bridgeStart, bridgeEnd)}
+        ${source.slice(flusherStart, flusherEnd)}
+        export const createSaveBoundary = ({
+          state, options, saveCoordinator, latestServerJDAnalysisRef,
+          latestEffectiveConfigSnapshotRef, loadJDAnalysisCache,
+        }) => {
+          ${source.slice(saveStart, saveEnd)}
+          return {
+            saveResumeConfig,
+            flushResumeConfig: useResumeConfigFlusher(
+              latestEffectiveConfigSnapshotRef, saveResumeConfig,
+              state.setSaveState, { current: false },
+            ),
+          };
+        }`,
+      loader: 'ts',
+      resolveDir: process.cwd(),
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    write: false,
+  });
+  const encoded = Buffer.from(result.outputFiles[0].text).toString('base64');
+  return import(`data:text/javascript;base64,${encoded}`);
+};
+
+const createSaveBoundaryHarness = async ({
+  coordinator, getServerJD, getPendingCache, getToken, getSavedSignature, config,
+}) => {
+  const { createSaveBoundary } = await importSaveBoundary();
+  const saveStates = [];
+  return {
+    saveStates,
+    ...createSaveBoundary({
+      state: {
+        activeResumeIdRef: { current: 'resume-1' },
+        hasHydratedConfigRef: { current: true },
+        resumeUpdatedAtRef: { get current() { return getToken(); } },
+        lastSavedConfigRef: { get current() { return getSavedSignature(); } },
+        setSaveState: (state) => saveStates.push(state),
+      },
+      options: { authUserKey: 'owner-1' },
+      saveCoordinator: coordinator,
+      latestServerJDAnalysisRef: {
+        get current() { return { resumeId: 'resume-1', payload: getServerJD() }; },
+      },
+      latestEffectiveConfigSnapshotRef: { current: config },
+      loadJDAnalysisCache: getPendingCache,
+    }),
+  };
+};
+
 const deferred = () => {
   let resolve;
   let reject;
@@ -174,7 +256,12 @@ test('a save pending for another resume cannot satisfy the current resume versio
   );
   first.resolve({ updated_at: 'resume-1-version-2' });
 
-  await Promise.all([oldResumeSave, currentBarrier]);
+  const [oldReceipt, currentReceipt] = await Promise.all([oldResumeSave, currentBarrier]);
+  assert.equal(oldReceipt, undefined);
+  assert.deepEqual(currentReceipt, {
+    resumeId: 'resume-2',
+    configSignature: JSON.stringify({ value: 'saved' }),
+  });
   assert.equal(harness.calls.length, 2);
   assert.equal(harness.calls[1].resumeId, 'resume-2');
 });
@@ -195,7 +282,8 @@ test('drain waits for an in-flight save and hydration blocks its stale success c
   await Promise.resolve();
   assert.equal(drained, false);
   first.resolve({ updated_at: 'version-2' });
-  await Promise.all([save, drain]);
+  const [receipt] = await Promise.all([save, drain]);
+  assert.equal(receipt, undefined);
 
   harness.setHydrated(true);
   await harness.coordinator.save(
@@ -352,8 +440,325 @@ test('a pending JD cache protects a newer local payload before the latest config
     }
   );
 
-  assert.deepEqual(merged.resume.config, backendConfig);
+  assert.deepEqual(merged.resume.config, firstConfig);
   assert.equal(merged.resume.updated_at, 'version-2');
+});
+
+test('a stale save acknowledgement advances JD authority before a newer pending cache is resolved', async () => {
+  const { mergeResumeSaveResultIntoDetail } = await importSaveResultUtils();
+  const {
+    buildJDAnalysisPersistenceFingerprint,
+    graftJDAnalysisAuthority,
+    resolveJDAnalysisForConfigSnapshot,
+    selectPreferredPersistedJDAnalysis,
+  } = await importJDAnalysisStorage();
+  const baseJD = {
+    jdText: 'B0',
+    experienceSignature: 'B0-signature',
+    result: { match_score: 10 },
+    itemSignatures: { experiences: {}, certifications: {}, skills: {} },
+    inputMode: 'text',
+    updatedAt: 'version-1',
+  };
+  const savedJD = {
+    ...baseJD,
+    jdText: 'P1',
+    experienceSignature: 'P1-signature',
+    updatedAt: 'version-2',
+  };
+  const pendingJD = {
+    ...baseJD,
+    jdText: 'P2',
+    experienceSignature: 'P2-signature',
+    updatedAt: 'version-3',
+  };
+  const pendingCache = {
+    payload: pendingJD,
+    pendingSync: true,
+    basePersistedFingerprint: buildJDAnalysisPersistenceFingerprint(baseJD),
+  };
+  const draftConfig = { personalSummary: 'keep this unsaved draft', jdAnalysis: pendingJD };
+  const latestConfigSnapshot = {
+    personalSummary: 'newer ordinary draft',
+    jdAnalysis: pendingJD,
+  };
+  const detail = {
+    resume: {
+      id: 'resume-1',
+      user_id: 'user-1',
+      title: 'Resume',
+      config: draftConfig,
+      created_at: 'version-1',
+      updated_at: 'version-1',
+    },
+    experiences: [],
+  };
+
+  const merged = mergeResumeSaveResultIntoDetail(
+    detail,
+    { ...detail.resume, config: { jdAnalysis: savedJD }, updated_at: 'version-2' },
+    {
+      savedConfigSignature: JSON.stringify({ jdAnalysis: savedJD }),
+      latestConfigSignature: JSON.stringify(latestConfigSnapshot),
+      latestConfigSnapshot,
+      pendingJDAnalysisCache: pendingCache,
+      savedJDAnalysis: savedJD,
+    }
+  );
+
+  assert.equal(merged.resume.config.personalSummary, 'newer ordinary draft');
+  assert.deepEqual(merged.resume.config.jdAnalysis, savedJD);
+  const decision = selectPreferredPersistedJDAnalysis(
+    merged.resume.config.jdAnalysis,
+    pendingCache
+  );
+  assert.equal(decision.kind, 'pending_conflict');
+  assert.deepEqual(
+    graftJDAnalysisAuthority({ personalSummary: 'next draft', jdAnalysis: pendingJD },
+      resolveJDAnalysisForConfigSnapshot(merged.resume.config.jdAnalysis, pendingCache)),
+    { personalSummary: 'next draft', jdAnalysis: savedJD }
+  );
+});
+
+test('a JD snapshot queued before an earlier acknowledgement is re-resolved when it executes', async () => {
+  const { createResumeConfigSaveCoordinator } = await importCoordinator();
+  const {
+    buildJDAnalysisPersistenceFingerprint,
+    graftJDAnalysisAuthority,
+    resolveJDAnalysisForConfigSnapshot,
+    selectPreferredPersistedJDAnalysis,
+  } = await importJDAnalysisStorage();
+  const firstResponse = deferred();
+  const baseJD = {
+    jdText: 'B0',
+    experienceSignature: 'B0-signature',
+    result: { match_score: 10 },
+    itemSignatures: { experiences: {}, certifications: {}, skills: {} },
+    inputMode: 'text',
+    updatedAt: 'version-1',
+  };
+  const firstJD = {
+    ...baseJD,
+    jdText: 'P1',
+    experienceSignature: 'P1-signature',
+    updatedAt: 'version-2',
+  };
+  const secondJD = {
+    ...baseJD,
+    jdText: 'P2',
+    experienceSignature: 'P2-signature',
+    updatedAt: 'version-3',
+  };
+  let pendingCache = {
+    payload: firstJD,
+    pendingSync: true,
+    basePersistedFingerprint: buildJDAnalysisPersistenceFingerprint(baseJD),
+  };
+  let serverJD = baseJD;
+  let expectedUpdatedAt = 'resume-version-1';
+  let lastSavedSignature = JSON.stringify({ jdAnalysis: baseJD });
+  const calls = [];
+  const coordinator = createResumeConfigSaveCoordinator({
+    getResumeId: () => 'resume-1',
+    getExpectedUpdatedAt: () => expectedUpdatedAt,
+    getLastSavedSignature: () => lastSavedSignature,
+    isHydrated: () => true,
+    prepareConfig: (_resumeId, config) => graftJDAnalysisAuthority(
+      config,
+      resolveJDAnalysisForConfigSnapshot(serverJD, pendingCache),
+    ),
+    persist: async (_resumeId, config, expected) => {
+      calls.push({ config, expected });
+      if (calls.length > 1) {
+        throw new Error('queued P2 must not reach persistence');
+      }
+      return firstResponse.promise;
+    },
+    onSaveStart: () => undefined,
+    onSaveSuccess: (_resumeId, result, signature) => {
+      serverJD = result.config.jdAnalysis;
+      expectedUpdatedAt = result.updated_at;
+      lastSavedSignature = signature;
+    },
+  });
+
+  const firstSave = coordinator.save({ jdAnalysis: firstJD });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(calls.length, 1);
+  pendingCache = {
+    payload: secondJD,
+    pendingSync: true,
+    basePersistedFingerprint: buildJDAnalysisPersistenceFingerprint(baseJD),
+  };
+  const boundary = await createSaveBoundaryHarness({
+    coordinator,
+    getServerJD: () => serverJD,
+    getPendingCache: () => pendingCache,
+    getToken: () => expectedUpdatedAt,
+    getSavedSignature: () => lastSavedSignature,
+    config: { jdAnalysis: secondJD },
+  });
+  const queuedSecondSave = boundary.saveResumeConfig({ jdAnalysis: secondJD });
+  firstResponse.resolve({
+    id: 'resume-1',
+    config: { jdAnalysis: firstJD },
+    updated_at: 'resume-version-2',
+  });
+  const [, committedToken] = await Promise.all([firstSave, queuedSecondSave]);
+
+  assert.equal(committedToken, 'resume-version-2');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    config: { jdAnalysis: firstJD },
+    expected: 'resume-version-1',
+  });
+  assert.equal(
+    selectPreferredPersistedJDAnalysis(serverJD, pendingCache).kind,
+    'pending_conflict',
+  );
+  assert.equal(pendingCache.payload, secondJD);
+});
+
+test('a queued ordinary edit persists with the latest JD authority and version token', async () => {
+  const { createResumeConfigSaveCoordinator } = await importCoordinator();
+  const {
+    buildJDAnalysisPersistenceFingerprint,
+    graftJDAnalysisAuthority,
+    resolveJDAnalysisForConfigSnapshot,
+    selectPreferredPersistedJDAnalysis,
+  } = await importJDAnalysisStorage();
+  const firstResponse = deferred();
+  const baseJD = {
+    jdText: 'B0',
+    experienceSignature: 'B0-signature',
+    result: { match_score: 10 },
+    itemSignatures: { experiences: {}, certifications: {}, skills: {} },
+    inputMode: 'text',
+    updatedAt: 'version-1',
+  };
+  const firstJD = {
+    ...baseJD,
+    jdText: 'P1',
+    experienceSignature: 'P1-signature',
+    updatedAt: 'version-2',
+  };
+  const secondJD = {
+    ...baseJD,
+    jdText: 'P2',
+    experienceSignature: 'P2-signature',
+    updatedAt: 'version-3',
+  };
+  let pendingCache = {
+    payload: firstJD,
+    pendingSync: true,
+    basePersistedFingerprint: buildJDAnalysisPersistenceFingerprint(baseJD),
+  };
+  let serverJD = baseJD;
+  let expectedUpdatedAt = 'resume-version-1';
+  let lastSavedSignature = JSON.stringify({ jdAnalysis: baseJD });
+  const calls = [];
+  const successSignatures = [];
+  const coordinator = createResumeConfigSaveCoordinator({
+    getResumeId: () => 'resume-1',
+    getExpectedUpdatedAt: () => expectedUpdatedAt,
+    getLastSavedSignature: () => lastSavedSignature,
+    isHydrated: () => true,
+    prepareConfig: (_resumeId, config) => graftJDAnalysisAuthority(
+      config,
+      resolveJDAnalysisForConfigSnapshot(serverJD, pendingCache),
+    ),
+    persist: async (_resumeId, config, expected) => {
+      calls.push({ config, expected });
+      if (calls.length === 1) return firstResponse.promise;
+      return {
+        id: 'resume-1',
+        config,
+        updated_at: 'resume-version-3',
+      };
+    },
+    onSaveStart: () => undefined,
+    onSaveSuccess: (_resumeId, result, signature) => {
+      serverJD = result.config.jdAnalysis;
+      expectedUpdatedAt = result.updated_at;
+      lastSavedSignature = signature;
+      successSignatures.push(signature);
+    },
+  });
+
+  const firstSave = coordinator.save({ jdAnalysis: firstJD });
+  await Promise.resolve();
+  await Promise.resolve();
+  pendingCache = {
+    payload: secondJD,
+    pendingSync: true,
+    basePersistedFingerprint: buildJDAnalysisPersistenceFingerprint(baseJD),
+  };
+  const queuedConfig = {
+    personalSummary: 'new ordinary draft',
+    jdAnalysis: secondJD,
+  };
+  const boundary = await createSaveBoundaryHarness({
+    coordinator,
+    getServerJD: () => serverJD,
+    getPendingCache: () => pendingCache,
+    getToken: () => expectedUpdatedAt,
+    getSavedSignature: () => lastSavedSignature,
+    config: queuedConfig,
+  });
+  const queuedSecondSave = boundary.flushResumeConfig();
+  firstResponse.resolve({
+    id: 'resume-1',
+    config: { jdAnalysis: firstJD },
+    updated_at: 'resume-version-2',
+  });
+  const [, committedToken] = await Promise.all([firstSave, queuedSecondSave]);
+
+  assert.equal(committedToken, 'resume-version-3');
+  assert.deepEqual(boundary.saveStates, []);
+  const preparedSecondConfig = {
+    personalSummary: 'new ordinary draft',
+    jdAnalysis: firstJD,
+  };
+  assert.deepEqual(calls, [
+    { config: { jdAnalysis: firstJD }, expected: 'resume-version-1' },
+    { config: preparedSecondConfig, expected: 'resume-version-2' },
+  ]);
+  assert.equal(successSignatures[1], JSON.stringify(preparedSecondConfig));
+  assert.notEqual(successSignatures[1], JSON.stringify(queuedConfig));
+  assert.equal(
+    selectPreferredPersistedJDAnalysis(serverJD, pendingCache).kind,
+    'pending_conflict',
+  );
+  assert.equal(pendingCache.payload, secondJD);
+});
+
+test('a stale save acknowledgement can atomically clear JD authority while keeping ordinary drafts', async () => {
+  const { mergeResumeSaveResultIntoDetail } = await importSaveResultUtils();
+  const draftJD = { jdText: 'local draft' };
+  const detail = {
+    resume: {
+      id: 'resume-1',
+      user_id: 'user-1',
+      title: 'Resume',
+      config: { personalSummary: 'keep this draft', jdAnalysis: draftJD },
+      created_at: 'version-1',
+      updated_at: 'version-1',
+    },
+    experiences: [],
+  };
+
+  const merged = mergeResumeSaveResultIntoDetail(
+    detail,
+    { ...detail.resume, config: {}, updated_at: 'version-2' },
+    {
+      savedConfigSignature: JSON.stringify({}),
+      latestConfigSignature: JSON.stringify({ personalSummary: 'newer draft', jdAnalysis: draftJD }),
+      savedJDAnalysis: null,
+    }
+  );
+
+  assert.deepEqual(merged.resume.config, { personalSummary: 'keep this draft' });
 });
 
 test('save acknowledgements snapshot mutable authorities before the React state updater', () => {
@@ -366,14 +771,17 @@ test('save acknowledgements snapshot mutable authorities before the React state 
   assert.ok(setterIndex > 0);
   assert.ok(callback.indexOf('loadJDAnalysisCache(options.authUserKey, _resumeId)') < setterIndex);
   assert.ok(callback.indexOf('normalizeJDAnalysisPersistence(') < setterIndex);
+  assert.ok(callback.indexOf('latestServerJDAnalysisRef.current =') < setterIndex);
   assert.ok(callback.indexOf('latestEffectiveConfigSnapshotRef.current') < setterIndex);
   const mergeCall = callback.match(
     /mergeResumeSaveResultIntoDetail\([\s\S]*?\n\s*\}\s*\n\s*\)\)/,
   )?.[0] ?? '';
   assert.match(mergeCall, /savedConfigSignature: configSignature/);
   assert.match(mergeCall, /latestConfigSignature,/);
+  assert.match(mergeCall, /latestConfigSnapshot,/);
   assert.match(mergeCall, /pendingJDAnalysisCache,/);
   assert.match(mergeCall, /savedJDAnalysis,/);
+  assert.match(source, /prepareConfig: \(resumeId, config\) => \{[\s\S]*?latestServerJDAnalysisRef\.current[\s\S]*?resolveJDAnalysisForConfigSnapshot/);
   assert.doesNotMatch(
     callback.slice(setterIndex),
     /loadJDAnalysisCache|normalizeJDAnalysisPersistence|latestEffectiveConfigSnapshotRef\.current/,

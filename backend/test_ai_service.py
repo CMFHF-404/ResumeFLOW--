@@ -23,9 +23,35 @@ from app.domain.ai import assistant_tool_utils  # noqa: E402
 from app.domain.ai import jd_analysis_service  # noqa: E402
 from app.domain.ai import llm_transport  # noqa: E402
 from app.domain.ai import prompts as ai_prompts  # noqa: E402
+from app.domain.ai import response_normalizers  # noqa: E402
 from app.domain.ai.assistant_action_utils import _normalize_assistant_draft_card  # noqa: E402
 from app.domain.ai.response_normalizers import _normalize_jd_analysis_result  # noqa: E402
 from app import config as config_module  # noqa: E402
+
+
+class ResponseNormalizerJsonRecoveryTests(unittest.TestCase):
+    def test_json_parser_recovers_a_small_trailing_closer_suffix(self) -> None:
+        self.assertEqual(
+            response_normalizers._parse_json_content('{"ok": true}}'),
+            {"ok": True},
+        )
+
+    def test_json_parser_does_not_discard_arbitrary_trailing_text(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Invalid JSON returned by model"):
+            response_normalizers._parse_json_content('{"ok": true} explanation')
+
+    def test_json_parser_uses_last_bounded_duplicate_wrapper(self) -> None:
+        self.assertEqual(
+            response_normalizers._parse_json_content(
+                '{"resumeEvaluation": {"overallScore": 70}}\n'
+                '{"resumeEvaluation": {"overallScore": 73}}'
+            ),
+            {"resumeEvaluation": {"overallScore": 73}},
+        )
+
+    def test_json_parser_rejects_concatenated_objects_with_different_wrappers(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Invalid JSON returned by model"):
+            response_normalizers._parse_json_content('{"ok": true}{"other": false}')
 
 
 class _FakeJsonResponse:
@@ -261,18 +287,64 @@ class GeminiThinkingConfigTests(unittest.TestCase):
         )
 
         self.assertNotIn("responseMimeType", config)
+        self.assertNotIn("temperature", config)
         self.assertEqual(
             config["thinkingConfig"],
             {
                 "includeThoughts": True,
-                "thinkingBudget": 1024,
+                "thinkingLevel": "low",
             },
         )
 
+    def test_build_generation_config_maps_gemini3_legacy_budgets_to_thinking_levels(self) -> None:
+        cases = (
+            (0, "minimal"),
+            (2048, "medium"),
+            (24576, "high"),
+            (-1, "high"),
+        )
+        for budget, expected_level in cases:
+            with self.subTest(budget=budget):
+                config = ai_service._build_gemini_generation_config(
+                    budget,
+                    model="gemini-3.5-flash-lite",
+                )
+
+                self.assertEqual(
+                    config["thinkingConfig"],
+                    {
+                        "includeThoughts": True,
+                        "thinkingLevel": expected_level,
+                    },
+                )
+
     def test_build_generation_config_keeps_json_mime_for_gemini25(self) -> None:
+        response_schema = {
+            "type": "object",
+            "properties": {"score": {"type": "integer"}},
+            "required": ["score"],
+        }
         config = ai_service._build_gemini_generation_config(
             1024,
             model="gemini-2.5-flash",
+            response_json_schema=response_schema,
+        )
+
+        self.assertEqual(config["responseMimeType"], "application/json")
+        self.assertEqual(config["responseJsonSchema"], response_schema)
+
+    def test_build_generation_config_omits_schema_for_unscoped_calls(self) -> None:
+        config = ai_service._build_gemini_generation_config(
+            1024,
+            model="gemini-2.5-flash",
+        )
+
+        self.assertNotIn("responseJsonSchema", config)
+
+    def test_build_generation_config_keeps_json_mime_for_gemini35_flash_lite(self) -> None:
+        config = ai_service._build_gemini_generation_config(
+            1024,
+            model="gemini-3.5-flash-lite",
         )
 
         self.assertEqual(config["responseMimeType"], "application/json")
@@ -416,14 +488,14 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                 "AI_ROUTE_PROFILE": "qwen_primary",
                 "AI_API_KEY": "dashscope-key",
                 "AI_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "AI_RESPONSES_BASE_URL": "https://responses.example.com/custom/",
+                "AI_RESPONSES_BASE_URL": "https://dashscope.aliyuncs.com/custom/",
                 "AI_MODEL": "qwen3.7-plus",
             },
             clear=True,
         ):
             route = verify_ai.resolve_route("thinking")
 
-        self.assertEqual(route.base_url, "https://responses.example.com/custom")
+        self.assertEqual(route.base_url, "https://dashscope.aliyuncs.com/custom")
 
     def test_load_settings_reads_fast_model_env(self) -> None:
         with patch.dict(
@@ -432,6 +504,7 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                 "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
                 "LOGTO_ISSUER": "https://example.logto.app/oidc",
                 "LOGTO_APP_ID": "resume-spa-app-id",
+                "AI_ROUTE_PROFILE": "hybrid_gemini_aifast",
                 "AI_MODEL": "qwen3.7-plus",
                 "AI_API_KEY": "dashscope-key",
                 "AI_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -462,6 +535,7 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                 "LOGTO_ISSUER": "https://example.logto.app/oidc",
                 "LOGTO_APP_ID": "resume-spa-app-id",
                 "AI_ROUTE_PROFILE": "qwen_primary",
+                "AI_MODEL": "qwen3.7-plus",
             },
             clear=True,
         ):
@@ -473,6 +547,63 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                     config_module._settings = None
 
         self.assertEqual(settings.ai_route_profile, "qwen_primary")
+
+    def test_load_settings_openai_primary_requires_an_explicit_non_dashscope_provider_url(self) -> None:
+        required_env = {
+            "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
+            "LOGTO_ISSUER": "https://example.logto.app/oidc",
+            "LOGTO_APP_ID": "resume-spa-app-id",
+            "AI_ROUTE_PROFILE": "openai_primary",
+            "AI_API_KEY": "openai-key",
+            "AI_MODEL": "gpt-5.6-luna",
+        }
+        invalid_url_cases = (
+            ({}, "AI_BASE_URL must be explicitly configured"),
+            (
+                {"AI_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+                "DashScope",
+            ),
+            (
+                {
+                    "AI_BASE_URL": "https://api.openai.com/v1",
+                    "AI_RESPONSES_BASE_URL": (
+                        "https://dashscope.aliyuncs.com/api/v2/apps/"
+                        "protocols/compatible-mode/v1"
+                    ),
+                },
+                "DashScope",
+            ),
+        )
+
+        for overrides, error_pattern in invalid_url_cases:
+            with self.subTest(overrides=overrides):
+                with patch.dict(
+                    os.environ,
+                    {**required_env, **overrides},
+                    clear=True,
+                ):
+                    with patch.object(config_module, "_load_env", return_value=None):
+                        config_module._settings = None
+                        try:
+                            with self.assertRaisesRegex(RuntimeError, error_pattern):
+                                config_module.load_settings()
+                        finally:
+                            config_module._settings = None
+
+    def test_verify_ai_openai_primary_requires_an_explicit_non_dashscope_provider_url(self) -> None:
+        import verify_ai
+
+        with patch.dict(
+            os.environ,
+            {
+                "AI_ROUTE_PROFILE": "openai_primary",
+                "AI_API_KEY": "openai-key",
+                "AI_MODEL": "gpt-5.6-luna",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "AI_BASE_URL must be explicitly configured"):
+                verify_ai.resolve_route("thinking")
 
     def test_verify_ai_rejects_invalid_route_profile(self) -> None:
         import verify_ai
@@ -488,6 +619,7 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                 "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
                 "LOGTO_ISSUER": "https://example.logto.app/oidc",
                 "LOGTO_APP_ID": "resume-spa-app-id",
+                "AI_ROUTE_PROFILE": "hybrid_gemini_aifast",
                 "AI_MODEL": "qwen3.7-plus",
                 "AI_FAST_MODEL": "qwen-turbo",
                 "AI_DEDUPE_ENABLED": "false",
@@ -514,6 +646,7 @@ class GeminiThinkingConfigTests(unittest.TestCase):
                 "DATABASE_URL": "postgresql://user:password@localhost:5432/resumeflow",
                 "LOGTO_ISSUER": "https://example.logto.app/oidc",
                 "LOGTO_APP_ID": "resume-spa-app-id",
+                "AI_ROUTE_PROFILE": "hybrid_gemini_aifast",
                 "AI_MODEL": "qwen3.7-plus",
                 "AI_FAST_MODEL": "qwen-turbo",
             },
@@ -532,6 +665,121 @@ class GeminiThinkingConfigTests(unittest.TestCase):
 
 
 class VerifyAiGeminiProbeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chat_probe_uses_model_compatible_reasoning_parameters(self) -> None:
+        import verify_ai
+
+        response = _FakeJsonResponse(
+            {
+                "model": "gpt-5-pro",
+                "choices": [{"message": {"content": '{"ok":true}'}}],
+                "usage": {},
+            }
+        )
+        fake_client = _FakePostClient(response)
+        route = verify_ai.ProbeRoute(
+            lane="default",
+            provider="openai_compatible",
+            api_key="openai-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-5-pro",
+            transport="chat_completion",
+        )
+
+        with patch.object(verify_ai.httpx, "AsyncClient", return_value=fake_client):
+            self.assertTrue(await verify_ai.test_openai_chat(route))
+
+        payload = fake_client.posts[0][1]["json"]
+        self.assertEqual(payload["reasoning_effort"], "high")
+        self.assertNotIn("temperature", payload)
+
+    async def test_non_reasoning_openai_probe_omits_reasoning_parameters(self) -> None:
+        import verify_ai
+
+        route = verify_ai.ProbeRoute(
+            lane="thinking",
+            provider="openai_compatible",
+            api_key="openai-compatible-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4.1",
+            transport="responses_stream",
+        )
+        response = _FakeStreamResponse(
+            [
+                'data: {"type":"response.output_text.delta","delta":"ok"}',
+                'data: {"type":"response.completed","response":{}}',
+                "data: [DONE]",
+            ]
+        )
+        fake_client = _FakeStreamClient(response)
+
+        with patch.object(verify_ai.httpx, "AsyncClient", return_value=fake_client):
+            self.assertTrue(await verify_ai.test_responses_stream(route))
+
+        sent_payload = fake_client.stream_calls[0][1]["json"]
+        self.assertNotIn("reasoning", sent_payload)
+        self.assertNotIn("include", sent_payload)
+
+    async def test_responses_probe_requires_output_even_when_reasoning_summary_exists(self) -> None:
+        import verify_ai
+
+        route = verify_ai.ProbeRoute(
+            lane="thinking",
+            provider="openai_compatible",
+            api_key="openai-compatible-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-5.6-luna",
+            transport="responses_stream",
+        )
+        response = _FakeStreamResponse(
+            [
+                'data: {"type":"response.reasoning_summary_text.delta","delta":"分析"}',
+                'data: {"type":"response.completed","response":{}}',
+                "data: [DONE]",
+            ]
+        )
+        fake_client = _FakeStreamClient(response)
+
+        with patch.object(verify_ai.httpx, "AsyncClient", return_value=fake_client):
+            self.assertFalse(await verify_ai.test_responses_stream(route))
+
+        sent_payload = fake_client.stream_calls[0][1]["json"]
+        self.assertEqual(
+            sent_payload["include"],
+            ["reasoning.encrypted_content"],
+        )
+        self.assertIs(sent_payload["store"], False)
+
+    async def test_responses_probe_accepts_output_without_reasoning_summary(self) -> None:
+        import verify_ai
+
+        route = verify_ai.ProbeRoute(
+            lane="thinking",
+            provider="openai_compatible",
+            api_key="openai-compatible-key",
+            base_url="https://relay.example.com/v1",
+            model="gpt-5.6-luna",
+            transport="responses_stream",
+        )
+        response = _FakeStreamResponse(
+            [
+                'data: {"type":"response.output_text.delta","delta":"ok"}',
+                'data: {"type":"response.completed","response":{}}',
+                "data: [DONE]",
+            ]
+        )
+        fake_client = _FakeStreamClient(response)
+
+        with (
+            patch.object(verify_ai.httpx, "AsyncClient", return_value=fake_client),
+            patch("builtins.print") as print_mock,
+        ):
+            self.assertTrue(await verify_ai.test_responses_stream(route))
+
+        print_mock.assert_any_call("Reasoning summary present:", False)
+
+        sent_payload = fake_client.stream_calls[0][1]["json"]
+        self.assertNotIn("store", sent_payload)
+
     async def test_generate_probe_omits_response_mime_type_for_gemini3(self) -> None:
         import verify_ai
 
@@ -550,6 +798,28 @@ class VerifyAiGeminiProbeTests(unittest.IsolatedAsyncioTestCase):
 
         sent_payload = fake_client.posts[0][1]["json"]
         self.assertNotIn("responseMimeType", sent_payload["generationConfig"])
+
+    async def test_generate_probe_keeps_response_mime_type_for_gemini35_flash_lite(self) -> None:
+        import verify_ai
+
+        fake_client = _FakePostClient(_FakeJsonResponse({"usageMetadata": {}}))
+        route = verify_ai.ProbeRoute(
+            lane="default",
+            provider="gemini",
+            api_key="gemini-key",
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            model="gemini-3.5-flash-lite",
+            transport="gemini_generate_content",
+        )
+
+        with patch.object(verify_ai.httpx, "AsyncClient", return_value=fake_client):
+            await verify_ai.test_gemini_generate(route)
+
+        sent_payload = fake_client.posts[0][1]["json"]
+        self.assertEqual(
+            sent_payload["generationConfig"]["responseMimeType"],
+            "application/json",
+        )
 
     async def test_stream_probe_omits_response_mime_type_for_gemini3(self) -> None:
         import verify_ai
@@ -574,6 +844,46 @@ class VerifyAiGeminiProbeTests(unittest.IsolatedAsyncioTestCase):
 
 
 class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
+    def test_standard_chat_payload_uses_model_compatible_parameters(self) -> None:
+        reasoning_payload = llm_transport._prepare_chat_completion_payload(
+            {
+                "model": "gpt-5.6-luna",
+                "messages": [],
+                "temperature": 0.3,
+                "top_p": 0.9,
+                "max_tokens": 20_000,
+            }
+        )
+        self.assertEqual(reasoning_payload["max_completion_tokens"], 16_384)
+        self.assertEqual(reasoning_payload["reasoning_effort"], "medium")
+        self.assertNotIn("max_tokens", reasoning_payload)
+        self.assertNotIn("temperature", reasoning_payload)
+        self.assertNotIn("top_p", reasoning_payload)
+
+        sampling_payload = llm_transport._prepare_chat_completion_payload(
+            {
+                "model": "gpt-4.1",
+                "messages": [],
+                "temperature": 0.3,
+                "max_completion_tokens": 512,
+            }
+        )
+        self.assertEqual(sampling_payload["max_tokens"], 512)
+        self.assertEqual(sampling_payload["temperature"], 0.3)
+        self.assertNotIn("max_completion_tokens", sampling_payload)
+        self.assertNotIn("reasoning_effort", sampling_payload)
+
+        unknown_payload = llm_transport._prepare_chat_completion_payload(
+            {
+                "model": "relay-unknown-model",
+                "messages": [],
+                "temperature": 0.3,
+            }
+        )
+        self.assertEqual(unknown_payload["max_tokens"], 16_384)
+        self.assertEqual(unknown_payload["temperature"], 0.3)
+        self.assertNotIn("reasoning_effort", unknown_payload)
+
     def test_responses_url_falls_back_for_legacy_settings_without_explicit_base(
         self,
     ) -> None:
@@ -654,6 +964,42 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(usage_event["completion_tokens"], 8)
         self.assertEqual(usage_event["total_tokens"], 20)
         self.assertEqual(usage_event["metadata"]["transport"], "gemini_generate_content")
+
+    async def test_gemini_stream_request_uses_native_stream_generate_content(self) -> None:
+        fake_settings = SimpleNamespace(
+            ai_route_profile="gemini_primary",
+            ai_api_key="unused-key",
+            ai_base_url="https://unused.example/v1",
+            ai_model="gemini-3.5-flash-lite",
+            ai_timeout_seconds=300,
+            gemini_api_key="gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-3.5-flash-lite",
+        )
+        stream_mock = AsyncMock(return_value={"ok": True})
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(
+                llm_transport,
+                "_stream_gemini_json_response_legacy",
+                stream_mock,
+            ),
+        ):
+            result = await llm_transport._call_llm(
+                [
+                    {"role": "system", "content": "return JSON"},
+                    {"role": "user", "content": "input"},
+                ],
+                request_label="resume_evaluation",
+                gemini_thinking_level="low",
+                gemini_stream=True,
+            )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(stream_mock.await_count, 1)
+        self.assertEqual(stream_mock.await_args.kwargs["budget_tokens"], 1024)
+        self.assertEqual(stream_mock.await_args.kwargs["user_parts"], [{"text": "input"}])
 
     async def test_resume_parse_lane_uses_aifast_route_and_usage_metadata(self) -> None:
         response = _FakeJsonResponse(
@@ -972,9 +1318,11 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
                             "parts": [
                                 {
                                     "functionCall": {
+                                        "id": "function-call-bank-context",
                                         "name": "get_bank_context",
                                         "args": {},
-                                    }
+                                    },
+                                    "thoughtSignature": "opaque-bank-context-signature",
                                 }
                             ]
                         }
@@ -1035,6 +1383,11 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         message = data["choices"][0]["message"]
         self.assertEqual(message["tool_calls"][0]["function"]["name"], "get_bank_context")
         self.assertEqual(message["tool_calls"][0]["function"]["arguments"], "{}")
+        self.assertEqual(message["tool_calls"][0]["id"], "function-call-bank-context")
+        self.assertEqual(
+            message["tool_calls"][0]["extra_content"],
+            {"google": {"thought_signature": "opaque-bank-context-signature"}},
+        )
         usage_event = usage_callback.await_args.args[0]
         self.assertEqual(usage_event["provider"], "gemini")
         self.assertEqual(usage_event["metadata"]["transport"], "gemini_generate_content")
@@ -1048,8 +1401,13 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
                     "role": "assistant",
                     "tool_calls": [
                         {
-                            "id": "gemini-call-0",
+                            "id": "function-call-bank-context",
                             "type": "function",
+                            "extra_content": {
+                                "google": {
+                                    "thought_signature": "opaque-bank-context-signature"
+                                }
+                            },
                             "function": {
                                 "name": "get_bank_context",
                                 "arguments": json.dumps(
@@ -1062,7 +1420,7 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
                 },
                 {
                     "role": "tool",
-                    "tool_call_id": "gemini-call-0",
+                    "tool_call_id": "function-call-bank-context",
                     "name": "get_bank_context",
                     "content": json.dumps(
                         {"items": [{"id": "exp-1"}]},
@@ -1076,18 +1434,163 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             body["contents"][1]["parts"][0]["functionCall"],
             {
+                "id": "function-call-bank-context",
                 "name": "get_bank_context",
                 "args": {"masterId": "exp-1"},
             },
+        )
+        self.assertEqual(
+            body["contents"][1]["parts"][0]["thoughtSignature"],
+            "opaque-bank-context-signature",
         )
         self.assertNotIn({"text": ""}, body["contents"][1]["parts"])
         self.assertEqual(body["contents"][2]["role"], "user")
         self.assertEqual(
             body["contents"][2]["parts"][0]["functionResponse"],
             {
+                "id": "function-call-bank-context",
                 "name": "get_bank_context",
                 "response": {"items": [{"id": "exp-1"}]},
             },
+        )
+
+    def test_gemini_parallel_tool_calls_preserve_part_order_ids_and_first_signature(self) -> None:
+        response_data = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "functionCall": {
+                                    "id": "function-call-paris",
+                                    "name": "get_weather",
+                                    "args": {"city": "Paris"},
+                                },
+                                "thoughtSignature": "opaque-parallel-signature",
+                            },
+                            {
+                                "functionCall": {
+                                    "id": "function-call-london",
+                                    "name": "get_weather",
+                                    "args": {"city": "London"},
+                                }
+                            },
+                        ]
+                    }
+                }
+            ]
+        }
+
+        tool_calls = llm_transport._extract_gemini_tool_calls(response_data)
+        body = llm_transport._build_gemini_generate_body(
+            [
+                {"role": "user", "content": "查询巴黎和伦敦天气"},
+                {"role": "assistant", "tool_calls": tool_calls},
+                {
+                    "role": "tool",
+                    "tool_call_id": "function-call-paris",
+                    "name": "get_weather",
+                    "content": json.dumps({"temperature": 15}),
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "function-call-london",
+                    "name": "get_weather",
+                    "content": json.dumps({"temperature": 12}),
+                },
+            ]
+        )
+
+        self.assertEqual(
+            [tool_call["id"] for tool_call in tool_calls],
+            ["function-call-paris", "function-call-london"],
+        )
+        self.assertEqual(
+            tool_calls[0]["extra_content"],
+            {"google": {"thought_signature": "opaque-parallel-signature"}},
+        )
+        self.assertNotIn("extra_content", tool_calls[1])
+        model_parts = body["contents"][1]["parts"]
+        self.assertEqual(
+            [part["functionCall"]["id"] for part in model_parts],
+            ["function-call-paris", "function-call-london"],
+        )
+        self.assertEqual(model_parts[0]["thoughtSignature"], "opaque-parallel-signature")
+        self.assertNotIn("thoughtSignature", model_parts[1])
+        self.assertEqual(len(body["contents"]), 3)
+        response_parts = body["contents"][2]["parts"]
+        self.assertEqual(body["contents"][2]["role"], "user")
+        self.assertEqual(
+            response_parts[0]["functionResponse"]["id"],
+            "function-call-paris",
+        )
+        self.assertEqual(
+            response_parts[1]["functionResponse"]["id"],
+            "function-call-london",
+        )
+
+    def test_gemini_sequential_tool_responses_are_not_merged_across_model_steps(self) -> None:
+        body = llm_transport._build_gemini_generate_body(
+            [
+                {"role": "user", "content": "先查航班，延误时再订车"},
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "function-call-flight",
+                            "type": "function",
+                            "extra_content": {
+                                "google": {"thought_signature": "signature-flight"}
+                            },
+                            "function": {
+                                "name": "check_flight",
+                                "arguments": json.dumps({"flight": "AA100"}),
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "function-call-flight",
+                    "name": "check_flight",
+                    "content": json.dumps({"status": "delayed"}),
+                },
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "function-call-taxi",
+                            "type": "function",
+                            "extra_content": {
+                                "google": {"thought_signature": "signature-taxi"}
+                            },
+                            "function": {
+                                "name": "book_taxi",
+                                "arguments": json.dumps({"time": "10:00"}),
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "function-call-taxi",
+                    "name": "book_taxi",
+                    "content": json.dumps({"status": "booked"}),
+                },
+            ]
+        )
+
+        self.assertEqual(
+            [content["role"] for content in body["contents"]],
+            ["user", "model", "user", "model", "user"],
+        )
+        self.assertEqual(
+            body["contents"][2]["parts"][0]["functionResponse"]["id"],
+            "function-call-flight",
+        )
+        self.assertEqual(
+            body["contents"][4]["parts"][0]["functionResponse"]["id"],
+            "function-call-taxi",
         )
 
     def test_gemini_generate_body_omits_response_mime_type_for_gemini3_models(self) -> None:
@@ -1099,6 +1602,82 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("responseMimeType", body["generationConfig"])
         self.assertEqual(body["generationConfig"]["temperature"], 0.3)
         self.assertNotIn("thinkingConfig", body["generationConfig"])
+
+    def test_gemini_generate_body_keeps_response_mime_type_for_gemini35_flash_lite(self) -> None:
+        body = llm_transport._build_gemini_generate_body(
+            [{"role": "user", "content": "返回 JSON"}],
+            model="gemini-3.5-flash-lite",
+            gemini_thinking_level="low",
+        )
+
+        self.assertEqual(
+            body["generationConfig"]["responseMimeType"],
+            "application/json",
+        )
+
+    async def test_gemini_stream_retries_once_after_transient_gateway_status(self) -> None:
+        response = httpx.Response(
+            504,
+            request=httpx.Request("POST", "https://relay.example/v1beta/models/test:streamGenerateContent"),
+        )
+        status_error = httpx.HTTPStatusError(
+            "gateway timeout",
+            request=response.request,
+            response=response,
+        )
+        transient_error = llm_transport.AiProviderUnavailableError("temporary")
+        transient_error.__cause__ = status_error
+        call_once = AsyncMock(side_effect=[transient_error, {"ok": True}])
+
+        with (
+            patch.object(llm_transport, "_stream_gemini_json_response_once", call_once),
+            patch.object(llm_transport.asyncio, "sleep", new=AsyncMock()) as sleep_mock,
+        ):
+            result = await llm_transport._stream_gemini_json_response_legacy(
+                system_prompt="return JSON",
+                user_parts=[{"text": "input"}],
+                error_message="temporary",
+                request_label="retryable_report",
+            )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(call_once.await_count, 2)
+        self.assertTrue(
+            call_once.await_args_list[0].kwargs["defer_retryable_http_failure"]
+        )
+        self.assertFalse(
+            call_once.await_args_list[1].kwargs["defer_retryable_http_failure"]
+        )
+        sleep_mock.assert_awaited_once()
+
+    async def test_gemini_stream_does_not_retry_non_transient_status(self) -> None:
+        response = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://relay.example/v1beta/models/test:streamGenerateContent"),
+        )
+        status_error = httpx.HTTPStatusError(
+            "bad request",
+            request=response.request,
+            response=response,
+        )
+        terminal_error = llm_transport.AiProviderUnavailableError("invalid")
+        terminal_error.__cause__ = status_error
+        call_once = AsyncMock(side_effect=terminal_error)
+
+        with patch.object(
+            llm_transport,
+            "_stream_gemini_json_response_once",
+            call_once,
+        ):
+            with self.assertRaises(llm_transport.AiProviderUnavailableError):
+                await llm_transport._stream_gemini_json_response_legacy(
+                    system_prompt="return JSON",
+                    user_parts=[{"text": "input"}],
+                    error_message="invalid",
+                    request_label="non_retryable_report",
+                )
+
+        self.assertEqual(call_once.await_count, 1)
 
     def test_gemini3_scoped_thinking_level_uses_default_temperature(self) -> None:
         for level in ("minimal", "low", "medium", "high"):
@@ -1316,9 +1895,953 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent_payload["model"], "qwen3.7-plus")
         self.assertIs(sent_payload["stream"], True)
         self.assertIs(sent_payload["enable_thinking"], True)
+        self.assertNotIn("include", sent_payload)
         self.assertNotIn("thinking_budget", sent_payload)
+        self.assertNotIn("store", sent_payload)
         self.assertEqual(sent_payload["input"][0]["role"], "system")
         self.assertEqual(sent_payload["input"][1]["role"], "user")
+
+    async def test_openai_responses_stream_uses_reasoning_configuration(self) -> None:
+        thought_event = {
+            "type": "response.reasoning_summary_text.done",
+            "text": "正在匹配岗位要求",
+        }
+        answer_event = {
+            "type": "response.output_text.delta",
+            "delta": json.dumps({"summary": "ok"}, ensure_ascii=False),
+        }
+        response = _FakeStreamResponse(
+            [
+                f"data: {json.dumps(thought_event, ensure_ascii=False)}",
+                "",
+                f"data: {json.dumps(answer_event, ensure_ascii=False)}",
+                "",
+                'data: {"type":"response.completed","response":{}}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+
+        def _client_factory(*, timeout):
+            fake_client.timeout = timeout
+            return fake_client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-compatible-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+        thought_callback = AsyncMock()
+
+        with patch.object(llm_transport, "settings", fake_settings):
+            with patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory):
+                result = await llm_transport._stream_gemini_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="openai_responses_test",
+                    thought_callback=thought_callback,
+                )
+
+        self.assertEqual(result, {"summary": "ok"})
+        thought_callback.assert_awaited_once_with(
+            {"type": "thought", "summary": "正在匹配岗位要求"}
+        )
+        sent_payload = fake_client.stream_calls[0][1]["json"]
+        sent_url = fake_client.stream_calls[0][0][1]
+        self.assertEqual(sent_url, "https://api.openai.com/v1/responses")
+        self.assertEqual(sent_payload["model"], "gpt-5.6-luna")
+        self.assertEqual(
+            sent_payload["reasoning"],
+            {"effort": "medium", "summary": "auto"},
+        )
+        self.assertEqual(
+            sent_payload["include"],
+            ["reasoning.encrypted_content"],
+        )
+        self.assertNotIn("enable_thinking", sent_payload)
+        self.assertNotIn("temperature", sent_payload)
+        self.assertIs(sent_payload["store"], False)
+
+    async def test_gpt41_responses_and_chat_fallback_omit_reasoning_parameters(self) -> None:
+        responses_failure = _FakeStreamResponse([])
+        responses_failure.status_code = 404
+        responses_failure.headers = {"content-type": "application/json"}
+        responses_failure.request = httpx.Request(
+            "POST", "https://api.openai.com/v1/responses"
+        )
+        responses_failure.raise_for_status = Mock(
+            side_effect=httpx.HTTPStatusError(
+                "Responses endpoint unavailable",
+                request=responses_failure.request,
+                response=responses_failure,
+            )
+        )
+        chat_response = _FakeStreamResponse(
+            [
+                'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":7,"total_tokens":19}}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        response_client = _FakeStreamClient(response=responses_failure)
+        chat_client = _FakeStreamClient(response=chat_response)
+        clients = [response_client, chat_client]
+
+        def _client_factory(*, timeout):
+            client = clients.pop(0)
+            client.timeout = timeout
+            return client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-4.1",
+            ai_timeout_seconds=300,
+            gemini_api_key="stale-gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-3.5-flash-lite",
+        )
+        record_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(
+                llm_transport.httpx,
+                "AsyncClient",
+                side_effect=_client_factory,
+            ),
+            patch.object(
+                llm_transport,
+                "record_usage_payload_resilient",
+                record_usage,
+            ),
+        ):
+            result = await llm_transport._stream_gemini_json_response(
+                system_prompt="严格输出 JSON",
+                user_parts=[{"text": "输入内容"}],
+                error_message="生成失败",
+                request_label="gpt41_responses_chat_fallback",
+            )
+
+        self.assertEqual(result, {"ok": True})
+        responses_payload = response_client.stream_calls[0][1]["json"]
+        chat_payload = chat_client.stream_calls[0][1]["json"]
+        self.assertNotIn("reasoning", responses_payload)
+        self.assertNotIn("include", responses_payload)
+        self.assertEqual(responses_payload["temperature"], 0.2)
+        self.assertNotIn("reasoning_effort", chat_payload)
+        self.assertNotIn("max_completion_tokens", chat_payload)
+        self.assertEqual(chat_payload["max_tokens"], 16_384)
+        self.assertEqual(chat_payload["temperature"], 0.2)
+        self.assertTrue(response_client.stream_calls[0][0][1].endswith("/responses"))
+        self.assertTrue(chat_client.stream_calls[0][0][1].endswith("/chat/completions"))
+
+    async def test_unknown_relay_chat_uses_legacy_token_field_without_speculative_capabilities(self) -> None:
+        response = _FakeStreamResponse(
+            [
+                'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":7,"total_tokens":19}}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="relay-key",
+            ai_base_url="https://relay.example/v1",
+            ai_model="relay-unknown-model",
+            ai_timeout_seconds=300,
+        )
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(
+                llm_transport.httpx,
+                "AsyncClient",
+                return_value=fake_client,
+            ),
+        ):
+            self.assertEqual(
+                await llm_transport._stream_qwen_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="unknown_relay_chat",
+                ),
+                {"ok": True},
+            )
+
+        payload = fake_client.stream_calls[0][1]["json"]
+        self.assertEqual(payload["max_tokens"], 16_384)
+        self.assertNotIn("max_completion_tokens", payload)
+        self.assertNotIn("reasoning_effort", payload)
+        self.assertNotIn("temperature", payload)
+
+    async def test_gpt5_pro_uses_its_only_supported_reasoning_effort(self) -> None:
+        responses_response = _FakeStreamResponse(
+            [
+                'data: {"type":"response.output_text.delta","delta":"{\\"ok\\":true}"}',
+                "",
+                'data: {"type":"response.completed","response":{}}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        responses_client = _FakeStreamClient(response=responses_response)
+        chat_response = _FakeStreamResponse(
+            [
+                'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":7,"total_tokens":19}}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        chat_client = _FakeStreamClient(response=chat_response)
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5-pro",
+            ai_timeout_seconds=300,
+        )
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(
+                llm_transport.httpx,
+                "AsyncClient",
+                return_value=responses_client,
+            ),
+        ):
+            self.assertEqual(
+                await llm_transport._stream_qwen_responses_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="gpt5_pro_responses",
+                ),
+                {"ok": True},
+            )
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(
+                llm_transport.httpx,
+                "AsyncClient",
+                return_value=chat_client,
+            ),
+        ):
+            self.assertEqual(
+                await llm_transport._stream_qwen_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="gpt5_pro_chat",
+                ),
+                {"ok": True},
+            )
+
+        self.assertEqual(
+            responses_client.stream_calls[0][1]["json"]["reasoning"]["effort"],
+            "high",
+        )
+        self.assertEqual(
+            chat_client.stream_calls[0][1]["json"]["reasoning_effort"],
+            "high",
+        )
+        self.assertEqual(
+            chat_client.stream_calls[0][1]["json"]["max_completion_tokens"],
+            16_384,
+        )
+        self.assertNotIn(
+            "temperature",
+            chat_client.stream_calls[0][1]["json"],
+        )
+
+    async def test_openai_responses_incomplete_never_returns_partial_json_and_records_usage_once(self) -> None:
+        answer_event = {
+            "type": "response.output_text.delta",
+            "delta": json.dumps({"summary": "must-not-succeed"}, ensure_ascii=False),
+        }
+        incomplete_event = {
+            "type": "response.incomplete",
+            "response": {
+                "status": "incomplete",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 7,
+                    "total_tokens": 19,
+                },
+            },
+        }
+        response = _FakeStreamResponse(
+            [
+                f"data: {json.dumps(answer_event, ensure_ascii=False)}",
+                "",
+                f"data: {json.dumps(incomplete_event, ensure_ascii=False)}",
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+        )
+        record_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.httpx, "AsyncClient", return_value=fake_client),
+            patch.object(
+                llm_transport,
+                "record_usage_payload_resilient",
+                record_usage,
+            ),
+        ):
+            with self.assertRaises(llm_transport.AiProviderPayloadError):
+                await llm_transport._stream_qwen_responses_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="openai_incomplete_usage",
+                )
+
+        record_usage.assert_awaited_once()
+        usage_event = record_usage.await_args.args[0]
+        self.assertEqual(usage_event["prompt_tokens"], 12)
+        self.assertEqual(usage_event["completion_tokens"], 7)
+        self.assertEqual(usage_event["total_tokens"], 19)
+        self.assertEqual(usage_event["status"], "incomplete")
+        self.assertEqual(
+            usage_event["metadata"]["terminal_event_type"],
+            "response.incomplete",
+        )
+
+    async def test_openai_responses_failed_and_error_events_are_terminal_errors(self) -> None:
+        terminal_events = (
+            {
+                "type": "response.failed",
+                "response": {
+                    "status": "failed",
+                    "error": {"code": "server_error", "message": "upstream failed"},
+                },
+            },
+            {
+                "type": "error",
+                "code": "server_error",
+                "message": "upstream failed",
+            },
+        )
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+        )
+
+        for terminal_event in terminal_events:
+            with self.subTest(event_type=terminal_event["type"]):
+                response = _FakeStreamResponse(
+                    [
+                        'data: {"type":"response.output_text.delta","delta":"{\\"ok\\":true}"}',
+                        "",
+                        f"data: {json.dumps(terminal_event)}",
+                        "",
+                    ]
+                )
+                fake_client = _FakeStreamClient(response=response)
+                with (
+                    patch.object(llm_transport, "settings", fake_settings),
+                    patch.object(
+                        llm_transport.httpx,
+                        "AsyncClient",
+                        return_value=fake_client,
+                    ),
+                ):
+                    with self.assertRaises(llm_transport.AiProviderUnavailableError):
+                        await llm_transport._stream_qwen_responses_json_response(
+                            system_prompt="严格输出 JSON",
+                            user_parts=[{"text": "输入内容"}],
+                            error_message="生成失败",
+                            request_label="openai_terminal_error",
+                        )
+
+    async def test_openai_responses_requires_completed_terminal_event(self) -> None:
+        response = _FakeStreamResponse(
+            [
+                'data: {"type":"response.output_text.delta","delta":"{\\"ok\\":true}"}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+        )
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.httpx, "AsyncClient", return_value=fake_client),
+        ):
+            with self.assertRaisesRegex(
+                llm_transport.AiProviderPayloadError,
+                "without response.completed",
+            ):
+                await llm_transport._stream_qwen_responses_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="openai_missing_terminal",
+                )
+
+    async def test_openai_terminal_event_does_not_fallback_to_chat_or_duplicate_usage(self) -> None:
+        incomplete_event = {
+            "type": "response.incomplete",
+            "response": {
+                "status": "incomplete",
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 7,
+                    "total_tokens": 19,
+                },
+            },
+        }
+        response = _FakeStreamResponse(
+            [
+                'data: {"type":"response.output_text.delta","delta":"{\\"ok\\":true}"}',
+                "",
+                f"data: {json.dumps(incomplete_event)}",
+                "",
+            ]
+        )
+        fake_client = _FakeStreamClient(response=response)
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+        chat_fallback = AsyncMock(return_value={"fallback": True})
+        record_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.httpx, "AsyncClient", return_value=fake_client),
+            patch.object(llm_transport, "_stream_qwen_json_response", chat_fallback),
+            patch.object(
+                llm_transport,
+                "record_usage_payload_resilient",
+                record_usage,
+            ),
+        ):
+            with self.assertRaises(llm_transport.AiProviderPayloadError):
+                await llm_transport._stream_gemini_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="openai_terminal_no_fallback",
+                )
+
+        chat_fallback.assert_not_awaited()
+        record_usage.assert_awaited_once()
+
+    async def test_openai_responses_capability_status_falls_back_to_chat_and_records_only_final_usage(self) -> None:
+        responses_failure = _FakeStreamResponse([])
+        responses_failure.status_code = 404
+        responses_failure.headers = {"content-type": "application/json"}
+        responses_failure.request = httpx.Request(
+            "POST", "https://api.openai.com/v1/responses"
+        )
+        responses_failure.raise_for_status = Mock(
+            side_effect=httpx.HTTPStatusError(
+                "Responses endpoint unavailable",
+                request=responses_failure.request,
+                response=responses_failure,
+            )
+        )
+        chat_response = _FakeStreamResponse(
+            [
+                'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":7,"total_tokens":19}}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        response_client = _FakeStreamClient(response=responses_failure)
+        chat_client = _FakeStreamClient(response=chat_response)
+        clients = [response_client, chat_client]
+
+        def _client_factory(*, timeout):
+            client = clients.pop(0)
+            client.timeout = timeout
+            return client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+        record_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory),
+            patch.object(
+                llm_transport,
+                "record_usage_payload_resilient",
+                record_usage,
+            ),
+        ):
+            result = await llm_transport._stream_gemini_json_response(
+                system_prompt="严格输出 JSON",
+                user_parts=[{"text": "输入内容"}],
+                error_message="生成失败",
+                request_label="openai_responses_capability_fallback",
+            )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertTrue(response_client.stream_calls[0][0][1].endswith("/responses"))
+        self.assertTrue(chat_client.stream_calls[0][0][1].endswith("/chat/completions"))
+        self.assertEqual(
+            chat_client.stream_calls[0][1]["json"]["reasoning_effort"],
+            "medium",
+        )
+        record_usage.assert_awaited_once()
+        self.assertEqual(record_usage.await_args.args[0]["status"], "success")
+        self.assertEqual(
+            record_usage.await_args.args[0]["metadata"]["transport"],
+            "chat_stream",
+        )
+
+    async def test_openai_responses_non_sse_completed_uses_response_without_chat_fallback_and_records_usage_once(self) -> None:
+        responses_payload = {
+            "id": "resp_completed",
+            "object": "response",
+            "status": "completed",
+            "output": [
+                {
+                    "id": "reasoning_1",
+                    "type": "reasoning",
+                    "summary": [
+                        {"type": "summary_text", "text": "正在核对岗位要求"},
+                    ],
+                },
+                {
+                    "id": "message_1",
+                    "type": "message",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": json.dumps({"ok": True}),
+                            "annotations": [],
+                        },
+                    ],
+                },
+            ],
+            "usage": {
+                "input_tokens": 12,
+                "output_tokens": 7,
+                "total_tokens": 19,
+            },
+        }
+        response = _FakeJsonResponse(
+            responses_payload,
+            headers={"content-type": "application/json"},
+        )
+        fake_client = _FakeStreamClient(response=response)
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://relay.example.com/v1",
+            ai_responses_base_url="https://relay.example.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+        chat_fallback = AsyncMock(return_value={"fallback": True})
+        thought_callback = AsyncMock()
+        usage_callback = AsyncMock()
+        record_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.httpx, "AsyncClient", return_value=fake_client),
+            patch.object(llm_transport, "_stream_qwen_json_response", chat_fallback),
+            patch.object(
+                llm_transport,
+                "record_usage_payload_resilient",
+                record_usage,
+            ),
+        ):
+            result = await llm_transport._stream_gemini_json_response(
+                system_prompt="严格输出 JSON",
+                user_parts=[{"text": "输入内容"}],
+                error_message="生成失败",
+                request_label="openai_responses_non_sse_completed",
+                thought_callback=thought_callback,
+                usage_callback=usage_callback,
+            )
+
+        self.assertEqual(result, {"ok": True})
+        chat_fallback.assert_not_awaited()
+        thought_callback.assert_awaited_once_with(
+            {"type": "thought", "summary": "正在核对岗位要求"}
+        )
+        record_usage.assert_awaited_once()
+        usage_callback.assert_awaited_once()
+        usage_event = record_usage.await_args.args[0]
+        self.assertEqual(usage_event["prompt_tokens"], 12)
+        self.assertEqual(usage_event["completion_tokens"], 7)
+        self.assertEqual(usage_event["total_tokens"], 19)
+        self.assertEqual(usage_event["status"], "success")
+        self.assertEqual(
+            usage_event["metadata"]["terminal_event_type"],
+            "response.completed",
+        )
+
+    async def test_openai_responses_non_sse_terminal_failures_do_not_fallback_to_chat(self) -> None:
+        terminal_cases = (
+            ("incomplete", llm_transport.AiProviderPayloadError),
+            ("failed", llm_transport.AiProviderUnavailableError),
+        )
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://relay.example.com/v1",
+            ai_responses_base_url="https://relay.example.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+
+        for status, error_type in terminal_cases:
+            with self.subTest(status=status):
+                response = _FakeJsonResponse(
+                    {
+                        "id": f"resp_{status}",
+                        "object": "response",
+                        "status": status,
+                        "output": [],
+                        "usage": {
+                            "input_tokens": 12,
+                            "output_tokens": 7,
+                            "total_tokens": 19,
+                        },
+                    },
+                    headers={"content-type": "application/json"},
+                )
+                fake_client = _FakeStreamClient(response=response)
+                chat_fallback = AsyncMock(return_value={"fallback": True})
+                record_usage = AsyncMock()
+                with (
+                    patch.object(llm_transport, "settings", fake_settings),
+                    patch.object(
+                        llm_transport.httpx,
+                        "AsyncClient",
+                        return_value=fake_client,
+                    ),
+                    patch.object(
+                        llm_transport,
+                        "_stream_qwen_json_response",
+                        chat_fallback,
+                    ),
+                    patch.object(
+                        llm_transport,
+                        "record_usage_payload_resilient",
+                        record_usage,
+                    ),
+                ):
+                    with self.assertRaises(error_type):
+                        await llm_transport._stream_gemini_json_response(
+                            system_prompt="严格输出 JSON",
+                            user_parts=[{"text": "输入内容"}],
+                            error_message="生成失败",
+                            request_label=f"openai_responses_non_sse_{status}",
+                        )
+
+                chat_fallback.assert_not_awaited()
+                record_usage.assert_awaited_once()
+                usage_event = record_usage.await_args.args[0]
+                self.assertEqual(usage_event["status"], status)
+                self.assertEqual(
+                    usage_event["metadata"]["terminal_event_type"],
+                    f"response.{status}",
+                )
+
+    def test_openai_responses_non_sse_non_string_status_is_a_compatibility_error(self) -> None:
+        for body in (
+            b'{"object":"response","status":[],"output":[]}',
+            b'{"object":"response","status":{},"output":[]}',
+        ):
+            with self.subTest(body=body):
+                with self.assertRaises(llm_transport._ResponsesCompatibilityError):
+                    llm_transport._parse_non_sse_responses_payload(body)
+
+    async def test_openai_responses_non_sse_malformed_json_falls_back_to_chat(self) -> None:
+        responses_failure = _FakeJsonResponse(
+            None,
+            headers={"content-type": "application/json"},
+            text="{not-json",
+        )
+        chat_response = _FakeStreamResponse(
+            [
+                'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":7,"total_tokens":19}}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        response_client = _FakeStreamClient(response=responses_failure)
+        chat_client = _FakeStreamClient(response=chat_response)
+        clients = [response_client, chat_client]
+
+        def _client_factory(*, timeout):
+            client = clients.pop(0)
+            client.timeout = timeout
+            return client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://relay.example.com/v1",
+            ai_responses_base_url="https://relay.example.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+        record_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory),
+            patch.object(
+                llm_transport,
+                "record_usage_payload_resilient",
+                record_usage,
+            ),
+        ):
+            result = await llm_transport._stream_gemini_json_response(
+                system_prompt="严格输出 JSON",
+                user_parts=[{"text": "输入内容"}],
+                error_message="生成失败",
+                request_label="openai_responses_non_sse_malformed",
+            )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertTrue(response_client.stream_calls[0][0][1].endswith("/responses"))
+        self.assertTrue(chat_client.stream_calls[0][0][1].endswith("/chat/completions"))
+        record_usage.assert_awaited_once()
+        self.assertEqual(
+            record_usage.await_args.args[0]["metadata"]["transport"],
+            "chat_stream",
+        )
+
+    async def test_openai_responses_non_sse_falls_back_to_chat_and_records_only_final_usage(self) -> None:
+        responses_failure = _FakeStreamResponse([])
+        responses_failure.headers = {"content-type": "application/json"}
+        responses_failure.text = '{"id":"response_unsupported"}'
+        chat_response = _FakeStreamResponse(
+            [
+                'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":7,"total_tokens":19}}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        response_client = _FakeStreamClient(response=responses_failure)
+        chat_client = _FakeStreamClient(response=chat_response)
+        clients = [response_client, chat_client]
+
+        def _client_factory(*, timeout):
+            client = clients.pop(0)
+            client.timeout = timeout
+            return client
+
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+        record_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.httpx, "AsyncClient", side_effect=_client_factory),
+            patch.object(
+                llm_transport,
+                "record_usage_payload_resilient",
+                record_usage,
+            ),
+        ):
+            result = await llm_transport._stream_gemini_json_response(
+                system_prompt="严格输出 JSON",
+                user_parts=[{"text": "输入内容"}],
+                error_message="生成失败",
+                request_label="openai_responses_non_sse_fallback",
+            )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertTrue(response_client.stream_calls[0][0][1].endswith("/responses"))
+        self.assertTrue(chat_client.stream_calls[0][0][1].endswith("/chat/completions"))
+        record_usage.assert_awaited_once()
+        self.assertEqual(record_usage.await_args.args[0]["status"], "success")
+        self.assertEqual(
+            record_usage.await_args.args[0]["metadata"]["transport"],
+            "chat_stream",
+        )
+
+    async def test_openai_responses_405_is_a_compatibility_error_without_failed_usage(self) -> None:
+        response = _FakeStreamResponse([])
+        response.status_code = 405
+        response.headers = {"content-type": "application/json"}
+        response.request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+        response.raise_for_status = Mock(
+            side_effect=httpx.HTTPStatusError(
+                "Method not allowed",
+                request=response.request,
+                response=response,
+            )
+        )
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+        )
+        record_usage = AsyncMock()
+
+        with (
+            patch.object(llm_transport, "settings", fake_settings),
+            patch.object(llm_transport.httpx, "AsyncClient", return_value=_FakeStreamClient(response)),
+            patch.object(
+                llm_transport,
+                "record_usage_payload_resilient",
+                record_usage,
+            ),
+        ):
+            with self.assertRaises(llm_transport._ResponsesCompatibilityError):
+                await llm_transport._stream_qwen_responses_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "输入内容"}],
+                    error_message="生成失败",
+                    request_label="openai_responses_405",
+                )
+
+        record_usage.assert_not_awaited()
+
+    async def test_openai_terminal_response_events_never_fall_back_to_chat(self) -> None:
+        terminal_events = (
+            (
+                {
+                    "type": "response.incomplete",
+                    "response": {"status": "incomplete"},
+                },
+                llm_transport.AiProviderPayloadError,
+            ),
+            (
+                {
+                    "type": "response.failed",
+                    "response": {"status": "failed"},
+                },
+                llm_transport.AiProviderUnavailableError,
+            ),
+            (
+                {"type": "error", "code": "server_error"},
+                llm_transport.AiProviderUnavailableError,
+            ),
+        )
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key="openai-key",
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key=None,
+            gemini_base_url="",
+            gemini_model="",
+        )
+
+        for terminal_event, error_type in terminal_events:
+            with self.subTest(event_type=terminal_event["type"]):
+                response = _FakeStreamResponse(
+                    [f"data: {json.dumps(terminal_event)}", ""]
+                )
+                chat_fallback = AsyncMock(return_value={"fallback": True})
+                with (
+                    patch.object(llm_transport, "settings", fake_settings),
+                    patch.object(
+                        llm_transport.httpx,
+                        "AsyncClient",
+                        return_value=_FakeStreamClient(response),
+                    ),
+                    patch.object(llm_transport, "_stream_qwen_json_response", chat_fallback),
+                ):
+                    with self.assertRaises(error_type):
+                        await llm_transport._stream_gemini_json_response(
+                            system_prompt="严格输出 JSON",
+                            user_parts=[{"text": "输入内容"}],
+                            error_message="生成失败",
+                            request_label="openai_terminal_no_chat_fallback",
+                        )
+                chat_fallback.assert_not_awaited()
 
     async def test_qwen_responses_stream_reports_completed_usage(self) -> None:
         answer_event = {
@@ -1593,55 +3116,113 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
         chat_payload = chat_client.stream_calls[0][1]["json"]
         self.assertEqual(chat_payload["thinking_budget"], 1024)
 
-    async def test_qwen_stream_gemini_fallback_failure_attributes_actual_provider(self) -> None:
-        fake_settings = SimpleNamespace(
-            ai_route_profile="qwen_primary",
-            ai_api_key="dashscope-key",
-            ai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-            ai_responses_base_url="https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
-            ai_model="qwen3.7-plus",
-            ai_timeout_seconds=300,
-            gemini_api_key="gemini-key",
-            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
-            gemini_model="gemini-2.5-flash",
+    async def test_primary_profiles_do_not_cross_fallback_to_gemini(self) -> None:
+        cases = (
+            (
+                "qwen_primary",
+                "dashscope-key",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1",
+                "qwen3.7-plus",
+                "dashscope",
+            ),
+            (
+                "openai_primary",
+                "openai-key",
+                "https://api.openai.com/v1",
+                "https://api.openai.com/v1",
+                "gpt-5.6-luna",
+                "openai_compatible",
+            ),
         )
-        failed_usage = AsyncMock()
+        for profile, api_key, base_url, responses_url, model, provider in cases:
+            with self.subTest(profile=profile):
+                fake_settings = SimpleNamespace(
+                    ai_route_profile=profile,
+                    ai_api_key=api_key,
+                    ai_base_url=base_url,
+                    ai_responses_base_url=responses_url,
+                    ai_model=model,
+                    ai_timeout_seconds=300,
+                    gemini_api_key="stale-gemini-key",
+                    gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+                    gemini_model="gemini-3.5-flash-lite",
+                )
+                failed_usage = AsyncMock()
+                gemini_fallback = AsyncMock(return_value={"provider": "gemini"})
+
+                with (
+                    patch.object(llm_transport, "settings", fake_settings),
+                    patch.object(llm_transport.logger, "warning"),
+                    patch.object(
+                        llm_transport,
+                        "_stream_qwen_responses_json_response",
+                        new=AsyncMock(
+                            side_effect=llm_transport._ResponsesCompatibilityError(
+                                "responses unsupported"
+                            )
+                        ),
+                    ),
+                    patch.object(
+                        llm_transport,
+                        "_stream_qwen_json_response",
+                        new=AsyncMock(side_effect=RuntimeError("chat failed")),
+                    ),
+                    patch.object(
+                        llm_transport,
+                        "_stream_gemini_json_response_legacy",
+                        new=gemini_fallback,
+                    ),
+                    patch.object(
+                        llm_transport,
+                        "_emit_failed_usage_best_effort",
+                        failed_usage,
+                    ),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "chat failed"):
+                        await llm_transport._stream_gemini_json_response(
+                            system_prompt="严格输出 JSON",
+                            user_parts=[{"text": "输入内容"}],
+                            error_message="生成失败",
+                            request_label=f"{profile}_no_cross_fallback",
+                        )
+
+                gemini_fallback.assert_not_awaited()
+                failed_usage.assert_awaited_once()
+                self.assertEqual(failed_usage.await_args.kwargs["provider"], provider)
+                self.assertEqual(failed_usage.await_args.kwargs["model"], model)
+
+    async def test_openai_primary_without_ai_key_never_calls_stale_gemini_stream(self) -> None:
+        fake_settings = SimpleNamespace(
+            ai_route_profile="openai_primary",
+            ai_api_key=None,
+            ai_base_url="https://api.openai.com/v1",
+            ai_responses_base_url="https://api.openai.com/v1",
+            ai_model="gpt-5.6-luna",
+            ai_timeout_seconds=300,
+            gemini_api_key="stale-gemini-key",
+            gemini_base_url="https://generativelanguage.googleapis.com/v1beta",
+            gemini_model="gemini-3.5-flash-lite",
+        )
+        gemini_stream = AsyncMock(return_value={"provider": "gemini"})
 
         with (
             patch.object(llm_transport, "settings", fake_settings),
-            patch.object(llm_transport.logger, "warning"),
-        ):
-            with patch.object(
+            patch.object(
                 llm_transport,
-                "_stream_qwen_responses_json_response",
-                new=AsyncMock(side_effect=RuntimeError("responses failed")),
-            ):
-                with patch.object(
-                    llm_transport,
-                    "_stream_qwen_json_response",
-                    new=AsyncMock(side_effect=RuntimeError("chat failed")),
-                ):
-                    with patch.object(
-                        llm_transport,
-                        "_stream_gemini_json_response_legacy",
-                        new=AsyncMock(side_effect=RuntimeError("gemini failed")),
-                    ):
-                        with patch.object(
-                            llm_transport,
-                            "_emit_failed_usage_best_effort",
-                            failed_usage,
-                        ):
-                            with self.assertRaisesRegex(RuntimeError, "gemini failed"):
-                                await llm_transport._stream_gemini_json_response(
-                                    system_prompt="严格输出 JSON",
-                                    user_parts=[{"text": "输入内容"}],
-                                    error_message="生成失败",
-                                    request_label="qwen_to_gemini_failure",
-                                )
+                "_stream_gemini_json_response_legacy",
+                new=gemini_stream,
+            ),
+        ):
+            with self.assertRaises(llm_transport.AiProviderUnavailableError):
+                await llm_transport._stream_gemini_json_response(
+                    system_prompt="严格输出 JSON",
+                    user_parts=[{"text": "敏感简历正文"}],
+                    error_message="生成失败",
+                    request_label="openai_missing_key_no_gemini",
+                )
 
-        failed_usage.assert_awaited_once()
-        self.assertEqual(failed_usage.await_args.kwargs["provider"], "gemini")
-        self.assertEqual(failed_usage.await_args.kwargs["model"], "gemini-2.5-flash")
+        gemini_stream.assert_not_awaited()
 
     async def test_qwen_stream_failure_without_gemini_stays_attributed_to_qwen(self) -> None:
         fake_settings = SimpleNamespace(
@@ -1664,7 +3245,11 @@ class QwenTransportTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(
                 llm_transport,
                 "_stream_qwen_responses_json_response",
-                new=AsyncMock(side_effect=RuntimeError("responses failed")),
+                new=AsyncMock(
+                    side_effect=llm_transport._ResponsesCompatibilityError(
+                        "responses unsupported"
+                    )
+                ),
             ):
                 with patch.object(
                     llm_transport,
@@ -1964,7 +3549,7 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stream_mock.await_args.kwargs["budget_tokens"], 2048)
         self.assertEqual(stream_mock.await_args.kwargs["request_label"], "jd_text_analysis")
 
-    async def test_analyze_jd_with_thoughts_emits_initial_visible_thought(self) -> None:
+    async def test_analyze_jd_with_thoughts_does_not_emit_placeholder_thoughts(self) -> None:
         fake_settings = SimpleNamespace(
             gemini_api_key="gemini-key",
             ai_thinking_budget_jd_analysis=2048,
@@ -1984,8 +3569,94 @@ class AiServiceBudgetRoutingTests(unittest.IsolatedAsyncioTestCase):
                         thought_callback=thought_callback,
                     )
 
-        thought_callback.assert_awaited_once_with(
-            {"type": "thought", "summary": "正在拆解岗位要求"}
+        thought_callback.assert_not_awaited()
+
+    async def test_analyze_image_jd_with_thoughts_does_not_emit_placeholder_thoughts(self) -> None:
+        fake_settings = SimpleNamespace(
+            gemini_api_key="gemini-key",
+            ai_thinking_budget_jd_analysis=2048,
+        )
+        stream_mock = AsyncMock(return_value={})
+        thought_callback = AsyncMock()
+
+        with patch.object(jd_analysis_service, "settings", fake_settings):
+            with patch.object(jd_analysis_service, "_stream_gemini_json_response", stream_mock):
+                with patch.object(
+                    jd_analysis_service,
+                    "_finalize_jd_analysis_result",
+                    Mock(return_value={}),
+                ):
+                    await jd_analysis_service.analyze_jd_with_image_thoughts(
+                        "abc123",
+                        "image/png",
+                        thought_callback=thought_callback,
+                    )
+
+        thought_callback.assert_not_awaited()
+
+    async def test_analyze_jd_with_thoughts_does_not_emit_result_summary_placeholders(self) -> None:
+        fake_settings = SimpleNamespace(
+            gemini_api_key="gemini-key",
+            ai_thinking_budget_jd_analysis=24576,
+        )
+        stream_result = {
+            "jobTitle": "用户产品经理",
+            "jobKeywords": ["购物链路", "会员体系", "转化漏斗"],
+            "missingKeywords": ["跨境电商", "SQL"],
+        }
+        stream_mock = AsyncMock(return_value=stream_result)
+        thought_callback = AsyncMock()
+
+        with patch.object(jd_analysis_service, "settings", fake_settings):
+            with patch.object(jd_analysis_service, "_stream_gemini_json_response", stream_mock):
+                with patch.object(
+                    jd_analysis_service,
+                    "_finalize_jd_analysis_result",
+                    Mock(return_value=stream_result),
+                ):
+                    await jd_analysis_service.analyze_jd_with_thoughts(
+                        "JD text",
+                        thought_callback=thought_callback,
+                    )
+
+        thought_callback.assert_not_awaited()
+
+    async def test_analyze_jd_with_thoughts_does_not_duplicate_native_thoughts(self) -> None:
+        fake_settings = SimpleNamespace(
+            gemini_api_key="gemini-key",
+            ai_thinking_budget_jd_analysis=24576,
+        )
+        stream_result = {
+            "jobTitle": "用户产品经理",
+            "jobKeywords": ["购物链路"],
+        }
+
+        async def stream_with_native_thought(**kwargs):
+            await kwargs["thought_callback"](
+                {"type": "thought", "summary": "正在比较岗位要求与简历证据"}
+            )
+            return stream_result
+
+        thought_callback = AsyncMock()
+        with patch.object(jd_analysis_service, "settings", fake_settings):
+            with patch.object(
+                jd_analysis_service,
+                "_stream_gemini_json_response",
+                AsyncMock(side_effect=stream_with_native_thought),
+            ):
+                with patch.object(
+                    jd_analysis_service,
+                    "_finalize_jd_analysis_result",
+                    Mock(return_value=stream_result),
+                ):
+                    await jd_analysis_service.analyze_jd_with_thoughts(
+                        "JD text",
+                        thought_callback=thought_callback,
+                    )
+
+        self.assertEqual(
+            [item.args[0] for item in thought_callback.await_args_list],
+            [{"type": "thought", "summary": "正在比较岗位要求与简历证据"}],
         )
 
     async def test_polish_experience_with_thoughts_uses_polish_budget(self) -> None:

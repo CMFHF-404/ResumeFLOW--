@@ -44,7 +44,7 @@ class ResumeBossGreetingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch.object(resume_service, "_get_resume", AsyncMock(return_value=resume)):
-            with patch.object(resume_service, "utc_now", return_value=timestamp):
+            with patch.object(resume_service, "utc_now_aware", return_value=timestamp):
                 result = await resume_service.persist_resume_boss_greeting(
                     session,
                     "user-1",

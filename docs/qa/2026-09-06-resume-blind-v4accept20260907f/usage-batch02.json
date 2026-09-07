@@ -1,0 +1,664 @@
+[
+  {
+    "id": "d219f90d-3de2-4d92-af1c-bb6d7f9a79c6",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 18877,
+    "case": "baseline-H9S2-3",
+    "receipts": []
+  },
+  {
+    "id": "e1a24658-036b-402f-8bb3-0e8ed25a529e",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 20292,
+    "case": "baseline-N6D2-3",
+    "receipts": []
+  },
+  {
+    "id": "dbddc3b6-b8e4-4843-95c1-ea37146043b1",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 25222,
+    "case": "baseline-P5L2-3",
+    "receipts": []
+  },
+  {
+    "id": "60140990-c42e-4380-844e-79b90f3c451d",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 20444,
+    "case": "baseline-H9S2-3",
+    "receipts": []
+  },
+  {
+    "id": "f2b10fda-1c01-4bff-b7ff-f37543af423c",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 24836,
+    "case": "baseline-P5L2-3",
+    "receipts": []
+  },
+  {
+    "id": "d068d241-bb00-45de-8f30-e7f43f0228fb",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 21071,
+    "case": "baseline-N6D2-3",
+    "receipts": []
+  },
+  {
+    "id": "ceebc473-bd93-4379-b032-d22611f0e639",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 19871,
+    "case": "baseline-H9S2-3",
+    "receipts": []
+  },
+  {
+    "id": "f996f885-7343-41b6-8b86-a6dc4cb01e8d",
+    "label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "tokens": 13172,
+    "case": "baseline-N6D2-3",
+    "receipts": [
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "各模块排布合理，STAR因果链条严密，个人总结与经历聚焦于产品需求分析方向，评分与事实及标准一致。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "经历中S/T/A/R四要素完整且具体，Action执行清晰，Result具备业务验收与试用的定性闭环，符合各分项满分评定。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "结构清晰无冗余，仅Action单处完整句子缺少句末标点，准确扣除语法与自然度1分（14/15），符合标点扣分上限与规则。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "基础信息缺少电话扣3分得7分；教育、核心经历、经历字段及技能均完整；求职方向结合岗位与经历明确给满分；补充信息无内容得0分，各项评定完全准确。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "动词与术语使用准确，表述具体精确，职责边界清晰且陈述客观务实，符合满分标准。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "简历中完全未包含任何量化数字（包括过程数量和结果指标），各项得分均为0，判定准确。"
+          }
+        ]
+      },
+      {
+        "approved": false,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "不符合",
+            "subscores": [
+              "信息顺序"
+            ],
+            "evidenceIds": [
+              "E005",
+              "E006",
+              "E007",
+              "E008",
+              "E009"
+            ],
+            "reason": "简历中的模块顺序整体合理，section_order中出现project仅为默认布局顺序，无实质性逻辑结构混乱，扣除信息顺序3分缺乏依据。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "单条经历的S/T/A/R四要素清晰完整，行动具体且验收闭环明确，符合标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "整体表达清晰流畅，仅针对Action项缺失句末标点扣除1分，符合可读性规范。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "基础信息缺电话扣3分，补充信息缺项目证书得0分，其余教育、经历、技能与求职方向均符合满分标准。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "专业用词、动作动词、术语与客观性均符合标准要求。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "全文无数值型量化事实支撑，六项量化指标均得0分符合事实与计算规则。"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "9125a5e6-6044-4a7d-9339-a101d667c00e",
+    "label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "tokens": 16655,
+    "case": "baseline-P5L2-3",
+    "receipts": [
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [
+              "信息顺序",
+              "因果关系",
+              "信息层级",
+              "一致性与聚焦"
+            ],
+            "evidenceIds": [
+              "E004",
+              "E005",
+              "E006",
+              "E007",
+              "E008",
+              "E009",
+              "E018",
+              "E019",
+              "E020",
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E027",
+              "E028",
+              "E029",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "各经历内部背景、任务、行动与结果逻辑闭环，整体章节结构与经历层级合理，与求职职能保持一致，判定符合。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [
+              "Situation情境",
+              "Task任务",
+              "Action行动",
+              "Result结果"
+            ],
+            "evidenceIds": [
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "两段经历均具备完整情境、明确任务、具体行动及定性验收交付结果，符合STAR评分标准与权重计算。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [
+              "扫读结构",
+              "句子清晰度",
+              "信息密度",
+              "语法与自然度",
+              "重复与冗余"
+            ],
+            "evidenceIds": [
+              "E004",
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E032",
+              "E034",
+              "E035"
+            ],
+            "reason": "叙述清晰精炼无冗余套话，针对经历中完整陈述句缺失句末标点的扣分严格限制在语法与自然度（扣2分），符合标点扣分规则上限。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [
+              "基础信息",
+              "教育经历",
+              "核心经历模块",
+              "经历必要字段",
+              "技能与资格",
+              "求职方向",
+              "补充信息"
+            ],
+            "evidenceIds": [
+              "E001",
+              "E002",
+              "E004",
+              "E010",
+              "E011",
+              "E012",
+              "E013",
+              "E014",
+              "E015",
+              "E019",
+              "E020",
+              "E021",
+              "E022",
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E028",
+              "E029",
+              "E030",
+              "E031",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "除电话缺失扣除3分外，教育、技能、经历核心字段齐全，总结与经历岗位明确确立产品职能方向，求职方向得满分，符合标准。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [
+              "行动动词",
+              "岗位术语",
+              "表达精确度",
+              "贡献与责任边界",
+              "客观与可信"
+            ],
+            "evidenceIds": [
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "动词明确具体，术语运用准确，责任边界清晰且表述客观可信，符合专业表达全额赋分标准。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [
+              "结果指标",
+              "基线与前后对比",
+              "覆盖规模",
+              "时间窗口",
+              "过程数量",
+              "数据可信度"
+            ],
+            "evidenceIds": [],
+            "reason": "简历中所有经历均为定性交付描述，无任何显式量化数据，各量化子项均得0分，符合量化覆盖率计算规则。"
+          }
+        ]
+      },
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [
+              "信息顺序",
+              "因果关系",
+              "信息层级",
+              "一致性与聚焦"
+            ],
+            "evidenceIds": [
+              "E004",
+              "E005",
+              "E006",
+              "E007",
+              "E008",
+              "E009",
+              "E018",
+              "E019",
+              "E020",
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E027",
+              "E028",
+              "E029",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "模块顺序清晰规范，经历展开因果合理，经历与总结聚焦一致，判定符合。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [
+              "Situation情境",
+              "Task任务",
+              "Action行动",
+              "Result结果"
+            ],
+            "evidenceIds": [
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "两段经历均完整包含情境、任务、具体行动及定性验收交付结果，符合STAR各子项评分标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [
+              "扫读结构",
+              "句子清晰度",
+              "信息密度",
+              "语法与自然度",
+              "重复与冗余"
+            ],
+            "evidenceIds": [
+              "E004",
+              "E018",
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E027",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "排版与结构清晰易读，仅针对缺少句末标点扣除2分（归于语法与自然度），符合标点扣分原则与上限。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [
+              "基础信息",
+              "教育经历",
+              "核心经历模块",
+              "经历必要字段",
+              "技能与资格",
+              "求职方向",
+              "补充信息"
+            ],
+            "evidenceIds": [
+              "E001",
+              "E002",
+              "E004",
+              "E010",
+              "E011",
+              "E012",
+              "E013",
+              "E014",
+              "E015",
+              "E019",
+              "E020",
+              "E021",
+              "E022",
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E028",
+              "E029",
+              "E030",
+              "E031",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "除电话缺失扣分外，教育、技能、经历模块完整，总结与岗位标题明确确立产品职能方向，符合完整性评分要求。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [
+              "行动动词",
+              "岗位术语",
+              "表达精确度",
+              "贡献与责任边界",
+              "客观与可信"
+            ],
+            "evidenceIds": [
+              "E023",
+              "E024",
+              "E025",
+              "E026",
+              "E032",
+              "E033",
+              "E034",
+              "E035"
+            ],
+            "reason": "经历表达用词具体规范，岗位术语准确，责任清晰且客观克制，符合专业表达满分判定。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [
+              "结果指标",
+              "基线与前后对比",
+              "覆盖规模",
+              "时间窗口",
+              "过程数量",
+              "数据可信度"
+            ],
+            "evidenceIds": [],
+            "reason": "简历中无任何显式数值支撑量化指标，所有量化子项得0分，评判与证据引用符合标准。"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "81f609c7-97ef-4df4-adc3-932bc1557cc0",
+    "label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "tokens": 13582,
+    "case": "baseline-H9S2-3",
+    "receipts": [
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "信息顺序、因果关系、信息层级以及一致性与聚焦的打分符合标准，证据引用准确。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "经历中S具备明确情境（15分），T具备明确任务（15分），A具备具体行动（35分），R具备定性交付与部署结果（35分），各项评分及定性结果认定符合标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "语句通顺，Action陈述句末尾缺少标点符号扣除1分（14/15），扣分规则与分值计算符合标准。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "基础信息缺少电话扣3分（7/10），无补充项目/证书（0/5），求职意向结合个人总结与产品经理经历明确认定为10分，其余模块齐全，评分符合标准。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "动词具体明确，术语规范，责任边界与客观性均达标，各项给分符合标准。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "仅包含过程数量（访谈15名管理员、整理20条需求）且归属明确，过程数量与数据可信度得满分（10/10），缺少结果指标、对比基线、覆盖规模与时间窗口（均为0分），符合量化评分规则。"
+          }
+        ]
+      },
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "各子项评分与证据引用逻辑一致，符合标准。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "S、T、A、R四个维度判定准确，交付定性结果符合clear_result认定，给分符合标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "语法与自然度因单处标点缺失扣1分，其余子项满分，符合评分规则。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "各项必填字段与模块覆盖度评估准确，求职方向认定正确，评分符合标准。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "专业动词、术语、精确度、责任边界及客观性判定完全符合标准要求。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "过程数量及数据可信度正确赋分（10/10），未包含结果指标、基线、业务覆盖规模和时间窗口得0分，符合量化覆盖度计算标准。"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "b40613cd-d285-4b7d-93c7-03e31f427786",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 21026,
+    "case": "baseline-N6D2-3",
+    "receipts": []
+  },
+  {
+    "id": "81d105b6-12ca-407a-bf89-eecb201da730",
+    "label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "tokens": 9050,
+    "case": "baseline-N6D2-3",
+    "receipts": [
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "各子项评分与证据完全匹配，结构排序合理，因果逻辑清晰，前后定位一致。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "单段经历中Situation具备明确背景，Task目标清晰，Action具体描述了访谈、梳理和编写说明等实际工作，Result给出了业务验收与客服试用的定性交付成果，均达到满分标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "整体扫读结构清晰，语法自然度扣减1分对应E025末尾标点缺失，符合每处扣1分且上限3分的校准规则，其余子项评分准确。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "个人总结结合职位名称明确表达了产品经理职能（求职方向满分10分），基础信息缺少电话扣减3分得7分，技能具备得15分，缺少补充项目/证书得0分，经历与教育模块完整，评分与规则完全一致。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "动词选用恰当，术语使用准确，职责边界清晰且表述客观，各子项均符合满分标准。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "经历中未包含任何数值、百分比、过程数量或可信度量化指标，所有量化子项得0分判定准确。"
+          }
+        ]
+      }
+    ]
+  }
+]

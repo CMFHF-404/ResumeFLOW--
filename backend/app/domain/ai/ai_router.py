@@ -35,7 +35,7 @@ from .ai_service import (
     split_experience_text,
 )
 from . import jd_attachment_service
-from .public_errors import resolve_ai_public_response
+from .public_errors import resolve_ai_public_response, translate_ai_public_exception
 from .runtime_budget import (
     BoundedAiRequestBodyRoute,
     build_public_stream_error_event,
@@ -65,6 +65,7 @@ def _stream_error_event(
     preserve_value_error: bool = False,
 ) -> Dict[str, Any]:
     resolved_request_id = request_id or new_ai_request_id()
+    public_exception = translate_ai_public_exception(exc) or exc
     known_exceptions = (
         HTTPException,
         NotFoundError,
@@ -72,20 +73,20 @@ def _stream_error_event(
     )
     if preserve_value_error:
         known_exceptions = (*known_exceptions, ValueError)
-    if isinstance(exc, known_exceptions):
+    if isinstance(public_exception, known_exceptions):
         logger.warning(
             "AI stream request failed request_id=%s error_type=%s",
             resolved_request_id,
-            type(exc).__name__,
+            type(public_exception).__name__,
         )
     else:
         logger.error(
             "AI stream request crashed request_id=%s error_type=%s",
             resolved_request_id,
-            type(exc).__name__,
+            type(public_exception).__name__,
         )
     return build_public_stream_error_event(
-        exc,
+        public_exception,
         request_id=resolved_request_id,
         preserve_value_error=preserve_value_error,
         preserve_exceptions=known_exceptions,
@@ -317,7 +318,7 @@ async def resume_evaluation_stream_endpoint(
                 await emit({"type": "progress", "node": "validate_report", "title": "校验六维报告"})
                 await emit({"type": "final", "result": result})
             except ValueError as exc:
-                await emit(_stream_error_event(exc, preserve_value_error=True))
+                await emit(_stream_error_event(exc))
             except Exception as exc:
                 await emit(_stream_error_event(exc))
             finally:

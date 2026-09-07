@@ -1,0 +1,283 @@
+{
+  "ok": true,
+  "sample": "P5L2",
+  "seconds": 17.49,
+  "value": {
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "参与企业软件需求梳理和交付验收。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "望川企业服务（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "运营人员反馈客户资料字段含义不统一。",
+            "t": "负责整理字段定义及验收规则。",
+            "a": "核对字段定义并编写说明。",
+            "r": "新说明通过运营验收并在试用环境使用。"
+          },
+          "id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d"
+        },
+        {
+          "category": "project",
+          "title": "运营周报自动化",
+          "org": "望川企业服务（虚构）",
+          "start_date": "2024-04-01",
+          "end_date": "2024-06-30",
+          "is_current": false,
+          "star": {
+            "s": "客服人员需要统一处理工单交接。",
+            "t": "负责整理交接规则。",
+            "a": "整理交接规则并完成验收。",
+            "r": "交接说明已交付客服试用。"
+          },
+          "id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9"
+        }
+      ]
+    },
+    "changes": [
+      {
+        "change_id": "CHANGE_TASK_001",
+        "issue_ids": [
+          "ISSUE_GLOBAL_READABILITY_PUNCTUATION_001",
+          "ISSUE_GLOBAL_READABILITY_PUNCTUATION_002"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "核对字段定义并编写说明",
+        "general_value": "核对字段定义并编写说明。",
+        "targeted_value": "核对字段定义并编写说明。",
+        "source_refs": [
+          "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "补充句末标点以修正格式问题。",
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "5f06beb4e2bf9a114b3df6fb16baef8611718e95ece6e832a917b1080738f23b",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "修改仅补充句末标点，内容与原始数据完全一致，得到原文支持。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_0",
+        "issue_ids": [
+          "ISSUE_EXP_001_QUANT_PROCESS_QUANTITY"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "核对字段定义并编写说明",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002",
+        "issue_ids": [
+          "ISSUE_GLOBAL_READABILITY_PUNCTUATION_001",
+          "ISSUE_GLOBAL_READABILITY_PUNCTUATION_002"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "整理交接规则并完成验收",
+        "general_value": "整理交接规则并完成验收。",
+        "targeted_value": "整理交接规则并完成验收。",
+        "source_refs": [
+          "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "补充句末标点以修正格式问题。",
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "c5e2d1032be0fb0edc50a37aac6c36cb0809a920b1183667dc321034f248161b",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "修改仅补充句末标点，内容与原始数据完全一致，得到原文支持。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_002_RELATED_0",
+        "issue_ids": [
+          "ISSUE_EXP_002_QUANT_PROCESS_QUANTITY"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "整理交接规则并完成验收",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003",
+        "issue_ids": [
+          "ISSUE_EXP_001_QUANT_BASELINE_COMPARISON",
+          "ISSUE_EXP_001_QUANT_COVERAGE_SCALE",
+          "ISSUE_EXP_001_QUANT_DATA_CREDIBILITY",
+          "ISSUE_EXP_001_QUANT_RESULT_METRIC",
+          "ISSUE_EXP_001_QUANT_TIME_WINDOW"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "新说明通过运营验收并在试用环境使用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "当前表述完整且无独立格式缺陷需处理。",
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_004",
+        "issue_ids": [
+          "ISSUE_EXP_002_QUANT_BASELINE_COMPARISON",
+          "ISSUE_EXP_002_QUANT_COVERAGE_SCALE",
+          "ISSUE_EXP_002_QUANT_DATA_CREDIBILITY",
+          "ISSUE_EXP_002_QUANT_RESULT_METRIC",
+          "ISSUE_EXP_002_QUANT_TIME_WINDOW"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "交接说明已交付客服试用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "当前表述完整且无独立格式缺陷需处理。",
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_0",
+        "issue_ids": [
+          "ISSUE_GLOBAL_COMPLETENESS_BASIC"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "questions": [],
+    "safety": {
+      "allowed_change_ids": [
+        "CHANGE_TASK_001",
+        "CHANGE_TASK_002"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHANGE_TASK_001_RELATED_0",
+        "CHANGE_TASK_002_RELATED_0",
+        "CHANGE_TASK_003",
+        "CHANGE_TASK_004",
+        "RETAINED_0"
+      ],
+      "findings": []
+    },
+    "accepted": [
+      "CHANGE_TASK_001",
+      "CHANGE_TASK_002"
+    ],
+    "internalReceiptBound": true
+  },
+  "auditReceiptId": "f32a9f2d3b894eae80bd7339b599a34c"
+}

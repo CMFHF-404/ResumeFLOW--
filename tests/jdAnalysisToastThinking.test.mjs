@@ -12,29 +12,16 @@ test('JD analysis streams Gemini thoughts into the inline thinking area', () => 
     /resolveThoughtDisplayEvent/,
     'JD analysis thinking area should use the shared thought event resolver',
   );
-  assert.match(
-    source,
-    /import \{ JD_ANALYSIS_PROGRESS_NODE_TITLES \} from "\.\.\/constants\/jdAnalysis";/,
-    'JD analysis thinking area should reuse the existing progress node labels',
-  );
-  assert.match(
-    source,
-    /let hasThoughtTitle = false;/,
-    'JD analysis should track whether real model thought titles have arrived',
-  );
+  assert.doesNotMatch(source, /JD_ANALYSIS_PROGRESS_NODE_TITLES/);
   assert.match(
     source,
     /resolution\.kind === "model_thought"[\s\S]*appendJDThinkingText\(current,\s*resolution\.text\)/,
     'model thought events should update the inline thinking display area',
   );
+  assert.doesNotMatch(source, /resolution\.kind === "status"/);
   assert.match(
     source,
-    /resolution\.kind === "status" && !hasThoughtTitle[\s\S]*setThinkingText\(resolution\.text\)/,
-    'progress updates should provide a fallback before real thought titles arrive',
-  );
-  assert.match(
-    source,
-    /resolution\.kind === "reset"[\s\S]*hasThoughtTitle = false;[\s\S]*setThinkingText\(""\)/,
+    /resolution\.kind === "reset"[\s\S]*setThinkingText\(""\)/,
     'thought_reset should clear the inline thinking display area',
   );
 });
@@ -51,7 +38,9 @@ test('JD analysis keeps model thoughts in the inline thinking area instead of to
   assert.doesNotMatch(toastSource, /showToastLoading/);
   assert.doesNotMatch(toastSource, /updateToast/);
   assert.doesNotMatch(toastSource, /closeToast\(toastId\)/);
-  assert.match(panelSource, /思考中：\{thinkingText \|\| '正在分析岗位要求\.\.\.'\}/);
+  assert.match(panelSource, /thinkingText\?\.trim\(\) \|\| '正在分析岗位要求\.\.\.'/);
+  assert.match(panelSource, /思考中：/);
+  assert.doesNotMatch(panelSource, /正在思考：/);
   assert.doesNotMatch(panelSource, /JDThinkingTracePanel/);
   assert.doesNotMatch(editorSource, /thinkingNodes=\{thinkingNodes\}/);
 });

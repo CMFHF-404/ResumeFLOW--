@@ -1,0 +1,12 @@
+{
+  "created_at": "2026-09-07T07:11:36.743343+00:00",
+  "contract": {
+    "version": 1,
+    "artifacts": {
+      "fixtures.json": "b6b11833f5be943baf40f4c1449e6b5c2c2fc2ed0a16aabf8ab8e9839beb0e15",
+      "protocol.json": "f2a8da16a632feab9e1c6147740defe42b46f7e3ac55de62752e1cb22b05798b",
+      "algorithm-hashes.json": "e726d24503ef9f61c3a334d3a92e3cbb2b7caada01c445a606658bbd92534fad",
+      "runtime-config.json": "6230eec9a349eb4290cdc93e3dc5646c10bbe33f0925f202b3ed7ef4033dfb6a"
+    }
+  }
+}

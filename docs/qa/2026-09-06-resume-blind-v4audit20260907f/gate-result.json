@@ -1,0 +1,146 @@
+{
+  "passed": true,
+  "rounds": [
+    {
+      "round": 1,
+      "ok": true,
+      "judgments": [
+        {
+          "case": "P1A4",
+          "dimension": "内容可读",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "Q8C2",
+          "dimension": "成果量化",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "D1A4",
+          "dimension": "内容完整",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "Q1A4",
+          "dimension": "成果量化",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "P8C2",
+          "dimension": "内容可读",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "K7J2",
+          "dimension": "专业表达",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "D8C2",
+          "dimension": "内容完整",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "K9B5",
+          "dimension": "专业表达",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "K3F8",
+          "dimension": "专业表达",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        }
+      ],
+      "passed": true
+    },
+    {
+      "round": 2,
+      "ok": true,
+      "judgments": [
+        {
+          "case": "Q8C2",
+          "dimension": "成果量化",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "K9B5",
+          "dimension": "专业表达",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "K7J2",
+          "dimension": "专业表达",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "P8C2",
+          "dimension": "内容可读",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "K3F8",
+          "dimension": "专业表达",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "Q1A4",
+          "dimension": "成果量化",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "D1A4",
+          "dimension": "内容完整",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "P1A4",
+          "dimension": "内容可读",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "D8C2",
+          "dimension": "内容完整",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "finished_at": "2026-09-07T07:11:10.501952+00:00"
+}

@@ -4,7 +4,10 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import HTTPException
@@ -13,6 +16,11 @@ from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 from ...config import (
     derive_qwen_responses_base_url as _derive_qwen_responses_base_url,
     load_settings,
+)
+from ...ai_model_capabilities import (
+    openai_chat_output_token_field,
+    resolve_openai_reasoning_effort,
+    supports_openai_sampling_temperature,
 )
 from .assistant_text_stream import (
     AssistantTextCallback,
@@ -29,7 +37,10 @@ from .response_diagnostics import response_body_log_metadata
 from .sse_events import iter_sse_json_payloads
 from .upstream_response import UPSTREAM_ACCEPT_ENCODING, read_bounded_response_body
 from .streaming_policy import (
+    AI_ROUTE_PROFILE_GEMINI,
+    AI_ROUTE_PROFILE_OPENAI,
     AI_ROUTE_PROFILE_QWEN,
+    has_openai_stream_provider,
     has_qwen_thinking_provider,
     is_qwen_model as _is_qwen_model,
     resolve_route_profile,
@@ -51,6 +62,10 @@ AI_CONNECT_TIMEOUT_SECONDS = 10.0
 AI_POOL_TIMEOUT_SECONDS = 10.0
 GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
 GEMINI_POOL_TIMEOUT_SECONDS = 10.0
+GEMINI_STREAM_MAX_ATTEMPTS = 2
+GEMINI_STREAM_RETRY_DELAY_SECONDS = 0.5
+GEMINI_STREAM_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+RESPONSES_COMPATIBILITY_STATUS_CODES = {404, 405, 501}
 QWEN_THOUGHT_SUMMARY_MAX_LENGTH = 80
 QWEN_RESPONSES_THOUGHT_SUMMARY_MAX_LENGTH = 32
 AI_USAGE_TOKEN_COUNT_MAX = 100_000_000
@@ -59,6 +74,28 @@ LANE_DEFAULT = "default"
 LANE_TOOL_CALL = "tool_call"
 LANE_THINKING = "thinking"
 LANE_RESUME_PARSE = "resume_parse"
+_guidance_http_client: ContextVar[Any] = ContextVar('guidance_http_client', default=None)
+
+
+@asynccontextmanager
+async def guidance_connection_session():
+    """One operation owns its pool; independent model calls share no prompt state."""
+    async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+        token = _guidance_http_client.set(client)
+        try:
+            yield
+        finally:
+            _guidance_http_client.reset(token)
+
+
+@asynccontextmanager
+async def _gemini_http_session():
+    scoped_client = _guidance_http_client.get()
+    if scoped_client is not None:
+        yield scoped_client
+    else:
+        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+            yield client
 _GEMINI_THINKING_LEVELS = {"minimal", "low", "medium", "high"}
 _PROVIDER_ACCESS_UNAVAILABLE_CODES = {
     "accessdenied",
@@ -124,6 +161,12 @@ class AIRoute:
 
 
 class ToolCallingUnsupportedError(RuntimeError):
+    pass
+
+
+class _ResponsesCompatibilityError(AiProviderPayloadError):
+    """The configured endpoint does not expose a compatible Responses stream."""
+
     pass
 
 
@@ -222,9 +265,11 @@ def _resolve_ai_route(
 ) -> AIRoute:
     profile = _route_profile()
     normalized_lane = lane or LANE_DEFAULT
+    if profile == AI_ROUTE_PROFILE_GEMINI:
+        return _resolve_gemini_route(model=model)
     if normalized_lane == LANE_RESUME_PARSE:
         return _resolve_openai_compatible_route(lane=LANE_RESUME_PARSE, model=model)
-    if profile == AI_ROUTE_PROFILE_QWEN:
+    if profile in {AI_ROUTE_PROFILE_OPENAI, AI_ROUTE_PROFILE_QWEN}:
         return _resolve_openai_compatible_route(lane=normalized_lane, model=model)
     if _has_gemini_provider():
         return _resolve_gemini_route(model=model)
@@ -347,16 +392,44 @@ def _should_use_qwen_thinking() -> bool:
     )
 
 
+def _should_use_openai_stream() -> bool:
+    return has_openai_stream_provider(
+        settings,
+        route_profile=_route_profile(),
+    )
+
+
 def _prepare_chat_completion_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     request_payload = {**payload}
     output_cap = runtime_budget.get_ai_runtime_budget().max_output_tokens
+    model = str(request_payload.get("model") or "")
+    token_field = (
+        "max_tokens"
+        if _is_qwen_model(model)
+        else openai_chat_output_token_field(model)
+    )
     try:
-        requested_output_tokens = int(request_payload.get("max_tokens", output_cap))
+        requested_output_tokens = int(
+            request_payload.get(
+                "max_completion_tokens",
+                request_payload.get("max_tokens", output_cap),
+            )
+        )
     except (TypeError, ValueError):
         requested_output_tokens = output_cap
-    request_payload["max_tokens"] = max(1, min(requested_output_tokens, output_cap))
+    request_payload.pop("max_tokens", None)
+    request_payload.pop("max_completion_tokens", None)
+    request_payload[token_field] = max(
+        1,
+        min(requested_output_tokens, output_cap),
+    )
+    reasoning_effort = resolve_openai_reasoning_effort(model)
+    if reasoning_effort and not _is_qwen_model(model):
+        request_payload.pop("temperature", None)
+        request_payload.pop("top_p", None)
+        request_payload.setdefault("reasoning_effort", reasoning_effort)
     if (
-        _is_qwen_model(str(request_payload.get("model") or ""))
+        _is_qwen_model(model)
         and not request_payload.get("stream")
         and "enable_thinking" not in request_payload
     ):
@@ -618,6 +691,47 @@ def _extract_qwen_responses_output_text(response_payload: Dict[str, Any]) -> str
         if isinstance(item, dict) and item.get("type") == "message"
     ]
     return "".join(part for part in text_parts if part)
+
+
+_RESPONSES_STATUS_VALUES = {
+    "completed",
+    "failed",
+    "in_progress",
+    "cancelled",
+    "queued",
+    "incomplete",
+}
+
+
+def _parse_non_sse_responses_payload(body: bytes) -> Dict[str, Any]:
+    """Parse a relay's non-streaming representation of a Responses result."""
+    try:
+        decoded = body.decode("utf-8")
+        payload = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _ResponsesCompatibilityError(
+            "Responses endpoint returned malformed non-streaming JSON."
+        ) from exc
+
+    if not isinstance(payload, dict) or payload.get("object") != "response":
+        raise _ResponsesCompatibilityError(
+            "Responses endpoint returned an incompatible non-streaming payload."
+        )
+    status = payload.get("status")
+    if (
+        not isinstance(status, str)
+        or status not in _RESPONSES_STATUS_VALUES
+        or not isinstance(payload.get("output"), list)
+    ):
+        raise _ResponsesCompatibilityError(
+            "Responses endpoint returned an invalid Response object."
+        )
+    usage = payload.get("usage")
+    if usage is not None and not isinstance(usage, dict):
+        raise _ResponsesCompatibilityError(
+            "Responses endpoint returned an invalid usage payload."
+        )
+    return payload
 
 
 def _iter_qwen_responses_summary_texts(item: Dict[str, Any]):
@@ -990,15 +1104,20 @@ def _build_known_stream_usage_payload(
     request_label: str,
     transport: str,
     cleanup: bool,
+    status: str = "success",
+    terminal_event_type: str | None = None,
 ) -> Dict[str, Any]:
     metadata: Dict[str, Any] = {"transport": transport}
     if cleanup:
         metadata["finalized_during_cleanup"] = True
+    if terminal_event_type:
+        metadata["terminal_event_type"] = terminal_event_type
     return _build_usage_payload(
         usage,
         provider=provider,
         model=model,
         request_label=request_label,
+        status=status,
         metadata=metadata,
     )
 
@@ -1038,6 +1157,8 @@ async def _record_final_stream_usage(
     model: str,
     request_label: str,
     transport: str,
+    status: str = "success",
+    terminal_event_type: str | None = None,
 ) -> None:
     await record_usage_payload_resilient(
         _build_known_stream_usage_payload(
@@ -1047,6 +1168,8 @@ async def _record_final_stream_usage(
             request_label=request_label,
             transport=transport,
             cleanup=False,
+            status=status,
+            terminal_event_type=terminal_event_type,
         )
     )
 
@@ -1087,8 +1210,35 @@ async def _iter_sse_json_payloads(response: httpx.Response):
         yield payload
 
 
+async def _iter_responses_sse_json_payloads(
+    response: httpx.Response,
+    *,
+    enabled: bool,
+):
+    if not enabled:
+        return
+    async for payload in _iter_sse_json_payloads(response):
+        yield payload
+
+
 def _supports_gemini_response_mime_type(model: Optional[str] = None) -> bool:
-    return not (model or "").strip().lower().startswith("gemini-3")
+    normalized = (model or "").strip().lower()
+    if normalized.startswith(("gemini-3.1-flash-lite", "gemini-3.5-flash-lite")):
+        return True
+    return not normalized.startswith("gemini-3")
+
+
+def _gemini3_thinking_level_from_budget(budget_tokens: int) -> str:
+    """Map legacy token budgets to the thinking levels required by Gemini 3."""
+    if budget_tokens < 0:
+        return "high"
+    if budget_tokens == 0:
+        return "minimal"
+    if budget_tokens <= 1_024:
+        return "low"
+    if budget_tokens <= 8_192:
+        return "medium"
+    return "high"
 
 
 def _build_gemini_generation_config(
@@ -1096,22 +1246,33 @@ def _build_gemini_generation_config(
     *,
     model: Optional[str] = None,
     include_thoughts: bool = True,
+    response_json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    is_gemini3 = (model or "").strip().lower().startswith("gemini-3")
     config: Dict[str, Any] = {
-        "temperature": 0.2,
         "maxOutputTokens": runtime_budget.get_ai_runtime_budget().max_output_tokens,
     }
+    if not is_gemini3:
+        config["temperature"] = 0.2
     if include_thoughts:
         config["thinkingConfig"] = {
             "includeThoughts": True,
         }
     if _supports_gemini_response_mime_type(model):
         config["responseMimeType"] = "application/json"
+        if response_json_schema is not None:
+            config["responseJsonSchema"] = response_json_schema
     if budget_tokens is None:
         return config
 
     thinking_config = config.setdefault("thinkingConfig", {})
-    thinking_config["thinkingBudget"] = int(budget_tokens)
+    normalized_budget = int(budget_tokens)
+    if is_gemini3:
+        thinking_config["thinkingLevel"] = _gemini3_thinking_level_from_budget(
+            normalized_budget
+        )
+    else:
+        thinking_config["thinkingBudget"] = normalized_budget
     return config
 
 
@@ -1122,6 +1283,7 @@ def _build_gemini_request_body(
     budget_tokens: Optional[int] = None,
     model: Optional[str] = None,
     include_thoughts: bool = True,
+    response_json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     return {
         "systemInstruction": {
@@ -1137,6 +1299,7 @@ def _build_gemini_request_body(
             budget_tokens,
             model=model,
             include_thoughts=include_thoughts,
+            response_json_schema=response_json_schema,
         ),
     }
 
@@ -1237,14 +1400,28 @@ def _convert_openai_tool_calls_to_gemini_parts(message: Dict[str, Any]) -> List[
             name = str(function.get("name") or "").strip()
             if not name:
                 continue
-            parts.append(
-                {
-                    "functionCall": {
-                        "name": name,
-                        "args": _parse_gemini_function_args(function.get("arguments")),
-                    }
-                }
+            function_call: Dict[str, Any] = {
+                "name": name,
+                "args": _parse_gemini_function_args(function.get("arguments")),
+            }
+            call_id = tool_call.get("id")
+            if isinstance(call_id, str) and call_id:
+                function_call["id"] = call_id
+            part: Dict[str, Any] = {"functionCall": function_call}
+            extra_content = tool_call.get("extra_content")
+            google_metadata = (
+                extra_content.get("google")
+                if isinstance(extra_content, dict)
+                else None
             )
+            thought_signature = (
+                google_metadata.get("thought_signature")
+                if isinstance(google_metadata, dict)
+                else None
+            )
+            if isinstance(thought_signature, str) and thought_signature:
+                part["thoughtSignature"] = thought_signature
+            parts.append(part)
     if parts:
         return parts
     return _convert_openai_content_to_gemini_parts(message.get("content"))
@@ -1254,14 +1431,14 @@ def _convert_openai_tool_response_to_gemini_parts(message: Dict[str, Any]) -> Li
     name = str(message.get("name") or "").strip()
     if not name:
         return _convert_openai_content_to_gemini_parts(message.get("content"))
-    return [
-        {
-            "functionResponse": {
-                "name": name,
-                "response": _parse_gemini_function_response(message.get("content")),
-            }
-        }
-    ]
+    function_response: Dict[str, Any] = {
+        "name": name,
+        "response": _parse_gemini_function_response(message.get("content")),
+    }
+    call_id = message.get("tool_call_id")
+    if isinstance(call_id, str) and call_id:
+        function_response["id"] = call_id
+    return [{"functionResponse": function_response}]
 
 
 def _build_gemini_generate_body(
@@ -1269,22 +1446,25 @@ def _build_gemini_generate_body(
     tools: Optional[List[Dict[str, Any]]] = None,
     model: Optional[str] = None,
     gemini_thinking_level: Optional[str] = None,
+    response_json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     system_parts: List[Dict[str, Any]] = []
     contents: List[Dict[str, Any]] = []
+    previous_role: Optional[str] = None
     for message in messages:
         role = str(message.get("role") or "user")
         content = message.get("content")
         if role == "system":
             system_parts.extend(_convert_openai_content_to_gemini_parts(content))
+            previous_role = role
             continue
         if role == "tool":
-            contents.append(
-                {
-                    "role": "user",
-                    "parts": _convert_openai_tool_response_to_gemini_parts(message),
-                }
-            )
+            response_parts = _convert_openai_tool_response_to_gemini_parts(message)
+            if previous_role == "tool" and contents and contents[-1]["role"] == "user":
+                contents[-1]["parts"].extend(response_parts)
+            else:
+                contents.append({"role": "user", "parts": response_parts})
+            previous_role = role
             continue
         if role == "assistant":
             contents.append(
@@ -1293,6 +1473,7 @@ def _build_gemini_generate_body(
                     "parts": _convert_openai_tool_calls_to_gemini_parts(message),
                 }
             )
+            previous_role = role
             continue
         contents.append(
             {
@@ -1300,6 +1481,7 @@ def _build_gemini_generate_body(
                 "parts": _convert_openai_content_to_gemini_parts(content),
             }
         )
+        previous_role = role
 
     if not contents:
         contents.append({"role": "user", "parts": [{"text": ""}]})
@@ -1329,6 +1511,8 @@ def _build_gemini_generate_body(
         generation_config["temperature"] = 0.3
     if _supports_gemini_response_mime_type(model):
         generation_config["responseMimeType"] = "application/json"
+        if response_json_schema is not None:
+            generation_config["responseJsonSchema"] = response_json_schema
     body: Dict[str, Any] = {
         "contents": contents,
         "generationConfig": generation_config,
@@ -1385,7 +1569,7 @@ def _extract_gemini_tool_calls(response_data: Dict[str, Any]) -> List[Dict[str, 
         return []
     parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
     tool_calls: List[Dict[str, Any]] = []
-    for index, part in enumerate(parts):
+    for part in parts:
         function_call = part.get("functionCall") if isinstance(part, dict) else None
         if not isinstance(function_call, dict):
             continue
@@ -1395,16 +1579,22 @@ def _extract_gemini_tool_calls(response_data: Dict[str, Any]) -> List[Dict[str, 
         args = function_call.get("args")
         if not isinstance(args, dict):
             args = {}
-        tool_calls.append(
-            {
-                "id": f"gemini-call-{index}",
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": json.dumps(args, ensure_ascii=False),
-                },
+        tool_call: Dict[str, Any] = {
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": json.dumps(args, ensure_ascii=False),
+            },
+        }
+        call_id = function_call.get("id")
+        if isinstance(call_id, str) and call_id:
+            tool_call["id"] = call_id
+        thought_signature = part.get("thoughtSignature")
+        if isinstance(thought_signature, str) and thought_signature:
+            tool_call["extra_content"] = {
+                "google": {"thought_signature": thought_signature}
             }
-        )
+        tool_calls.append(tool_call)
     return tool_calls
 
 
@@ -1417,6 +1607,7 @@ async def _call_gemini_generate_content(
     usage_callback: UsageCallback,
     request_label: str,
     gemini_thinking_level: Optional[str] = None,
+    response_json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if not route.api_key:
         raise HTTPException(
@@ -1428,6 +1619,7 @@ async def _call_gemini_generate_content(
         messages,
         model=route.model,
         gemini_thinking_level=gemini_thinking_level,
+        response_json_schema=response_json_schema,
     )
     usage_attempt = _UsageAttempt(
         usage_callback=usage_callback,
@@ -1437,7 +1629,7 @@ async def _call_gemini_generate_content(
         transport=route.transport,
     )
     try:
-        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+        async with _gemini_http_session() as client:
             async with client.stream(
                 "POST",
                 url,
@@ -1591,7 +1783,7 @@ async def _post_gemini_chat_completion(
 
 
 @runtime_budget.ai_wall_clock_limited
-async def _stream_gemini_json_response_legacy(
+async def _stream_gemini_json_response_once(
     *,
     system_prompt: str,
     user_parts: List[Dict[str, Any]],
@@ -1602,6 +1794,8 @@ async def _stream_gemini_json_response_legacy(
     assistant_text_callback: AssistantTextCallback = None,
     enable_thinking: bool = True,
     usage_callback: UsageCallback = None,
+    defer_retryable_http_failure: bool = False,
+    response_json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     model = settings.gemini_model
     request_body = _build_gemini_request_body(
@@ -1610,6 +1804,7 @@ async def _stream_gemini_json_response_legacy(
         budget_tokens=budget_tokens,
         model=model,
         include_thoughts=enable_thinking,
+        response_json_schema=response_json_schema,
     )
     url = _build_gemini_stream_url(model)
     answer_parts: List[str] = []
@@ -1630,7 +1825,7 @@ async def _stream_gemini_json_response_legacy(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+        async with _gemini_http_session() as client:
             async with client.stream(
                 "POST",
                 url,
@@ -1706,13 +1901,19 @@ async def _stream_gemini_json_response_legacy(
             body_bytes,
             body_sha256,
         )
-        await usage_attempt.fail_once(
-            exc,
-            error_type="http_status",
-            metadata={"http_status": exc.response.status_code},
+        should_defer_failed_usage = (
+            defer_retryable_http_failure
+            and exc.response.status_code in GEMINI_STREAM_RETRYABLE_STATUS_CODES
         )
+        if not should_defer_failed_usage:
+            await usage_attempt.fail_once(
+                exc,
+                error_type="http_status",
+                metadata={"http_status": exc.response.status_code},
+            )
         translated_error = AiProviderUnavailableError(error_message)
-        await usage_attempt.fail_once(translated_error)
+        if not should_defer_failed_usage:
+            await usage_attempt.fail_once(translated_error)
         raise translated_error from exc
     except httpx.TimeoutException as exc:
         if final_usage is not None and not usage_persistence_started:
@@ -1806,6 +2007,62 @@ async def _stream_gemini_json_response_legacy(
 
 
 @runtime_budget.ai_wall_clock_limited
+async def _stream_gemini_json_response_legacy(
+    *,
+    system_prompt: str,
+    user_parts: List[Dict[str, Any]],
+    error_message: str,
+    request_label: str,
+    budget_tokens: Optional[int] = None,
+    thought_callback: ThoughtCallback = None,
+    assistant_text_callback: AssistantTextCallback = None,
+    enable_thinking: bool = True,
+    usage_callback: UsageCallback = None,
+    response_json_schema: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    max_attempts = 1 if runtime_budget.provider_retries_managed.get() else GEMINI_STREAM_MAX_ATTEMPTS
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await _stream_gemini_json_response_once(
+                system_prompt=system_prompt,
+                user_parts=user_parts,
+                error_message=error_message,
+                request_label=request_label,
+                budget_tokens=budget_tokens,
+                thought_callback=thought_callback,
+                assistant_text_callback=assistant_text_callback,
+                enable_thinking=enable_thinking,
+                usage_callback=usage_callback,
+                response_json_schema=response_json_schema,
+                defer_retryable_http_failure=(
+                    attempt < max_attempts
+                ),
+            )
+        except AiProviderUnavailableError as exc:
+            cause = exc.__cause__
+            status_code = (
+                cause.response.status_code
+                if isinstance(cause, httpx.HTTPStatusError)
+                else None
+            )
+            if (
+                attempt >= max_attempts
+                or status_code not in GEMINI_STREAM_RETRYABLE_STATUS_CODES
+            ):
+                raise
+            logger.warning(
+                "[AI Stream] retrying Gemini request after transient status label=%s status=%s attempt=%s",
+                request_label,
+                status_code,
+                attempt,
+            )
+            await _emit_thought(thought_callback, {"type": "thought_reset"})
+            await asyncio.sleep(GEMINI_STREAM_RETRY_DELAY_SECONDS)
+
+    raise AiProviderUnavailableError(error_message)
+
+
+@runtime_budget.ai_wall_clock_limited
 async def _stream_qwen_responses_json_response(
     *,
     system_prompt: str,
@@ -1818,31 +2075,60 @@ async def _stream_qwen_responses_json_response(
     usage_callback: UsageCallback = None,
 ) -> Dict[str, Any]:
     model = settings.ai_model
+    url = _build_qwen_responses_url()
     payload: Dict[str, Any] = {
         "model": model,
         "input": _build_qwen_responses_input_messages(
             system_prompt=system_prompt,
             user_parts=user_parts,
         ),
-        "temperature": 0.2,
         "stream": True,
-        "enable_thinking": enable_thinking,
         "max_output_tokens": runtime_budget.get_ai_runtime_budget().max_output_tokens,
     }
+    if _is_qwen_model(model):
+        payload["temperature"] = 0.2
+        payload["enable_thinking"] = enable_thinking
+    else:
+        reasoning_effort = (
+            resolve_openai_reasoning_effort(model) if enable_thinking else None
+        )
+        if reasoning_effort:
+            payload["reasoning"] = {
+                "effort": reasoning_effort,
+                "summary": "auto",
+            }
+            payload["include"] = ["reasoning.encrypted_content"]
+        elif supports_openai_sampling_temperature(model):
+            payload["temperature"] = 0.2
+    responses_hostname = (urlparse(url).hostname or "").lower()
+    is_openai_responses = _route_profile() == AI_ROUTE_PROFILE_OPENAI
+    is_official_openai_responses = (
+        is_openai_responses
+        and (
+            responses_hostname == "api.openai.com"
+            or responses_hostname.endswith(".api.openai.com")
+        )
+    )
+    if is_official_openai_responses:
+        payload["store"] = False
 
     answer_parts: List[str] = []
     answer_snapshots: List[str] = []
     assistant_text_tracker = _AssistantTextDeltaTracker(assistant_text_callback)
     thought_buffer = ""
     last_thought_summary = ""
-    url = _build_qwen_responses_url()
     completed_usage: Dict[str, Any] | None = None
+    terminal_event_type: str | None = None
     usage_persistence_started = False
     usage_persisted = False
     http_error_metadata: tuple[str, int | str, str] | None = None
+    provider = _provider_from_base_url(
+        str(getattr(settings, "ai_base_url", "") or ""),
+        model,
+    )
     usage_attempt = _UsageAttempt(
         usage_callback=usage_callback,
-        provider="dashscope",
+        provider=provider,
         model=model,
         request_label=request_label,
         transport="responses_stream",
@@ -1878,21 +2164,69 @@ async def _stream_qwen_responses_json_response(
                 response.raise_for_status()
                 content_type = (response.headers.get("content-type") or "").lower()
                 if "text/event-stream" not in content_type:
-                    _, body_bytes, body_sha256 = (
-                        await _read_stream_response_log_metadata(response)
+                    body = await read_bounded_response_body(response)
+                    _, body_bytes, body_sha256 = response_body_log_metadata(
+                        response,
+                        body,
                     )
-                    logger.error(
-                        "[AI Stream] unexpected Qwen Responses content-type label=%s content_type=%s body_bytes=%s body_sha256=%s",
-                        request_label,
-                        content_type,
-                        body_bytes,
-                        body_sha256,
-                    )
-                    raise AiProviderPayloadError(
-                        "Qwen Responses 返回了非流式响应，请检查 AI_RESPONSES_BASE_URL 配置。"
-                    )
+                    try:
+                        response_payload = _parse_non_sse_responses_payload(body)
+                    except _ResponsesCompatibilityError:
+                        logger.error(
+                            "[AI Stream] incompatible Qwen Responses non-SSE payload label=%s content_type=%s body_bytes=%s body_sha256=%s",
+                            request_label,
+                            content_type,
+                            body_bytes,
+                            body_sha256,
+                        )
+                        raise
 
-                async for stream_payload in _iter_sse_json_payloads(response):
+                    status = response_payload["status"]
+                    terminal_event_type = f"response.{status}"
+                    usage = response_payload.get("usage")
+                    if isinstance(usage, dict):
+                        completed_usage = usage
+                        usage_attempt.begin_final_usage()
+                        usage_persistence_started = True
+                        await _record_final_stream_usage(
+                            completed_usage,
+                            provider=provider,
+                            model=model,
+                            request_label=request_label,
+                            transport="responses_stream",
+                            status="success" if status == "completed" else status,
+                            terminal_event_type=terminal_event_type,
+                        )
+                        usage_persisted = True
+                    await flush_summary_buffer()
+                    if status == "incomplete":
+                        raise AiProviderPayloadError(
+                            "OpenAI Responses returned an incomplete response."
+                        )
+                    if status in {"failed", "cancelled"}:
+                        raise AiProviderUnavailableError(error_message)
+                    if status != "completed":
+                        raise AiProviderPayloadError(
+                            f"Responses returned a non-terminal {status} response."
+                        )
+
+                    for item in response_payload["output"]:
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("type") == "reasoning":
+                            for summary_text in _iter_qwen_responses_summary_texts(item):
+                                await emit_summary(summary_text)
+                    message_text = _extract_qwen_responses_output_text(
+                        response_payload
+                    )
+                    if message_text:
+                        answer_parts.append(message_text)
+                        answer_snapshots.append(message_text)
+                        await assistant_text_tracker.emit_update(message_text)
+                async for stream_payload in _iter_responses_sse_json_payloads(
+                    response,
+                    enabled="text/event-stream" in content_type,
+                ):
                     event_type = stream_payload.get("type")
                     if event_type == "response.reasoning_summary_text.delta":
                         delta = stream_payload.get("delta")
@@ -1934,7 +2268,12 @@ async def _stream_qwen_responses_json_response(
                                 await assistant_text_tracker.emit_update(message_text)
                             continue
 
-                    if event_type == "response.completed":
+                    if event_type in {
+                        "response.completed",
+                        "response.incomplete",
+                        "response.failed",
+                    }:
+                        terminal_event_type = event_type
                         response_payload = stream_payload.get("response")
                         if isinstance(response_payload, dict):
                             usage = response_payload.get("usage")
@@ -1945,13 +2284,25 @@ async def _stream_qwen_responses_json_response(
                                     usage_persistence_started = True
                                     await _record_final_stream_usage(
                                         completed_usage,
-                                        provider="dashscope",
+                                        provider=provider,
                                         model=model,
                                         request_label=request_label,
                                         transport="responses_stream",
+                                        status=(
+                                            "success"
+                                            if event_type == "response.completed"
+                                            else event_type.removeprefix("response.")
+                                        ),
+                                        terminal_event_type=event_type,
                                     )
                                     usage_persisted = True
                         await flush_summary_buffer()
+                        if event_type == "response.incomplete":
+                            raise AiProviderPayloadError(
+                                "OpenAI Responses returned an incomplete response."
+                            )
+                        if event_type == "response.failed":
+                            raise AiProviderUnavailableError(error_message)
                         if isinstance(response_payload, dict):
                             output = response_payload.get("output")
                             if isinstance(output, list):
@@ -1972,7 +2323,32 @@ async def _stream_qwen_responses_json_response(
                                     await assistant_text_tracker.emit_update(message_text)
                         continue
 
+                    if event_type == "error":
+                        terminal_event_type = event_type
+                        usage = stream_payload.get("usage")
+                        if isinstance(usage, dict):
+                            completed_usage = usage
+                            if not usage_persistence_started:
+                                usage_attempt.begin_final_usage()
+                                usage_persistence_started = True
+                                await _record_final_stream_usage(
+                                    completed_usage,
+                                    provider=provider,
+                                    model=model,
+                                    request_label=request_label,
+                                    transport="responses_stream",
+                                    status="failed",
+                                    terminal_event_type=event_type,
+                                )
+                                usage_persisted = True
+                        await flush_summary_buffer()
+                        raise AiProviderUnavailableError(error_message)
+
                 await flush_summary_buffer()
+                if is_openai_responses and terminal_event_type != "response.completed":
+                    raise AiProviderPayloadError(
+                        "OpenAI Responses stream ended without response.completed."
+                    )
     except httpx.HTTPStatusError as exc:
         content_type, body_bytes, body_sha256 = http_error_metadata or (
             response_body_log_metadata(exc.response)
@@ -1985,6 +2361,16 @@ async def _stream_qwen_responses_json_response(
             body_bytes,
             body_sha256,
         )
+        if exc.response.status_code in RESPONSES_COMPATIBILITY_STATUS_CODES:
+            logger.warning(
+                "[AI Stream] Responses endpoint is incompatible label=%s status=%s; "
+                "falling back to Chat Completions.",
+                request_label,
+                exc.response.status_code,
+            )
+            raise _ResponsesCompatibilityError(
+                "Responses endpoint does not support this provider."
+            ) from exc
         await usage_attempt.fail_once(
             exc,
             error_type="http_status",
@@ -1998,7 +2384,7 @@ async def _stream_qwen_responses_json_response(
             usage_attempt.begin_final_usage()
             await _record_known_stream_usage_best_effort(
                 completed_usage,
-                provider="dashscope",
+                provider=provider,
                 model=model,
                 request_label=request_label,
                 transport="responses_stream",
@@ -2013,7 +2399,7 @@ async def _stream_qwen_responses_json_response(
             usage_attempt.begin_final_usage()
             await _record_known_stream_usage_best_effort(
                 completed_usage,
-                provider="dashscope",
+                provider=provider,
                 model=model,
                 request_label=request_label,
                 transport="responses_stream",
@@ -2026,7 +2412,7 @@ async def _stream_qwen_responses_json_response(
             usage_attempt.begin_final_usage()
             await _record_known_stream_usage_best_effort(
                 completed_usage,
-                provider="dashscope",
+                provider=provider,
                 model=model,
                 request_label=request_label,
                 transport="responses_stream",
@@ -2034,12 +2420,16 @@ async def _stream_qwen_responses_json_response(
         elif completed_usage is None:
             await usage_attempt.fail_once(exc)
         raise
+    except _ResponsesCompatibilityError:
+        # The caller will retry this request through Chat Completions.  Do not
+        # account the unsupported Responses capability as a failed AI use.
+        raise
     except Exception as exc:
         if completed_usage is not None and not usage_persistence_started:
             usage_attempt.begin_final_usage()
             await _record_known_stream_usage_best_effort(
                 completed_usage,
-                provider="dashscope",
+                provider=provider,
                 model=model,
                 request_label=request_label,
                 transport="responses_stream",
@@ -2052,7 +2442,7 @@ async def _stream_qwen_responses_json_response(
     usage_attempt.begin_final_usage()
     usage_payload = _build_usage_payload(
         completed_usage or {},
-        provider="dashscope",
+        provider=provider,
         model=model,
         request_label=request_label,
         status="success" if completed_usage else "usage_missing",
@@ -2095,14 +2485,26 @@ async def _stream_qwen_json_response(
             system_prompt=system_prompt,
             user_parts=user_parts,
         ),
-        "temperature": 0.2,
         "stream": True,
         "stream_options": {"include_usage": True},
-        "enable_thinking": enable_thinking,
-        "max_tokens": runtime_budget.get_ai_runtime_budget().max_output_tokens,
     }
-    if enable_thinking and budget_tokens is not None:
-        payload["thinking_budget"] = int(budget_tokens)
+    if _is_qwen_model(model):
+        payload["temperature"] = 0.2
+        payload["enable_thinking"] = enable_thinking
+        payload["max_tokens"] = runtime_budget.get_ai_runtime_budget().max_output_tokens
+        if enable_thinking and budget_tokens is not None:
+            payload["thinking_budget"] = int(budget_tokens)
+    else:
+        payload[openai_chat_output_token_field(model)] = (
+            runtime_budget.get_ai_runtime_budget().max_output_tokens
+        )
+        reasoning_effort = (
+            resolve_openai_reasoning_effort(model) if enable_thinking else None
+        )
+        if reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
+        elif supports_openai_sampling_temperature(model):
+            payload["temperature"] = 0.2
 
     url = f"{settings.ai_base_url.rstrip('/')}/chat/completions"
     answer_parts: List[str] = []
@@ -2114,9 +2516,13 @@ async def _stream_qwen_json_response(
     usage_persistence_started = False
     usage_persisted = False
     http_error_metadata: tuple[str, int | str, str] | None = None
+    provider = _provider_from_base_url(
+        str(getattr(settings, "ai_base_url", "") or ""),
+        model,
+    )
     usage_attempt = _UsageAttempt(
         usage_callback=usage_callback,
-        provider="dashscope",
+        provider=provider,
         model=model,
         request_label=request_label,
         transport="chat_stream",
@@ -2159,7 +2565,7 @@ async def _stream_qwen_json_response(
                             usage_persistence_started = True
                             await _record_final_stream_usage(
                                 final_usage,
-                                provider="dashscope",
+                                provider=provider,
                                 model=model,
                                 request_label=request_label,
                                 transport="chat_stream",
@@ -2222,7 +2628,7 @@ async def _stream_qwen_json_response(
             usage_attempt.begin_final_usage()
             await _record_known_stream_usage_best_effort(
                 final_usage,
-                provider="dashscope",
+                provider=provider,
                 model=model,
                 request_label=request_label,
                 transport="chat_stream",
@@ -2237,7 +2643,7 @@ async def _stream_qwen_json_response(
             usage_attempt.begin_final_usage()
             await _record_known_stream_usage_best_effort(
                 final_usage,
-                provider="dashscope",
+                provider=provider,
                 model=model,
                 request_label=request_label,
                 transport="chat_stream",
@@ -2250,7 +2656,7 @@ async def _stream_qwen_json_response(
             usage_attempt.begin_final_usage()
             await _record_known_stream_usage_best_effort(
                 final_usage,
-                provider="dashscope",
+                provider=provider,
                 model=model,
                 request_label=request_label,
                 transport="chat_stream",
@@ -2263,7 +2669,7 @@ async def _stream_qwen_json_response(
             usage_attempt.begin_final_usage()
             await _record_known_stream_usage_best_effort(
                 final_usage,
-                provider="dashscope",
+                provider=provider,
                 model=model,
                 request_label=request_label,
                 transport="chat_stream",
@@ -2276,7 +2682,7 @@ async def _stream_qwen_json_response(
     usage_attempt.begin_final_usage()
     usage_payload = _build_usage_payload(
         final_usage or {},
-        provider="dashscope",
+        provider=provider,
         model=model,
         request_label=request_label,
         status="success" if final_usage else "usage_missing",
@@ -2331,7 +2737,10 @@ async def _stream_gemini_json_response(
             },
         )
 
-    if _should_use_qwen_thinking() and enable_thinking:
+    if not stream_route.api_key:
+        raise AiProviderUnavailableError(error_message)
+
+    if (_should_use_qwen_thinking() or _should_use_openai_stream()) and enable_thinking:
         try:
             return await _stream_qwen_responses_json_response(
                 system_prompt=system_prompt,
@@ -2345,7 +2754,7 @@ async def _stream_gemini_json_response(
             )
         except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
             raise
-        except Exception:
+        except _ResponsesCompatibilityError:
             logger.warning(
                 "[AI Stream] Qwen Responses thought streaming failed for %s.",
                 request_label,
@@ -2371,31 +2780,10 @@ async def _stream_gemini_json_response(
                     request_label,
                 )
                 await _emit_thought(thought_callback, {"type": "thought_reset"})
-                if getattr(settings, "gemini_api_key", None):
-                    try:
-                        return await _stream_gemini_json_response_legacy(
-                            system_prompt=system_prompt,
-                            user_parts=user_parts,
-                            error_message=error_message,
-                            request_label=request_label,
-                            budget_tokens=budget_tokens,
-                            thought_callback=thought_callback,
-                            assistant_text_callback=assistant_text_callback,
-                            enable_thinking=enable_thinking,
-                            usage_callback=usage_callback,
-                        )
-                    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
-                        raise
-                    except Exception as gemini_error:
-                        await record_stream_failure(
-                            gemini_error,
-                            _resolve_gemini_route(),
-                        )
-                        raise
                 await record_stream_failure(qwen_chat_error)
                 raise
 
-    if _should_use_qwen_thinking():
+    if _should_use_qwen_thinking() or _should_use_openai_stream():
         try:
             return await _stream_qwen_json_response(
                 system_prompt=system_prompt,
@@ -2415,9 +2803,8 @@ async def _stream_gemini_json_response(
                 "[AI Stream] Qwen Chat Completions text streaming failed for %s.",
                 request_label,
             )
-            if not getattr(settings, "gemini_api_key", None):
-                await record_stream_failure(qwen_chat_error)
-                raise
+            await record_stream_failure(qwen_chat_error)
+            raise
 
     try:
         return await _stream_gemini_json_response_legacy(
@@ -2448,9 +2835,46 @@ async def _call_llm(
     request_label: str = "chat_completion",
     lane: str = LANE_DEFAULT,
     gemini_thinking_level: Optional[str] = None,
+    gemini_stream: bool = False,
+    gemini_response_json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     route = _resolve_ai_route(lane=lane, model=model)
     if _is_gemini_route(route):
+        if gemini_stream and model is None:
+            system_text = "\n".join(
+                str(message.get("content") or "")
+                for message in messages
+                if str(message.get("role") or "user") == "system"
+            ).strip()
+            user_parts: List[Dict[str, Any]] = []
+            stream_compatible = True
+            for message in messages:
+                role = str(message.get("role") or "user")
+                if role == "system":
+                    continue
+                if role != "user":
+                    stream_compatible = False
+                    break
+                user_parts.extend(
+                    _convert_openai_content_to_gemini_parts(message.get("content"))
+                )
+            if stream_compatible and user_parts:
+                thinking_budgets = {
+                    "minimal": 0,
+                    "low": 1_024,
+                    "medium": 8_192,
+                    "high": -1,
+                }
+                return await _stream_gemini_json_response_legacy(
+                    system_prompt=system_text,
+                    user_parts=user_parts,
+                    error_message="AI provider is temporarily unavailable. Please retry.",
+                    request_label=request_label,
+                    budget_tokens=thinking_budgets.get(gemini_thinking_level or ""),
+                    enable_thinking=gemini_thinking_level is not None,
+                    usage_callback=usage_callback,
+                    response_json_schema=gemini_response_json_schema,
+                )
         return await _call_gemini_generate_content(
             messages,
             route=route,
@@ -2458,6 +2882,7 @@ async def _call_llm(
             usage_callback=usage_callback,
             request_label=request_label,
             gemini_thinking_level=gemini_thinking_level,
+            response_json_schema=gemini_response_json_schema,
         )
 
     resolved_model = route.model
@@ -2585,8 +3010,9 @@ async def _post_chat_completion(
             request_label=request_label,
         )
 
-    request_payload = _prepare_chat_completion_payload(payload)
-    request_payload["model"] = route.model
+    request_payload = _prepare_chat_completion_payload(
+        {**payload, "model": route.model}
+    )
     url = f"{route.base_url.rstrip('/')}/chat/completions"
     usage_attempt = _UsageAttempt(
         usage_callback=usage_callback,

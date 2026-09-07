@@ -1,0 +1,13 @@
+[
+  {
+    "id": "9a09a601-769d-4581-ad5f-97d290daa453",
+    "request_label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "total_tokens": 16354,
+    "case": "response-probe",
+    "audit_attempt_id": "07f0a3840d0a4ef4bcb87bdd10f741dd",
+    "receipts": []
+  }
+]

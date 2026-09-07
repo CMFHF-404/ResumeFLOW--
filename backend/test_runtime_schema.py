@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app import database
@@ -14,6 +15,7 @@ RUNTIME_SCHEMA_STEPS = (
     "ensure_ai_assistant_tables",
     "ensure_agent_api_keys_table",
     "ensure_ai_token_billing_tables",
+    "ensure_resume_optimization_tables",
     "ensure_redemption_code_tables",
     "ensure_feedback_contact_type_column",
     "ensure_feedback_images_column",
@@ -125,6 +127,7 @@ class RuntimeSchemaTests(unittest.IsolatedAsyncioTestCase):
             side_effect=lambda: calls.append("ensure_runtime_schema")
         )
         close_browser = AsyncMock(side_effect=lambda: calls.append("close_browser"))
+        jwks_cache = SimpleNamespace(start=AsyncMock(), warmup=AsyncMock(), close=AsyncMock())
         payment_worker = type(
             "PaymentWorker",
             (),
@@ -151,6 +154,8 @@ class RuntimeSchemaTests(unittest.IsolatedAsyncioTestCase):
         )()
 
         with (
+            patch.object(main, "settings", SimpleNamespace(enable_dev_auth_bypass=False)),
+            patch.object(main.auth_middleware, "jwks_cache", jwks_cache),
             patch.object(main, "verify_db_connection", verify),
             patch.object(main, "ensure_runtime_schema", ensure_runtime_schema),
             patch.object(main, "close_browser", close_browser),
@@ -164,6 +169,9 @@ class RuntimeSchemaTests(unittest.IsolatedAsyncioTestCase):
             async with main.lifespan(main.app):
                 calls.append("yield")
 
+        jwks_cache.start.assert_awaited_once()
+        jwks_cache.warmup.assert_awaited_once()
+        jwks_cache.close.assert_awaited_once()
         self.assertEqual(
             calls,
             [

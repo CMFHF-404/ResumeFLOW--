@@ -66,46 +66,82 @@ const scoreRubric = [
   ['成果量化', [['结果指标', 30], ['基线与前后对比', 25], ['覆盖规模', 15], ['时间窗口', 10], ['过程数量', 10], ['数据可信度', 10]]],
 ];
 
-const evaluationAt = (score) => ({
-  evaluationVersion: 'resume_flow_v1',
-  evaluationScope: 'full_resume',
-  overallScore: score,
-  overallLevel: '',
-  evaluationConfidence: 0.8,
-  scoreCalculation: {
-    dimensionSum: score * 6,
-    rawAverage: score,
-    roundingRule: 'round_half_up',
-    finalScore: score,
-  },
-  dimensions: scoreRubric.map(([dimension, items]) => {
+const evaluationAt = (score) => {
+  const issues = [];
+  const dimensions = scoreRubric.map(([dimension, items], dimensionIndex) => {
     let remaining = score;
     const subscores = items.map(([name, maxScore]) => {
       const itemScore = Math.min(maxScore, remaining);
       remaining -= itemScore;
-      return { name, maxScore, score: itemScore, evidenceIds: [] };
+      return {
+        name,
+        maxScore,
+        score: itemScore,
+        evidenceIds: itemScore > 0 ? ['E001'] : [],
+      };
     });
-    return { dimension, score, level: '', subscores, strengths: [], issues: [], improvementQuestions: [] };
-  }),
-  evidence: [],
-  issues: [],
-  jdMatch: null,
-  missingInformation: [],
-  riskFlags: [],
-  topPriorities: [],
-});
+    const issueId = `ISSUE_${dimensionIndex + 1}`;
+    if (score < 100) {
+      issues.push({
+        issueId,
+        description: `${dimension}仍有提升空间`,
+        primaryDimension: dimension,
+        relatedDimensions: [],
+        evidenceIds: [],
+        severity: 'medium',
+        pointsNotEarned: 100 - score,
+      });
+    }
+    return {
+      dimension,
+      score,
+      level: '',
+      subscores,
+      strengths: [],
+      issues: score < 100 ? [issueId] : [],
+      improvementQuestions: [],
+    };
+  });
+  return {
+    evaluationVersion: 'resume_flow_v1',
+    evaluationScope: 'full_resume',
+    overallScore: score,
+    overallLevel: '',
+    evaluationConfidence: 0.8,
+    scoreCalculation: {
+      dimensionSum: score * 6,
+      rawAverage: score,
+      roundingRule: 'round_half_up',
+      finalScore: score,
+    },
+    dimensions,
+    evidence: [{
+      evidenceId: 'E001',
+      sourceText: '已核验的简历事实',
+      location: 'resume',
+      factId: 'FACT_001',
+      verificationStatus: 'verified',
+      supportedDimensions: scoreRubric.map(([dimension]) => dimension),
+    }],
+    issues,
+    jdMatch: null,
+    missingInformation: [],
+    riskFlags: [],
+    topPriorities: [],
+  };
+};
 
-test('dashboard score accepts only the current full-resume evaluation version', async () => {
+test('dashboard never exposes a resume-quality score', async () => {
   const { resolveDashboardResumeEvaluationScore } = await importDashboardScoreUtils();
 
-  assert.equal(resolveDashboardResumeEvaluationScore(evaluationAt(86)), 86);
-  assert.equal(resolveDashboardResumeEvaluationScore(evaluationAt(0)), 0);
+  assert.equal(resolveDashboardResumeEvaluationScore(evaluationAt(86)), null);
+  assert.equal(resolveDashboardResumeEvaluationScore(evaluationAt(0)), null);
   assert.equal(resolveDashboardResumeEvaluationScore({ ...evaluationAt(86), overallScore: 99 }), null);
   assert.equal(resolveDashboardResumeEvaluationScore({ evaluationVersion: 'legacy', overallScore: 99 }), null);
   assert.equal(resolveDashboardResumeEvaluationScore(undefined), null);
 });
 
-test('dashboard rejects current scores with stale, missing, or mismatched signatures', async () => {
+test('dashboard keeps guidance persistence boundaries without projecting a quality score', async () => {
   globalThis.localStorage = {
     getItem: () => null,
     setItem: () => {},
@@ -135,7 +171,7 @@ test('dashboard rejects current scores with stale, missing, or mismatched signat
       { jdAnalysis: persisted },
       targetRoleSignature
     ),
-    86
+    null
   );
   assert.equal(
     resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
@@ -147,7 +183,7 @@ test('dashboard rejects current scores with stale, missing, or mismatched signat
     resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
       jdAnalysis: { ...persisted, isOutdated: true, evaluationIsOutdated: false },
     }, targetRoleSignature),
-    86
+    null
   );
   assert.equal(
     resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
@@ -325,7 +361,7 @@ test('dashboard rejects a pending local score when its backend base fingerprint 
   );
 });
 
-test('dashboard accepts a pending local score only when it is based on the current backend snapshot', async () => {
+test('dashboard does not project a pending local quality score', async () => {
   const storage = new Map();
   globalThis.localStorage = {
     getItem: (key) => storage.get(key) ?? null,
@@ -357,7 +393,7 @@ test('dashboard accepts a pending local score only when it is based on the curre
       'current-backend-fingerprint',
       '{"targetRole":"PM"}'
     ),
-    86
+    null
   );
 });
 

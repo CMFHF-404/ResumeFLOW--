@@ -1,0 +1,48 @@
+{
+  "ok": false,
+  "seconds": 31.42,
+  "sample": "H4Q1",
+  "repeat": 1,
+  "error_type": "ResumeEvaluationAuditError",
+  "message": "评估依据未获确认，未保存本次结果，可手动重试。",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 293,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 394,
+      "function": "generate_guidance"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 18.611
+    },
+    {
+      "stage": "generation",
+      "category": "generated"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "duration",
+      "seconds": 11.661
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "rejected"
+    }
+  ]
+}

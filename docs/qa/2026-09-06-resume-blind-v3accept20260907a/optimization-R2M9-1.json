@@ -1,0 +1,50 @@
+{
+  "ok": false,
+  "seconds": 18.66,
+  "error_type": "OptimizationPlanNormalizationError",
+  "message": "Service call failed; inspect local diagnostic log",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 237,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 263,
+      "function": "optimize"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 269,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 256,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "planner_service.py",
+      "line": 1256,
+      "function": "plan_resume_optimization"
+    },
+    {
+      "file": "normalizers.py",
+      "line": 1316,
+      "function": "normalize_optimization_plan"
+    },
+    {
+      "file": "normalizers.py",
+      "line": 1223,
+      "function": "_validate_issue_coverage"
+    },
+    {
+      "file": "normalizers.py",
+      "line": 821,
+      "function": "_fail"
+    }
+  ],
+  "cause_type": null,
+  "diagnostics": []
+}

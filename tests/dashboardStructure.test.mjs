@@ -33,10 +33,11 @@ test('Dashboard derives visible resumes for search, filters, sort, and rendering
   assert.match(dashboard, /timeFilter/);
   assert.match(dashboard, /matchFilter/);
   assert.match(dashboard, /visibleResumes\.map/);
-  assert.match(dashboard, /resume\.matchRate > 0 \|\| typeof resume\.evaluationScore === 'number'/);
+  assert.match(dashboard, /resume\.matchRate > 0 && \(/);
   assert.match(dashboard, /JD 匹配度: \$\{resume\.matchRate\}%/);
-  assert.match(dashboard, /简历评分: \$\{resume\.evaluationScore\}分/);
-  assert.match(dashboard, /typeof resume\.evaluationScore === 'number' \? '简历评分' : '状态'/);
+  assert.doesNotMatch(dashboard, /简历评分: \$\{resume\.evaluationScore\}分/);
+  assert.doesNotMatch(dashboard, /简历 \$\{resume\.evaluationScore\}分/);
+  assert.doesNotMatch(dashboard, /简历评分/);
   assert.doesNotMatch(dashboard, /resumes\.map\(resume => \(/);
 });
 
@@ -121,12 +122,13 @@ test('Dashboard shows custom filter inputs only after custom presets are selecte
   assert.doesNotMatch(dashboard, /data-dashboard-filter-toolbar="advanced"/);
 });
 
-test('Dashboard preview preserves explicit empty certification and skill selections', () => {
+test('Dashboard preview preserves explicit empty selections for every resume collection', () => {
   const modal = read('views/Dashboard/components/ResumePreviewModal.tsx');
   const previewState = read('views/Dashboard/resumePreviewState.ts');
   const match = modal.match(/const resolveFallbackSelection = \([\s\S]*?\n\};/);
   assert.equal(match, null, 'preview selection hydration should live in the shared preview state module');
   assert.match(previewState, /const resolveFallbackSelection = \(/);
+  assert.match(previewState, /config\.selection\?\.educationIds,[\s\S]*?orderedEducations\.map\(\(item\) => item\.id\),\s*true/);
   assert.match(previewState, /config\.selection\?\.certificationIds,[\s\S]*?orderedCerts\.map\(\(item\) => item\.id\),\s*true/);
   assert.match(previewState, /config\.selection\?\.skillIds,[\s\S]*?skills\.map\(\(skill\) => skill\.id\),\s*true/);
 
@@ -142,7 +144,31 @@ test('Dashboard preview preserves explicit empty certification and skill selecti
   )(resolveSelectionSet);
 
   assert.deepEqual([...resolveFallbackSelection([], ['cert-1', 'cert-2'], true)], []);
+  assert.deepEqual([...resolveFallbackSelection([], ['edu-1', 'edu-2'], true)], []);
   assert.deepEqual([...resolveFallbackSelection(undefined, ['skill-1', 'skill-2'])], ['skill-1', 'skill-2']);
+  assert.deepEqual(
+    [...resolveFallbackSelection(['deleted-id'], ['edu-1', 'edu-2'], true)],
+    ['edu-1', 'edu-2'],
+  );
+  assert.deepEqual(
+    [...resolveFallbackSelection(['cert-2', 'deleted-id'], ['cert-1', 'cert-2'], true)],
+    ['cert-2'],
+  );
+
+  const experienceMatch = previewState.match(/const resolveExperienceSelection = \([\s\S]*?\n\};/);
+  assert.ok(experienceMatch, 'experience preview selection should use the shared explicit-empty rule');
+  const experienceFunctionSource = experienceMatch[0]
+    .replace('ids: Array<string | number> | undefined', 'ids')
+    .replace('resumeMap: Map<string, unknown>', 'resumeMap')
+    .replace('allItems: ResumeExperienceView[]', 'allItems');
+  const resolveExperienceSelection = Function(
+    'resolveSelectionSet',
+    `${experienceFunctionSource.replace('const resolveExperienceSelection =', 'return')}`
+  )(resolveSelectionSet);
+  const resumeMap = new Map([['exp-linked', {}]]);
+  const allItems = [{ id: 'exp-linked' }, { id: 'exp-other' }];
+  assert.deepEqual([...resolveExperienceSelection([], resumeMap, allItems)], []);
+  assert.deepEqual([...resolveExperienceSelection(undefined, resumeMap, allItems)], ['exp-linked']);
 });
 
 test('Dashboard renders real resume thumbnails through a shared preview cache', () => {

@@ -1,0 +1,114 @@
+[
+  {
+    "request_label": "resume_blind_judge",
+    "model": "gemini-3.5-flash-lite",
+    "status": "failed",
+    "calls": 1,
+    "tokens": "0"
+  },
+  {
+    "request_label": "resume_blind_judge",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 4,
+    "tokens": "26338"
+  },
+  {
+    "request_label": "resume_blind_pair",
+    "model": "gemini-3.5-flash-lite",
+    "status": "failed",
+    "calls": 1,
+    "tokens": "0"
+  },
+  {
+    "request_label": "resume_blind_pair",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 12,
+    "tokens": "29381"
+  },
+  {
+    "request_label": "resume_evaluation",
+    "model": "gemini-3.5-flash-lite",
+    "status": "failed",
+    "calls": 15,
+    "tokens": "0"
+  },
+  {
+    "request_label": "resume_evaluation",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 485,
+    "tokens": "5233082"
+  },
+  {
+    "request_label": "resume_evaluation_repair",
+    "model": "gemini-3.5-flash-lite",
+    "status": "failed",
+    "calls": 7,
+    "tokens": "0"
+  },
+  {
+    "request_label": "resume_evaluation_repair",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 18,
+    "tokens": "241906"
+  },
+  {
+    "request_label": "resume_evaluation_repair_probe",
+    "model": "gemini-3.5-flash-lite",
+    "status": "failed",
+    "calls": 1,
+    "tokens": "0"
+  },
+  {
+    "request_label": "resume_evaluation_schema_probe",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 1,
+    "tokens": "8582"
+  },
+  {
+    "request_label": "resume_optimization_answer",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 14,
+    "tokens": "28493"
+  },
+  {
+    "request_label": "resume_optimization_plan",
+    "model": "gemini-3.5-flash-lite",
+    "status": "failed",
+    "calls": 1,
+    "tokens": "0"
+  },
+  {
+    "request_label": "resume_optimization_plan",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 65,
+    "tokens": "689477"
+  },
+  {
+    "request_label": "resume_optimization_semantic_review",
+    "model": "gemini-3.5-flash-lite",
+    "status": "failed",
+    "calls": 1,
+    "tokens": "0"
+  },
+  {
+    "request_label": "resume_optimization_semantic_review",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 42,
+    "tokens": "31375"
+  },
+  {
+    "request_label": "resume_optimization_summary_repair",
+    "model": "gemini-3.5-flash-lite",
+    "status": "success",
+    "calls": 2,
+    "tokens": "1447"
+  }
+]

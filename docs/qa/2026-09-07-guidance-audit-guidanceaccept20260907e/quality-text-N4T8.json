@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "sample": "N4T8",
+  "seconds": 4.16,
+  "value": {
+    "documents": [
+      {
+        "id": "aacafa45ccd3",
+        "unsupportedClaims": [],
+        "defects": [
+          "工作成果（r）过于简略，删减了原始来源中关键的数据指标与客观归因分析。"
+        ],
+        "reason": "该版本将成果简化为'流程上线了'，丢失了来源中具体的业务指标和严谨的归因描述。"
+      },
+      {
+        "id": "c8e8c601109b",
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "完整且忠实地保留了来源内容，包含具体的数据结果及客观严谨的背景说明。"
+      }
+    ],
+    "preferredId": "c8e8c601109b",
+    "mapping": {
+      "before": "aacafa45ccd3",
+      "after": "c8e8c601109b"
+    }
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"documents\": [{\"id\": \"aacafa45ccd3\", \"unsupportedClaims\": [], \"defects\": [\"工作成果（r）过于简略，删减了原始来源中关键的数据指标与客观归因分析。\"], \"reason\": \"该版本将成果简化为'流程上线了'，丢失了来源中具体的业务指标和严谨的归因描述。\"}, {\"id\": \"c8e8c601109b\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"完整且忠实地保留了来源内容，包含具体的数据结果及客观严谨的背景说明。\"}], \"preferredId\": \"c8e8c601109b\"}",
+        "严谨的背景说明。\"}], \"preferredId\": \"c8e8c601109b\"}",
+        " [\"工作成果（r）过于简略，删减了原始来源中关键的数据指标与客观归因分析。\"], \"reason\": \"该版本将成果简化为'流程上线了'，丢失了来源中具体的"
+      ]
+    }
+  ]
+}

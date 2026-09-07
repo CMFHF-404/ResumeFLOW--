@@ -1,0 +1,69 @@
+{
+  "purpose": "schema_contract_only_not_product_or_quality_acceptance",
+  "schemaValid": true,
+  "guidance": {
+    "ok": true,
+    "sample": "R7K2",
+    "seconds": 5.14,
+    "value": {
+      "accurate": true,
+      "actionable": true,
+      "safe": true,
+      "requiresAdvancedResponsibilities": false,
+      "introducesFacts": false,
+      "contradictoryAdvice": false,
+      "reason": "指导判定简历信息不足（insufficient_evidence），未给出具有诱导性或编造事实的修改建议，与当前简历高度空泛的内容一致且安全。",
+      "publishedVariantCount": 1
+    },
+    "providerResponses": [
+      {
+        "candidates": [
+          "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导判定简历信息不足（insufficient_evidence），未给出具有诱导性或编造事实的修改建议，与当前简历高度空泛的内容一致且安全。\"}",
+          "的修改建议，与当前简历高度空泛的内容一致且安全。\"}",
+          "\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false"
+        ]
+      }
+    ]
+  },
+  "text": {
+    "ok": true,
+    "sample": "R7K2",
+    "seconds": 5.18,
+    "value": {
+      "documents": [
+        {
+          "id": "694914924661",
+          "unsupportedClaims": [],
+          "defects": [
+            "个人总结过于主观且空洞",
+            "经历描述套话重复，缺乏具体工作内容和成果"
+          ],
+          "reason": "与另一份文档内容完全相同，经历描述缺乏具体细节与清晰度。"
+        },
+        {
+          "id": "42b0522a7744",
+          "unsupportedClaims": [],
+          "defects": [
+            "个人总结过于主观且空洞",
+            "经历描述套话重复，缺乏具体工作内容和成果"
+          ],
+          "reason": "与另一份文档内容完全相同，经历描述缺乏具体细节与清晰度。"
+        }
+      ],
+      "preferredId": "tie",
+      "mapping": {
+        "before": "694914924661",
+        "after": "42b0522a7744"
+      }
+    },
+    "providerResponses": [
+      {
+        "candidates": [
+          "{\"documents\": [{\"id\": \"694914924661\", \"unsupportedClaims\": [], \"defects\": [\"个人总结过于主观且空洞\", \"经历描述套话重复，缺乏具体工作内容和成果\"], \"reason\": \"与另一份文档内容完全相同，经历描述缺乏具体细节与清晰度。\"}, {\"id\": \"42b0522a7744\", \"unsupportedClaims\": [], \"defects\": [\"个人总结过于主观且空洞\", \"经历描述套话重复，缺乏具体工作内容和成果\"], \"reason\": \"与另一份文档内容完全相同，经历描述缺乏具体细节与清晰度。\"}], \"preferredId\": \"tie\"}",
+          "。\"}], \"preferredId\": \"tie\"}",
+          " [\"个人总结过于主观且空洞\", \"经历描述套话重复，缺乏具体工作内容和成果\"], \"reason\": \"与另一份文档内容完全相同，经历描述缺乏具体细节与清晰度"
+        ]
+      }
+    ]
+  }
+}

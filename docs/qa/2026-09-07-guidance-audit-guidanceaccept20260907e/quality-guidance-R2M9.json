@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "R2M9",
+  "seconds": 4.3,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导内容与当前简历实际情况一致，指出的标点缺失与电话缺失准确，对量化内容的建议均包含若无记录保留原文的前提，未诱导编造或强加高级职责，且各变体版本间建议保持一致。",
+    "publishedVariantCount": 2
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导内容与当前简历实际情况一致，指出的标点缺失与电话缺失准确，对量化内容的建议均包含若无记录保留原文的前提，未诱导编造或强加高级职责，且各变体版本间建议保持一致。\"}",
+        "保持一致。\"}",
+        "requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导内容"
+      ]
+    }
+  ]
+}

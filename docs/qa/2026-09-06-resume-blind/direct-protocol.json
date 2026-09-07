@@ -1,0 +1,8 @@
+{
+  "reason": "Primary no_data path failed; independently test immediate edits without answers",
+  "attempts_per_sample": 2,
+  "post_repeats": 3,
+  "selection": "first successful direct plan containing actual allowed edits; no result-based cherry-picking",
+  "questions": "left unanswered; never convert them to invented facts",
+  "statistics": "separate extension, never replaces original 0/8 outcome"
+}
