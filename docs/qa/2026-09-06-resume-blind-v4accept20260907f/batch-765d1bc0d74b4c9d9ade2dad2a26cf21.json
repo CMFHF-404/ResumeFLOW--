@@ -1,0 +1,43 @@
+{
+  "finished_at": "2026-09-07T07:43:31.327038+00:00",
+  "complete": false,
+  "new_service_requests": 3,
+  "started_services": [
+    "baseline-P5L2-3",
+    "baseline-N6D2-3",
+    "baseline-H9S2-3"
+  ],
+  "deferred_services": [
+    "baseline-H4Q1-1",
+    "baseline-H4Q1-2",
+    "baseline-H9S2-2",
+    "baseline-N4T8-1",
+    "baseline-N4T8-2",
+    "baseline-N4T8-3",
+    "baseline-N6D2-1",
+    "baseline-N6D2-2",
+    "baseline-P5L2-1",
+    "baseline-P5L2-2",
+    "baseline-P8C6-1",
+    "baseline-P8C6-2",
+    "baseline-P8C6-3",
+    "baseline-R2M9-1",
+    "baseline-R2M9-2",
+    "baseline-R2M9-3",
+    "baseline-R3V6-1",
+    "baseline-R3V6-2",
+    "baseline-R3V6-3",
+    "baseline-R7K2-1",
+    "baseline-R7K2-3",
+    "baseline-R8P4-1",
+    "baseline-R8P4-2",
+    "baseline-R8P4-3"
+  ],
+  "provider_fatal": false,
+  "expected_services": {
+    "baseline": 30,
+    "optimization": 20,
+    "post": 30,
+    "blind": 10
+  }
+}

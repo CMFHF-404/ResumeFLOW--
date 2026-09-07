@@ -24,6 +24,7 @@ from app.domain.resume_optimization.schemas import (
     ResumeOptimizationApplyRequest,
     ResumeOptimizationApplyResponse,
     ResumeOptimizationFinalizeResponse,
+    ResumeOptimizationGuidancePostEvaluation,
     ResumeOptimizationRunRead,
     ResumeOptimizationStartRequest,
     ResumeOptimizationStatus,
@@ -89,7 +90,7 @@ class ResumeOptimizationEnumTests(unittest.TestCase):
     def test_public_versions_are_frozen(self) -> None:
         self.assertEqual(OPTIMIZER_VERSION, "resume_optimization_v1")
         self.assertEqual(POLICY_VERSION, "evidence_semantic_v2")
-        self.assertEqual(PROMPT_VERSION, "resume_optimization_prompt_v1")
+        self.assertEqual(PROMPT_VERSION, "resume_optimization_tasks_v2")
 
     def test_public_enum_values_are_exact(self) -> None:
         self.assertEqual(
@@ -158,6 +159,40 @@ class ResumeOptimizationEnumTests(unittest.TestCase):
 
 
 class ResumeOptimizationSchemaTests(unittest.TestCase):
+    def test_public_change_omits_internal_expected_score_gain(self) -> None:
+        change = _change(expected_score_gain=37)
+        self.assertEqual(change.expected_score_gain, 37)
+        self.assertNotIn("expected_score_gain", change.model_dump(mode="json"))
+
+    def test_guidance_post_evaluation_contains_bands_without_quality_scores(self) -> None:
+        value = ResumeOptimizationGuidancePostEvaluation.model_validate({
+            "version": "guidance_optimization_post_v1",
+            "evaluationSignature": "signature",
+            "resumeUpdatedAt": "2026-09-07T00:00:00+00:00",
+            "overallBandBefore": "needs_attention",
+            "overallBandAfter": "adequate",
+            "dimensionStatusChanges": [
+                {
+                    "dimension": dimension,
+                    "beforeStatus": "needs_attention",
+                    "afterStatus": "adequate",
+                }
+                for dimension in (
+                    "逻辑清晰", "STAR应用", "内容可读", "内容完整", "专业表达", "成果量化"
+                )
+            ],
+            "issueSummary": {"resolved": 2, "remaining": 1},
+            "unresolvedFactGapCount": 1,
+            "acceptedChangeCount": 2,
+            "blockedChangeCount": 0,
+            "bankSuggestionCount": 0,
+            "safetySummary": {},
+        })
+        dumped = value.model_dump(mode="json")
+        self.assertFalse(
+            {"beforeScore", "afterScore", "scoreDelta", "dimensionDeltas"} & set(dumped)
+        )
+
     def test_change_accepts_the_public_contract(self) -> None:
         change = _change()
 

@@ -2,6 +2,8 @@ import asyncio
 import copy
 import json
 import logging
+import re
+import httpx
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import HTTPException
@@ -27,7 +29,7 @@ from .resume_evaluation import (
 )
 from .resume_evaluation_calibration import calibrate_evaluation
 from .resume_evaluation import SCORING_VERSION
-from .resume_evaluation_consensus import select_central_evaluation
+from .resume_evaluation_consensus import select_central_evaluation, evaluation_dispersion, diagnostic_sink
 from .runtime_budget import AiRuntimeTimeoutError
 
 
@@ -208,6 +210,85 @@ _RESUME_EVALUATION_RESPONSE_SCHEMA = _strict_object_schema(
         )
     }
 )
+# Only new generation uses deduction bindings; stored/public reports keep their schema.
+_GENERATION_RESPONSE_SCHEMA = copy.deepcopy(_RESUME_EVALUATION_RESPONSE_SCHEMA)
+for _sub_schema in _GENERATION_RESPONSE_SCHEMA["properties"]["resumeEvaluation"]["properties"]["dimensions"]["items"]["properties"]["subscores"]["items"]["anyOf"]:
+    _sub_schema["properties"]["deductionIssueId"] = {"type": "string"}
+    _sub_schema["required"].append("deductionIssueId")
+
+
+def _materialize_generation_deductions(result, *, require_bindings=False):
+    output = copy.deepcopy(result)
+    evaluation = output.get("resumeEvaluation", {}) if isinstance(output, dict) else {}
+    dimensions = evaluation.get("dimensions", [])
+    subs = [sub for d in dimensions for sub in d.get("subscores", [])]
+    # Legacy mocked/stored reports have no binding; never reinterpret their deductions.
+    if not any("deductionIssueId" in sub for sub in subs):
+        if require_bindings:
+            raise ValueError("resumeEvaluation.dimensions.subscores missing deduction bindings")
+        return output
+    issues = evaluation.get("issues", [])
+    issue_map = {issue["issueId"]: issue for issue in issues}
+    if len(issue_map) != len(issues):
+        raise ValueError("resumeEvaluation.issues duplicate issue ID")
+    points = {key: 0 for key in issue_map}
+    for dimension in dimensions:
+        name = dimension.get("dimension")
+        specifications = dict(dict(DIMENSION_SUBSCORES).get(name, ()))
+        for sub in dimension.get("subscores", []):
+            maximum = specifications.get(sub.get("name"))
+            score = sub.get("score")
+            if maximum is None or type(score) is not int or not 0 <= score <= maximum:
+                raise ValueError("resumeEvaluation.dimensions.subscores invalid score")
+            binding = sub.pop("deductionIssueId", None)
+            gap = maximum - score
+            if not gap:
+                if binding != "":
+                    raise ValueError("resumeEvaluation.dimensions.subscores full score has deduction")
+                continue
+            issue = issue_map.get(binding)
+            if issue is None or issue.get("primaryDimension") != name:
+                raise ValueError("resumeEvaluation.dimensions.subscores unknown deduction reference")
+            if name == "专业表达" and not issue.get("evidenceIds"):
+                raise ValueError("resumeEvaluation.issues professional deduction lacks evidence")
+            points[binding] += gap
+    for identity, issue in issue_map.items():
+        if points[identity] == 0:
+            raise ValueError("resumeEvaluation.issues unbound deduction")
+        issue["pointsNotEarned"] = points[identity]
+    return output
+
+
+def _record_evaluation_diagnostic(stage, category, field=None, **counts):
+    record = {"stage": stage, "category": category, **counts}
+    if field:
+        record["field"] = field
+    sink = diagnostic_sink.get()
+    if sink is not None:
+        sink.append(record)
+    logger.info("Evaluation diagnostic: %s", record)
+
+
+def _validation_diagnostic(exc):
+    # Never log the exception text: it may embed provider text or resume PII.
+    basis_code = getattr(exc, 'basis_diagnostic_code', None)
+    if isinstance(basis_code, str) and re.fullmatch(r'basis_[a-z_]{1,80}', basis_code):
+        return basis_code, 'resumeEvaluation.evidenceBasis'
+    message = str(exc)
+    contract_codes = {
+        'resumeEvaluation.dimensions.subscores full score has deduction': 'deduction_full_score_has_issue',
+        'resumeEvaluation.dimensions.subscores unknown deduction reference': 'deduction_unknown_reference',
+        'resumeEvaluation.issues professional deduction lacks evidence': 'deduction_missing_evidence',
+        'resumeEvaluation.issues unbound deduction': 'deduction_orphan_issue',
+        'resumeEvaluation.dimensions.subscores missing deduction bindings': 'deduction_missing_binding',
+    }
+    if message in contract_codes:
+        return contract_codes[message], 'resumeEvaluation.dimensions.subscores'
+    category = "reference" if any(x in message.lower() for x in ("reference", "evidence", "factid")) else "score_contract"
+    match = re.search(r"resumeEvaluation\.(dimensions|issues|evidence|riskFlags|topPriorities|evaluationConfidence)(?:\[\d+\])?", message)
+    return category, match[0] if match else "resumeEvaluation"
+
+
 _ISSUE_REPAIR_RESPONSE_SCHEMA = _strict_object_schema(
     {
         "issueRepair": _strict_object_schema(
@@ -1355,7 +1436,7 @@ async def _analyze_resume_evaluation_once(
     text: str,
     resume_text: Optional[str],
     jd_match_percentage: Optional[int] = None,
-    *, _repair: bool = True,
+    *, _repair: bool = True, _evidence_basis: bool = False,
 ) -> Dict[str, Any]:
     evaluation_input = _build_full_resume_evaluation_input(
         text,
@@ -1363,15 +1444,36 @@ async def _analyze_resume_evaluation_once(
         jd_match_percentage,
     )
     fact_metadata = _fact_metadata_for_input(evaluation_input)
+    messages = _build_messages(evaluation_input)
+    response_schema = _GENERATION_RESPONSE_SCHEMA
+    if _evidence_basis:
+        from .resume_evaluation_basis import build_basis_contract, BASIS_PROMPT
+        basis_schema, basis_targets = build_basis_contract(evaluation_input)
+        response_schema = copy.deepcopy(_GENERATION_RESPONSE_SCHEMA)
+        response_schema['properties'] = {'evidenceBasis':basis_schema, **response_schema['properties']}
+        response_schema['required'] = ['evidenceBasis', *response_schema['required']]
+        messages[0]['content'] = messages[0]['content'].replace(
+            "a single top-level key 'resumeEvaluation'", "exactly two top-level keys 'evidenceBasis' and 'resumeEvaluation'")
+        messages[0]['content'] += '\n' + BASIS_PROMPT + '\nOUTPUT_JSON_SCHEMA:\n' + json.dumps(response_schema, ensure_ascii=False)
+        messages[1]['content'] += '\nSERVER EVIDENCE TARGETS:\n' + json.dumps(basis_targets, ensure_ascii=False)
     result = await _call_llm(
-        _build_messages(evaluation_input),
+        messages,
         json_mode=True,
         request_label="resume_evaluation",
         lane=LANE_DEFAULT,
         gemini_thinking_level="low",
         gemini_stream=True,
-        gemini_response_json_schema=_RESUME_EVALUATION_RESPONSE_SCHEMA,
+        gemini_response_json_schema=response_schema,
     )
+    try:
+        if _evidence_basis:
+            from .resume_evaluation_basis import materialize_basis
+            result = materialize_basis(result, evaluation_input)
+        result = _materialize_generation_deductions(result, require_bindings=not _repair)
+    except (ValueError, KeyError, TypeError) as exc:
+        category, field = _validation_diagnostic(exc)
+        _record_evaluation_diagnostic("deductions", category, field)
+        raise ResumeEvaluationIntegrityError("Independent sample violates deduction contract") from exc
     if _repair:
         validated = await _finalize_with_one_repair(
             result, fact_metadata=fact_metadata, jd_available=bool(text.strip()),
@@ -1384,13 +1486,15 @@ async def _analyze_resume_evaluation_once(
                 canonical_jd_match=jd_match_percentage,
             )
         except ValueError as exc:
+            category, field = _validation_diagnostic(exc)
+            _record_evaluation_diagnostic("normalization", category, field)
             raise ResumeEvaluationIntegrityError("Independent sample violates evaluation contract") from exc
     calibrated = calibrate_evaluation(validated, evaluation_input)
     calibrated["resumeEvaluation"]["scoringVersion"] = SCORING_VERSION
     return calibrated
 
 
-async def _analyze_resume_evaluation_consensus(text, resume_text, jd_match_percentage=None):
+async def _analyze_resume_evaluation_consensus_v3(text, resume_text, jd_match_percentage=None):
     if _CONSENSUS_SAMPLE_COUNT == 1:
         return await _analyze_resume_evaluation_once(text,resume_text,jd_match_percentage)
     samples=[]
@@ -1398,17 +1502,24 @@ async def _analyze_resume_evaluation_consensus(text, resume_text, jd_match_perce
     deadline=asyncio.get_running_loop().time()+_TOTAL_TIMEOUT_SECONDS-1
     for _ in range(_CONSENSUS_MAX_ATTEMPTS):
         remaining=deadline-asyncio.get_running_loop().time()
-        if len(samples)>=_CONSENSUS_SAMPLE_COUNT or remaining<=0:
+        if remaining <= 1:
             break
-        if len(samples)>=2 and remaining<_CONSENSUS_GENERATION_TIMEOUT_SECONDS:
+        if len(samples) >= _CONSENSUS_SAMPLE_COUNT:
+            if evaluation_dispersion(samples)["status"] == "stable":
+                break
+        elif len(samples) >= 2 and remaining < _CONSENSUS_GENERATION_TIMEOUT_SECONDS:
             break
         try:
             samples.append(await asyncio.wait_for(
                 _analyze_resume_evaluation_once(text,resume_text,jd_match_percentage,_repair=False),
                 timeout=min(remaining,_CONSENSUS_GENERATION_TIMEOUT_SECONDS),
             ))
-        except (TimeoutError, AiRuntimeTimeoutError):
+        except (TimeoutError, AiRuntimeTimeoutError, httpx.TimeoutException):
+            _record_evaluation_diagnostic("sampling", "timeout")
             failures.append(HTTPException(status_code=504,detail="Independent evaluation sample timed out"))
+        except httpx.TransportError as exc:
+            _record_evaluation_diagnostic("sampling", "connection")
+            failures.append(AiProviderUnavailableError("Evaluation connection failed"))
         except (AiProviderPayloadError, AiProviderUnavailableError, ResumeEvaluationIntegrityError) as exc:
             status=getattr(getattr(exc.__cause__,"response",None),"status_code",None)
             if status in {400,401,403,404}:
@@ -1425,7 +1536,14 @@ async def _analyze_resume_evaluation_consensus(text, resume_text, jd_match_perce
     if len(samples)<2:
         if failures:raise failures[0]
         raise ResumeEvaluationIntegrityError("Insufficient validated evaluation samples")
+    dispersion = evaluation_dispersion(samples)
+    _record_evaluation_diagnostic("consensus", dispersion.pop("status"), **dispersion)
     return select_central_evaluation(samples)
+
+
+async def _analyze_resume_evaluation_consensus(text, resume_text, jd_match_percentage=None):
+    from .guidance_evaluation import generate_guidance
+    return await generate_guidance(text, resume_text, jd_match_percentage)
 
 
 async def analyze_resume_evaluation(
@@ -1450,7 +1568,7 @@ async def _analyze_resume_evaluation_with_thoughts_once(
 ) -> Dict[str, Any]:
     await _emit_thought(
         thought_callback,
-        {"type": "thought", "summary": "正在生成六维简历报告"},
+        {"type": "thought", "summary": "正在生成简历改进指导并独立审核依据"},
     )
     return await _analyze_resume_evaluation_consensus(
         text,

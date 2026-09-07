@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "R7K2",
+  "seconds": 13.8,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导内容紧扣当前简历原文，指出的泛化职责、缺少标点、信息量偏低及夸大表述均有据可依。改进建议引导用户补充真实信息或删除夸大词句，未引入外部未经证实的事实，无相互冲突的建议。",
+    "publishedVariantCount": 3
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "```json\n{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导内容紧扣当前简历原文，指出的泛化职责、缺少标点、信息量偏低及夸大表述均有据可依。改进建议引导用户补充真实信息或删除夸大词句，未引入外部未经证实的事实，无相互冲突的建议。\"}\n```",
+        "证实的事实，无相互冲突的建议。\"}\n```",
+        "```json\n{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities"
+      ]
+    }
+  ]
+}

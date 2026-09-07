@@ -17,6 +17,7 @@ def save_exclusive(name, value):
 
 
 async def main():
+    b.reject_retired_numeric_run()
     if len(sys.argv) != 2 or not sys.argv[1].isalnum():
         raise SystemExit('Usage: python qa_resume_decode_probe.py NEW_RUN_TAG')
     from app.database import engine

@@ -24,11 +24,10 @@ import {
   sortResumeOptimizationChangesByResumeOrder,
 } from '../views/ResumeEditor/components/ResumeOptimization/optimizationDisplayUtils.mjs';
 
-const change = (changeId, actionKind, safetyStatus, expectedScoreGain) => ({
+const change = (changeId, actionKind, safetyStatus) => ({
   changeId,
   actionKind,
   safetyStatus,
-  expectedScoreGain,
   beforeValue: '原内容',
   targetedValue: '新内容',
 });

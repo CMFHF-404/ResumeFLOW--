@@ -8,7 +8,7 @@ import os
 from types import SimpleNamespace
 import unittest
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import asyncpg
 from sqlalchemy import text
@@ -244,7 +244,10 @@ def _run(
         "evaluation_signature_schema": "frontend_evaluation_v2",
         "jd_signature": "jd-signature",
         "target_role": "产品经理",
-        "evaluation": {"overallScore": 72, "issues": [], "scoringVersion": "coverage_consensus_v2"},
+        # Low-level apply tests exercise mutation and concurrency mechanics.  The
+        # frozen source therefore uses the current guidance version; receipt
+        # authority itself is explicitly mocked by the transaction test class.
+        "evaluation": {"scoringVersion": "guidance_audit_v1"},
         "current_resume": {
             "section_order": ["summary", "work", "skills"],
             "personal_summary": "原摘要",
@@ -495,6 +498,23 @@ def _transaction_session(
 
 
 class ResumeOptimizationApplyPatchTests(unittest.TestCase):
+    def test_persisted_plan_readers_reject_unknown_or_incomplete_fields(self) -> None:
+        from app.domain.resume_optimization.router import _validated_persisted_plan
+        valid = OptimizationPlan().storage_dump()
+        invalid = [
+            {**valid, "unexpected": {}},
+            {key: value for key, value in valid.items() if key != "changes"},
+            {**valid, "cleanup_fallbacks": []},
+            {**valid, "coverage": "invalid"},
+            {**valid, "planning_tasks": []},
+        ]
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    _validated_persisted_plan(payload, empty_as_missing=False)
+                with self.assertRaises(apply_service.OptimizationApplyValidationError):
+                    apply_service._strict_final_plan(SimpleNamespace(result_json=payload))
+
     def test_accepted_experience_change_deep_merges_star_without_dropping_siblings(self) -> None:
         run = _run([_change("CHG_A")])
         current = {
@@ -1926,6 +1946,18 @@ class ResumeOptimizationApplyPatchTests(unittest.TestCase):
 
 
 class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        # These tests start from a deliberately small frozen fixture and cover
+        # apply mechanics.  Receipt binding is covered independently; do not
+        # make this fixture impersonate a user-owned receipt.
+        self._receipt_gate = patch.object(
+            apply_service,
+            "_validate_current_guidance_receipt",
+            new_callable=AsyncMock,
+        )
+        self.validate_guidance_receipt = self._receipt_gate.start()
+        self.addCleanup(self._receipt_gate.stop)
+
     async def test_old_scoring_baseline_is_rejected_before_apply_writes(self):
         run = _run([_change("CHG_A")])
         run.before_snapshot["evaluation"].pop("scoringVersion")
@@ -1936,6 +1968,29 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
             await self._apply(run, resume, link)
         self.assertEqual(resume.config, before_config)
         self.assertEqual(run.status, ResumeOptimizationStatus.STALE.value)
+
+    async def test_coverage_consensus_v4_baseline_is_rejected_before_receipt_gate(self):
+        run = _run([_change("CHG_A")])
+        run.before_snapshot["evaluation"]["scoringVersion"] = "coverage_consensus_v4"
+        run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
+        resume, link = _resume(), _link()
+
+        with self.assertRaises(apply_service.OptimizationApplyStaleError):
+            await self._apply(run, resume, link)
+
+        self.validate_guidance_receipt.assert_not_awaited()
+        self.assertEqual(run.status, ResumeOptimizationStatus.STALE.value)
+
+    async def test_guidance_receipt_gate_is_invoked_before_apply_mutation(self):
+        run, resume, link = _run([_change("CHG_A")]), _resume(), _link()
+
+        await self._apply(run, resume, link)
+
+        self.validate_guidance_receipt.assert_awaited_once_with(
+            user_id=USER_ID,
+            resume=resume,
+            snapshot=run.before_snapshot,
+        )
 
     async def _apply(
         self,
@@ -2007,7 +2062,10 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.stale_session.commits, 1)
 
     async def test_created_no_question_run_with_empty_answers_object_can_apply(self) -> None:
+        from app.domain.resume_optimization.router import _run_to_read
         planned = _run([_change("CHG_A")])
+        stored_plan = OptimizationPlan.model_validate(planned.result_json)
+        stored_plan.planning_tasks = {"TASK_001": {"field_path": "star.a"}}
         lifecycle_session = _FakeSession([])
         claim_id = "planning-claim"
         claim = await run_service.create_or_claim_run(
@@ -2034,11 +2092,17 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
             USER_ID,
             claim.run.id,
             claim_id=claim_id,
-            plan_json=planned.plan_json,
-            result_json=planned.result_json,
+            plan_json=stored_plan.storage_dump(),
+            result_json=stored_plan.storage_dump(),
             target_status=ResumeOptimizationStatus.PREVIEW_READY,
         )
         self.assertEqual(completed.answers_json, {})
+        preview = _run_to_read(completed).model_dump(mode="json")
+        self.assertEqual(len(preview["result"]["changes"]), 1)
+        for key in ("coverage", "cleanup_fallbacks", "planning_tasks"):
+            self.assertIn(key, completed.result_json)
+            self.assertNotIn(key, preview["plan"])
+            self.assertNotIn(key, preview["result"])
 
         applied, _ = await self._apply(
             completed,
@@ -3425,6 +3489,17 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
     "RESUME_OPTIMIZATION_TEST_DATABASE_URL",
 )
 class ResumeOptimizationApplyPostgresTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        # PostgreSQL transaction tests exercise locking and rollback, while
+        # receipt persistence is covered by the guidance receipt suite.
+        self._receipt_gate = patch.object(
+            apply_service,
+            "_validate_current_guidance_receipt",
+            new_callable=AsyncMock,
+        )
+        self._receipt_gate.start()
+        self.addCleanup(self._receipt_gate.stop)
+
     @staticmethod
     def _async_url(value: str) -> str:
         if value.startswith("postgresql+asyncpg://"):

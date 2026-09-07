@@ -41,6 +41,10 @@ for stage in ('baseline', 'optimization', 'post', 'blind', 'member'):
         ]
 
 metrics['scores'] = read(folder / 'summary.json')
+metrics['scoring_model_attempts'] = dict(Counter(
+    d['stage'] for stage in ('baseline', 'post') for p in folder.glob(stage + '-*.json')
+    for d in read(p).get('diagnostics', []) if d.get('category') == 'attempt'
+))
 metrics['blind_pairs'] = []
 for p in sorted(folder.glob('blind-key-*.json')):
     sample = p.stem.removeprefix('blind-key-')

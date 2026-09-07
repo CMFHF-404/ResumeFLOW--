@@ -1,0 +1,20 @@
+{
+  "request": {
+    "json_mime": true,
+    "schema_present": true,
+    "schema_hash": "25ea5be5d53803c2bd9cf23c5f6b90404fa37ccbb05a8f8537c6c3212ef53d74"
+  },
+  "response": {
+    "candidate_count": 65,
+    "assembled_chars": 3759,
+    "assembled_sha256": "f41c5de06631965b7a3537011a577172f2fa7131fdea8accd47bcb20a38e8045",
+    "starts_json_object": false,
+    "has_open_brace": true,
+    "has_close_brace": true,
+    "has_markdown_heading": false,
+    "has_code_fence": true,
+    "mentions_reports_key": false,
+    "mentions_report_alias": true,
+    "has_verdict_vocabulary": true
+  }
+}

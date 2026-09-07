@@ -1,0 +1,2170 @@
+{
+  "ok": true,
+  "seconds": 11.8,
+  "value": {
+    "initial_plan": {
+      "changes": [
+        {
+          "change_id": "CHANGE_TASK_001",
+          "issue_ids": [
+            "ISSUE_EXP_005",
+            "RUBRIC_EXAGGERATED_CLAIM"
+          ],
+          "dimension": "专业表达",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+          "general_value": "具备产品工作经验，掌握SQL、Excel及需求分析与PRD撰写能力，具备良好的执行、沟通与学习能力。",
+          "targeted_value": "具备产品工作经验，掌握SQL、Excel及需求分析与PRD撰写能力，具备良好的执行、沟通与学习能力。",
+          "source_refs": [
+            "/currentResume/personal_summary",
+            "/currentResume/skills/0/name",
+            "/currentResume/skills/1/name",
+            "/currentResume/skills/2/name",
+            "/selectedSourceExperiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "基于技能清单与经历客观陈述个人能力，去除'精通一切'等夸大修饰。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002",
+          "issue_ids": [
+            "ISSUE_STAR_003"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "原文缺乏实质行动细节与专业术语，需向用户核实具体工作内容以补充有效信息。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002_RELATED_0",
+          "issue_ids": [
+            "ISSUE_READ_003",
+            "ISSUE_READ_002",
+            "ISSUE_READ_004"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002_RELATED_1",
+          "issue_ids": [
+            "ISSUE_EXP_001",
+            "ISSUE_EXP_002",
+            "ISSUE_EXP_003",
+            "ISSUE_EXP_004"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003",
+          "issue_ids": [
+            "ISSUE_STAR_003"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "原文存在重复占位式表述且信息密度极低，需用户补充具体行动细节。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_0",
+          "issue_ids": [
+            "ISSUE_READ_003",
+            "ISSUE_READ_002",
+            "ISSUE_READ_004"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_1",
+          "issue_ids": [
+            "ISSUE_EXP_001",
+            "ISSUE_EXP_002",
+            "ISSUE_EXP_003",
+            "ISSUE_EXP_004"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_0",
+          "issue_ids": [
+            "ISSUE_LOGIC_001"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_1",
+          "issue_ids": [
+            "ISSUE_LOGIC_002"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_2",
+          "issue_ids": [
+            "ISSUE_LOGIC_003"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_3",
+          "issue_ids": [
+            "ISSUE_STAR_001"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_4",
+          "issue_ids": [
+            "ISSUE_STAR_002"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_5",
+          "issue_ids": [
+            "ISSUE_STAR_004"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_6",
+          "issue_ids": [
+            "ISSUE_READ_001"
+          ],
+          "dimension": "内容可读",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_7",
+          "issue_ids": [
+            "ISSUE_READ_005"
+          ],
+          "dimension": "内容可读",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_8",
+          "issue_ids": [
+            "ISSUE_QUANT_001"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_9",
+          "issue_ids": [
+            "ISSUE_QUANT_002"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_10",
+          "issue_ids": [
+            "ISSUE_QUANT_003"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_11",
+          "issue_ids": [
+            "ISSUE_QUANT_004"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_12",
+          "issue_ids": [
+            "ISSUE_QUANT_005"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_13",
+          "issue_ids": [
+            "ISSUE_QUANT_006"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_14",
+          "issue_ids": [
+            "RUBRIC_内容完整_0"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_15",
+          "issue_ids": [
+            "RUBRIC_内容完整_1"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      ],
+      "questions": [
+        {
+          "question_id": "QUESTION_TASK_002",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "text": "请问您在该产品工作中具体负责了哪些模块、执行了哪些具体行动（如需求分析、PRD撰写或流程设计）？",
+          "reason": "原文缺乏实质行动细节与专业术语，需向用户核实具体工作内容以补充有效信息。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHANGE_TASK_002"
+          ],
+          "priority": 1
+        },
+        {
+          "question_id": "QUESTION_TASK_003",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "text": "请问您在该产品工作中具体负责了哪些模块、执行了哪些具体行动（如需求分析、PRD撰写或流程设计）？",
+          "reason": "原文存在重复占位式表述且信息密度极低，需用户补充具体行动细节。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHANGE_TASK_003"
+          ],
+          "priority": 2
+        }
+      ],
+      "bank_suggestions": [],
+      "safety_summary": {
+        "allowed_change_ids": [],
+        "blocked_change_ids": [],
+        "pending_change_ids": [],
+        "findings": []
+      },
+      "coverage": [
+        {
+          "issue_id": "ISSUE_STAR_003",
+          "dimension": "STAR应用",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "Action行动仅有'参与/负责相关工作'的模糊语句，缺乏具体产品行动展开。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_003",
+          "dimension": "STAR应用",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "Action行动仅有'参与/负责相关工作'的模糊语句，缺乏具体产品行动展开。"
+        },
+        {
+          "issue_id": "ISSUE_READ_002",
+          "dimension": "内容可读",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "句子表意模糊不清，未指明具体工作对象与方法。"
+        },
+        {
+          "issue_id": "ISSUE_READ_002",
+          "dimension": "内容可读",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "句子表意模糊不清，未指明具体工作对象与方法。"
+        },
+        {
+          "issue_id": "ISSUE_READ_003",
+          "dimension": "内容可读",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "有效信息密度极低，包含大量无实质含义的占位式语句。"
+        },
+        {
+          "issue_id": "ISSUE_READ_003",
+          "dimension": "内容可读",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "有效信息密度极低，包含大量无实质含义的占位式语句。"
+        },
+        {
+          "issue_id": "ISSUE_READ_004",
+          "dimension": "内容可读",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "经历文本以顿号拼接重复动宾词组，语言组织不自然且缺少句末标点。"
+        },
+        {
+          "issue_id": "ISSUE_READ_004",
+          "dimension": "内容可读",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "经历文本以顿号拼接重复动宾词组，语言组织不自然且缺少句末标点。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_001",
+          "dimension": "专业表达",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "仅使用'参与'、'负责'等弱动词，缺乏'分析'、'主导'、'撰写'、'重构'等具体产品行动动词。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_001",
+          "dimension": "专业表达",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "仅使用'参与'、'负责'等弱动词，缺乏'分析'、'主导'、'撰写'、'重构'等具体产品行动动词。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_002",
+          "dimension": "专业表达",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "经历文本中未出现任何B2B SaaS产品经理专业术语（如PRD、漏斗分析、用户激活、SaaS工作流等）。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_002",
+          "dimension": "专业表达",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "经历文本中未出现任何B2B SaaS产品经理专业术语（如PRD、漏斗分析、用户激活、SaaS工作流等）。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_003",
+          "dimension": "专业表达",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "'负责相关工作'表述高度模糊，未说明具体业务对象与执行措施。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_003",
+          "dimension": "专业表达",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "'负责相关工作'表述高度模糊，未说明具体业务对象与执行措施。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_004",
+          "dimension": "专业表达",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "未能界定个人在团队项目中的实际贡献与责任边界。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_004",
+          "dimension": "专业表达",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "status": "needs_facts",
+          "description": "未能界定个人在团队项目中的实际贡献与责任边界。"
+        },
+        {
+          "issue_id": "ISSUE_EXP_005",
+          "dimension": "专业表达",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "pending_review",
+          "description": "自我总结中出现'精通一切'、'极强'等主观夸大词汇，缺乏客观依据支撑。"
+        },
+        {
+          "issue_id": "RUBRIC_EXAGGERATED_CLAIM",
+          "dimension": "专业表达",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "pending_review",
+          "description": "存在已识别的夸大陈述，客观与可信分项不得获得正分。"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_001",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "逻辑清晰",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_002",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "逻辑清晰",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_003",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "逻辑清晰",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_STAR_001",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "STAR应用",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_STAR_002",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "STAR应用",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_STAR_004",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "STAR应用",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_READ_001",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容可读",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_READ_005",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容可读",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_001",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_002",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_003",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_004",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_005",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_006",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_0",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_1",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        }
+      ],
+      "planning_tasks": {
+        "TASK_001": {
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "before": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+          "issue_ids": [
+            "ISSUE_EXP_005",
+            "RUBRIC_EXAGGERATED_CLAIM"
+          ],
+          "dimension": "专业表达",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/personal_summary",
+              "text": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/skills/0/name",
+              "text": "SQL"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/skills/1/name",
+              "text": "Excel"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/skills/2/name",
+              "text": "需求分析与PRD"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a",
+              "text": "参与产品工作，负责相关工作，参与相关工作"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/a",
+              "text": "参与产品工作，负责相关工作，参与相关工作"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "自我总结中出现'精通一切'、'极强'等主观夸大词汇，缺乏客观依据支撑。",
+            "存在已识别的夸大陈述，客观与可信分项不得获得正分。"
+          ]
+        },
+        "TASK_002": {
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "before": "参与产品工作，负责相关工作，参与相关工作",
+          "issue_ids": [
+            "ISSUE_STAR_003",
+            "ISSUE_READ_003",
+            "ISSUE_EXP_001",
+            "ISSUE_EXP_002",
+            "ISSUE_EXP_003",
+            "ISSUE_EXP_004",
+            "ISSUE_READ_002",
+            "ISSUE_READ_004"
+          ],
+          "dimension": "STAR应用",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a",
+              "text": "参与产品工作，负责相关工作，参与相关工作"
+            },
+            "SOURCE_002": {
+              "pointer": "/selectedSourceExperiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a",
+              "text": "参与产品工作，负责相关工作，参与相关工作"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "Action行动仅有'参与/负责相关工作'的模糊语句，缺乏具体产品行动展开。",
+            "有效信息密度极低，包含大量无实质含义的占位式语句。",
+            "仅使用'参与'、'负责'等弱动词，缺乏'分析'、'主导'、'撰写'、'重构'等具体产品行动动词。",
+            "经历文本中未出现任何B2B SaaS产品经理专业术语（如PRD、漏斗分析、用户激活、SaaS工作流等）。",
+            "'负责相关工作'表述高度模糊，未说明具体业务对象与执行措施。",
+            "未能界定个人在团队项目中的实际贡献与责任边界。",
+            "句子表意模糊不清，未指明具体工作对象与方法。",
+            "经历文本以顿号拼接重复动宾词组，语言组织不自然且缺少句末标点。"
+          ]
+        },
+        "TASK_003": {
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "before": "参与产品工作，负责相关工作，参与相关工作",
+          "issue_ids": [
+            "ISSUE_STAR_003",
+            "ISSUE_READ_003",
+            "ISSUE_EXP_001",
+            "ISSUE_EXP_002",
+            "ISSUE_EXP_003",
+            "ISSUE_EXP_004",
+            "ISSUE_READ_002",
+            "ISSUE_READ_004"
+          ],
+          "dimension": "STAR应用",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/a",
+              "text": "参与产品工作，负责相关工作，参与相关工作"
+            },
+            "SOURCE_002": {
+              "pointer": "/selectedSourceExperiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/a",
+              "text": "参与产品工作，负责相关工作，参与相关工作"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "Action行动仅有'参与/负责相关工作'的模糊语句，缺乏具体产品行动展开。",
+            "有效信息密度极低，包含大量无实质含义的占位式语句。",
+            "仅使用'参与'、'负责'等弱动词，缺乏'分析'、'主导'、'撰写'、'重构'等具体产品行动动词。",
+            "经历文本中未出现任何B2B SaaS产品经理专业术语（如PRD、漏斗分析、用户激活、SaaS工作流等）。",
+            "'负责相关工作'表述高度模糊，未说明具体业务对象与执行措施。",
+            "未能界定个人在团队项目中的实际贡献与责任边界。",
+            "句子表意模糊不清，未指明具体工作对象与方法。",
+            "经历文本以顿号拼接重复动宾词组，语言组织不自然且缺少句末标点。"
+          ]
+        },
+        "RETAINED_FIELD_004": {
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.s",
+          "before": "",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_005": {
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.t",
+          "before": "",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_006": {
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.r",
+          "before": "",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_007": {
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.s",
+          "before": "",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_008": {
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.t",
+          "before": "",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_009": {
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.r",
+          "before": "",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        }
+      },
+      "cleanup_fallbacks": {
+        "CHANGE_TASK_002": {
+          "change_id": "CHANGE_TASK_002",
+          "issue_ids": [
+            "ISSUE_STAR_003"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": "参与产品工作，负责相关工作。",
+          "targeted_value": "参与产品工作，负责相关工作。",
+          "source_refs": [
+            "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "没有补充事实，仅整理原文表达；仍需安全审核及用户采纳。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        "CHANGE_TASK_003": {
+          "change_id": "CHANGE_TASK_003",
+          "issue_ids": [
+            "ISSUE_STAR_003"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "参与产品工作，负责相关工作，参与相关工作",
+          "general_value": "参与产品工作，负责相关工作。",
+          "targeted_value": "参与产品工作，负责相关工作。",
+          "source_refs": [
+            "/currentResume/experiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "没有补充事实，仅整理原文表达；仍需安全审核及用户采纳。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      }
+    },
+    "coverage": [
+      {
+        "issue_id": "ISSUE_STAR_003",
+        "dimension": "STAR应用",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "Action行动仅有'参与/负责相关工作'的模糊语句，缺乏具体产品行动展开。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "修改后依然仅为'参与产品工作,负责相关工作'，并未展开具体行动，缺陷未修复。",
+        "reviewed_candidates": [
+          "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6"
+        ],
+        "coverage_input_hash": "e418a55254a7e05836c8ca95c1e1f9742f666a41ab31bd9dee10701036b4b7f5"
+      },
+      {
+        "issue_id": "ISSUE_STAR_003",
+        "dimension": "STAR应用",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "Action行动仅有'参与/负责相关工作'的模糊语句，缺乏具体产品行动展开。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "修改后依然仅为'参与产品工作,负责相关工作'，未提供具体行动展开，缺陷未解决。",
+        "reviewed_candidates": [
+          "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6"
+        ],
+        "coverage_input_hash": "eabb92df16317dfcedb172f05fac28d9247b3639f540d9412406e8764caee6cc"
+      },
+      {
+        "issue_id": "ISSUE_READ_002",
+        "dimension": "内容可读",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "句子表意模糊不清，未指明具体工作对象与方法。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后文本依然表意模糊，未体现具体工作对象与方法。",
+        "reviewed_candidates": [
+          "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6"
+        ],
+        "coverage_input_hash": "38bb91e4339c37b4d0e5348a962c9a1e6dba9bb3cafbfeb9d6e5ff8012656850"
+      },
+      {
+        "issue_id": "ISSUE_READ_002",
+        "dimension": "内容可读",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "句子表意模糊不清，未指明具体工作对象与方法。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后文本依然表意模糊，未体现具体工作对象与方法。",
+        "reviewed_candidates": [
+          "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6"
+        ],
+        "coverage_input_hash": "705df1961413493f5ab77a68e6e301ee125f0e52da8930e60bbcaa33a9a13e3a"
+      },
+      {
+        "issue_id": "ISSUE_READ_003",
+        "dimension": "内容可读",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "有效信息密度极低，包含大量无实质含义的占位式语句。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "仅删除了重复的短语，依然充斥无实质含义的占位词，信息密度未改善。",
+        "reviewed_candidates": [
+          "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6"
+        ],
+        "coverage_input_hash": "d3f1c205c3f5c4f96257050f25c687d556aee6b8271f4466b9b9b79bc340686d"
+      },
+      {
+        "issue_id": "ISSUE_READ_003",
+        "dimension": "内容可读",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "有效信息密度极低，包含大量无实质含义的占位式语句。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "仅删除了重复短语，内容依然为空泛占位，信息密度未改善。",
+        "reviewed_candidates": [
+          "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6"
+        ],
+        "coverage_input_hash": "75ea5a7c28b8d23dc14aa7afe9d434da8ba4dc58372ec76c9f995a8adf41d7a6"
+      },
+      {
+        "issue_id": "ISSUE_READ_004",
+        "dimension": "内容可读",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "经历文本以顿号拼接重复动宾词组，语言组织不自然且缺少句末标点。",
+        "repair_verdict": "repaired",
+        "repair_reason": "去除了冗余重复短语并规范了标点句末句号，改善了语言组织与句末标点问题。",
+        "reviewed_candidates": [
+          "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6"
+        ],
+        "coverage_input_hash": "33fb6dc0d864d0d858d17878583216616f0a1f6a0af1c932e9437f77e3e3c9e9"
+      },
+      {
+        "issue_id": "ISSUE_READ_004",
+        "dimension": "内容可读",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "经历文本以顿号拼接重复动宾词组，语言组织不自然且缺少句末标点。",
+        "repair_verdict": "repaired",
+        "repair_reason": "去除了冗余重复短语并规范了标点句末句号，改善了语言组织与句末标点问题。",
+        "reviewed_candidates": [
+          "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6"
+        ],
+        "coverage_input_hash": "367b6e2bde658b831856695457a87fabded7264be947724b38164df946d371c2"
+      },
+      {
+        "issue_id": "ISSUE_EXP_001",
+        "dimension": "专业表达",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "仅使用'参与'、'负责'等弱动词，缺乏'分析'、'主导'、'撰写'、'重构'等具体产品行动动词。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后依然仅使用'参与'、'负责'等弱动词，缺乏具体产品行动动词。",
+        "reviewed_candidates": [
+          "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6"
+        ],
+        "coverage_input_hash": "2646d1f2b5aa6bdeff93066dfce4f1df9638328c359da8ef140808f598c7c09e"
+      },
+      {
+        "issue_id": "ISSUE_EXP_001",
+        "dimension": "专业表达",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "仅使用'参与'、'负责'等弱动词，缺乏'分析'、'主导'、'撰写'、'重构'等具体产品行动动词。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后依然仅使用'参与'、'负责'等弱动词，缺乏具体产品行动动词。",
+        "reviewed_candidates": [
+          "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6"
+        ],
+        "coverage_input_hash": "f3257a43dbac9f48991e7013e0db07ad45d54a0c0fb5885a57614cc06ee21280"
+      },
+      {
+        "issue_id": "ISSUE_EXP_002",
+        "dimension": "专业表达",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "经历文本中未出现任何B2B SaaS产品经理专业术语（如PRD、漏斗分析、用户激活、SaaS工作流等）。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后内容依然未引入任何专业术语。",
+        "reviewed_candidates": [
+          "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6"
+        ],
+        "coverage_input_hash": "61d7c65f4f7925e2722877cf8ef9eda2681bf34d8473d5497812a05446a83156"
+      },
+      {
+        "issue_id": "ISSUE_EXP_002",
+        "dimension": "专业表达",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "经历文本中未出现任何B2B SaaS产品经理专业术语（如PRD、漏斗分析、用户激活、SaaS工作流等）。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后内容依然未引入任何专业术语。",
+        "reviewed_candidates": [
+          "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6"
+        ],
+        "coverage_input_hash": "3da6a446e62c105e59d4e69f2f82c36593b6fbc9cf97d713bdc2c5c8cdd7bf5a"
+      },
+      {
+        "issue_id": "ISSUE_EXP_003",
+        "dimension": "专业表达",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "'负责相关工作'表述高度模糊，未说明具体业务对象与执行措施。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后依然保留'负责相关工作'的模糊表述，未说明具体业务对象与执行措施。",
+        "reviewed_candidates": [
+          "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6"
+        ],
+        "coverage_input_hash": "14b35a6687b6d6335056ea14238358b69a3da4104900724035ef108cc43c8348"
+      },
+      {
+        "issue_id": "ISSUE_EXP_003",
+        "dimension": "专业表达",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "'负责相关工作'表述高度模糊，未说明具体业务对象与执行措施。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后依然保留'负责相关工作'的模糊表述，未说明具体业务对象与执行措施。",
+        "reviewed_candidates": [
+          "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6"
+        ],
+        "coverage_input_hash": "55f238eeb97325091bd421c61d4d684578848e97fc16b9ec7798d3fd1130bb44"
+      },
+      {
+        "issue_id": "ISSUE_EXP_004",
+        "dimension": "专业表达",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "未能界定个人在团队项目中的实际贡献与责任边界。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后仍为宽泛描述，未能界定个人贡献与责任边界。",
+        "reviewed_candidates": [
+          "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6"
+        ],
+        "coverage_input_hash": "299101b5391d19cd1e13d8111fe37dd8bd9a8ff8b0f06c1ab74f64fe290151ff"
+      },
+      {
+        "issue_id": "ISSUE_EXP_004",
+        "dimension": "专业表达",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "未能界定个人在团队项目中的实际贡献与责任边界。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改后仍为宽泛描述，未能界定个人贡献与责任边界。",
+        "reviewed_candidates": [
+          "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6"
+        ],
+        "coverage_input_hash": "abd126615ff864cd1ed40f0b636d48a48c837b59d99236dbdf681ef220a4bea7"
+      },
+      {
+        "issue_id": "ISSUE_EXP_005",
+        "dimension": "专业表达",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "repaired",
+        "description": "自我总结中出现'精通一切'、'极强'等主观夸大词汇，缺乏客观依据支撑。",
+        "repair_verdict": "repaired",
+        "repair_reason": "改后移除了'精通一切'、'极强'等绝对化夸大词汇，转为客观具体的技能与能力陈述，已修复。",
+        "reviewed_candidates": [
+          "237fe063227650a73a1759b30000d98fbf3bbb969d5d7faab29d3590f948103f"
+        ],
+        "coverage_input_hash": "4f2eaa98e41cb3f8cad3e083fc68dbabaa3c4eb67f7ffe937501144882cfd51f"
+      },
+      {
+        "issue_id": "RUBRIC_EXAGGERATED_CLAIM",
+        "dimension": "专业表达",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "repaired",
+        "description": "存在已识别的夸大陈述，客观与可信分项不得获得正分。",
+        "repair_verdict": "repaired",
+        "repair_reason": "改后修正了夸大陈述，表述客观严谨，已修复。",
+        "reviewed_candidates": [
+          "237fe063227650a73a1759b30000d98fbf3bbb969d5d7faab29d3590f948103f"
+        ],
+        "coverage_input_hash": "4ff61e55851c77b5dd9037cfc06f10fba4effdc6f18a80981941a1bf059042a4"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_001",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "逻辑清晰",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_002",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "逻辑清晰",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_003",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "逻辑清晰",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_STAR_001",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "STAR应用",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_STAR_002",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "STAR应用",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_STAR_004",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "STAR应用",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_READ_001",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容可读",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_READ_005",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容可读",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_001",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_002",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_003",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_004",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_005",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_006",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_0",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_1",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      }
+    ],
+    "changes": [
+      {
+        "change_id": "CHANGE_TASK_001",
+        "issue_ids": [
+          "ISSUE_EXP_005",
+          "RUBRIC_EXAGGERATED_CLAIM"
+        ],
+        "dimension": "专业表达",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "本人非常优秀，精通一切产品工作，执行力极强，沟通能力极强，学习能力极强。",
+        "general_value": "具备产品工作经验，掌握SQL、Excel及需求分析与PRD撰写能力，具备良好的执行、沟通与学习能力。",
+        "targeted_value": "具备产品工作经验，掌握SQL、Excel及需求分析与PRD撰写能力，具备良好的执行、沟通与学习能力。",
+        "source_refs": [
+          "/currentResume/personal_summary",
+          "/currentResume/skills/0/name",
+          "/currentResume/skills/1/name",
+          "/currentResume/skills/2/name",
+          "/selectedSourceExperiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "基于技能清单与经历客观陈述个人能力，去除'精通一切'等夸大修饰。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "237fe063227650a73a1759b30000d98fbf3bbb969d5d7faab29d3590f948103f",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容均来自提供的技能及经历来源，去除了主观夸大词汇，陈述完全受来源支持。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_002",
+        "issue_ids": [
+          "ISSUE_STAR_003"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": "参与产品工作，负责相关工作。",
+        "targeted_value": "参与产品工作，负责相关工作。",
+        "source_refs": [
+          "/currentResume/experiences/32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "没有补充事实，仅整理原文表达；仍需安全审核及用户采纳。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "19c5b1e33cdcfc1c878ba629a84a96e786f49ec9e8072bad6846933d2cc3f2a6",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容为原文的简化，完全受来源支持。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_002_RELATED_0",
+        "issue_ids": [
+          "ISSUE_READ_003",
+          "ISSUE_READ_002",
+          "ISSUE_READ_004"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002_RELATED_1",
+        "issue_ids": [
+          "ISSUE_EXP_001",
+          "ISSUE_EXP_002",
+          "ISSUE_EXP_003",
+          "ISSUE_EXP_004"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003",
+        "issue_ids": [
+          "ISSUE_STAR_003"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": "参与产品工作，负责相关工作。",
+        "targeted_value": "参与产品工作，负责相关工作。",
+        "source_refs": [
+          "/currentResume/experiences/ce933d73-b79e-562d-87a2-7b3445fc0aa2/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "没有补充事实，仅整理原文表达；仍需安全审核及用户采纳。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "6a9cdf03faf47c1030ae8f6c40a5273ff1cf0fabd28aa1d37db78ca17c9078b6",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容为原文的简化，完全受来源支持。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_0",
+        "issue_ids": [
+          "ISSUE_READ_003",
+          "ISSUE_READ_002",
+          "ISSUE_READ_004"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_1",
+        "issue_ids": [
+          "ISSUE_EXP_001",
+          "ISSUE_EXP_002",
+          "ISSUE_EXP_003",
+          "ISSUE_EXP_004"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "参与产品工作，负责相关工作，参与相关工作",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_0",
+        "issue_ids": [
+          "ISSUE_LOGIC_001"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_1",
+        "issue_ids": [
+          "ISSUE_LOGIC_002"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_2",
+        "issue_ids": [
+          "ISSUE_LOGIC_003"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_3",
+        "issue_ids": [
+          "ISSUE_STAR_001"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_4",
+        "issue_ids": [
+          "ISSUE_STAR_002"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_5",
+        "issue_ids": [
+          "ISSUE_STAR_004"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_6",
+        "issue_ids": [
+          "ISSUE_READ_001"
+        ],
+        "dimension": "内容可读",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_7",
+        "issue_ids": [
+          "ISSUE_READ_005"
+        ],
+        "dimension": "内容可读",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_8",
+        "issue_ids": [
+          "ISSUE_QUANT_001"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_9",
+        "issue_ids": [
+          "ISSUE_QUANT_002"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_10",
+        "issue_ids": [
+          "ISSUE_QUANT_003"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_11",
+        "issue_ids": [
+          "ISSUE_QUANT_004"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_12",
+        "issue_ids": [
+          "ISSUE_QUANT_005"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_13",
+        "issue_ids": [
+          "ISSUE_QUANT_006"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_14",
+        "issue_ids": [
+          "RUBRIC_内容完整_0"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_15",
+        "issue_ids": [
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHANGE_TASK_001",
+        "CHANGE_TASK_002",
+        "CHANGE_TASK_003"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHANGE_TASK_002_RELATED_0",
+        "CHANGE_TASK_002_RELATED_1",
+        "CHANGE_TASK_003_RELATED_0",
+        "CHANGE_TASK_003_RELATED_1",
+        "RETAINED_0",
+        "RETAINED_1",
+        "RETAINED_2",
+        "RETAINED_3",
+        "RETAINED_4",
+        "RETAINED_5",
+        "RETAINED_6",
+        "RETAINED_7",
+        "RETAINED_8",
+        "RETAINED_9",
+        "RETAINED_10",
+        "RETAINED_11",
+        "RETAINED_12",
+        "RETAINED_13",
+        "RETAINED_14",
+        "RETAINED_15"
+      ],
+      "findings": []
+    },
+    "answers": [
+      {
+        "question_id": "QUESTION_TASK_002",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      },
+      {
+        "question_id": "QUESTION_TASK_003",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      }
+    ],
+    "accepted": [
+      "CHANGE_TASK_001",
+      "CHANGE_TASK_002",
+      "CHANGE_TASK_003"
+    ],
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "具备产品工作经验，掌握SQL、Excel及需求分析与PRD撰写能力，具备良好的执行、沟通与学习能力。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "云桥软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "",
+            "t": "",
+            "a": "参与产品工作，负责相关工作。",
+            "r": ""
+          },
+          "id": "32cf87c6-79f4-5ffe-a4a6-eb4b3f48cff7"
+        },
+        {
+          "category": "project",
+          "title": "运营周报自动化",
+          "org": "云桥软件（虚构）",
+          "start_date": "2024-04-01",
+          "end_date": "2024-06-30",
+          "is_current": false,
+          "star": {
+            "s": "",
+            "t": "",
+            "a": "参与产品工作，负责相关工作。",
+            "r": ""
+          },
+          "id": "ce933d73-b79e-562d-87a2-7b3445fc0aa2"
+        }
+      ]
+    }
+  },
+  "diagnostics": []
+}

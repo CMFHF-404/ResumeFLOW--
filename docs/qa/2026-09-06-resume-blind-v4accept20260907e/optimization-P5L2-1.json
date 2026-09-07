@@ -1,0 +1,1635 @@
+{
+  "ok": true,
+  "seconds": 10.15,
+  "value": {
+    "initial_plan": {
+      "changes": [
+        {
+          "change_id": "CHANGE_TASK_001",
+          "issue_ids": [
+            "ISSUE_QUANT_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "整理交接规则并完成验收",
+          "general_value": "整理交接规则并完成验收。",
+          "targeted_value": "整理交接规则并完成验收。",
+          "source_refs": [
+            "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "补齐末尾句号以规范标点，保留原有的全部事实信息。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_0",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "整理交接规则并完成验收",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_1",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "整理交接规则并完成验收",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_2",
+          "issue_ids": [
+            "ISSUE_PROF_01"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "整理交接规则并完成验收",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_3",
+          "issue_ids": [
+            "ISSUE_READ_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "整理交接规则并完成验收",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002",
+          "issue_ids": [
+            "ISSUE_QUANT_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.r",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "交接说明已交付客服试用。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "现有内容缺乏定量成果，向用户询问具体量化成效及业务指标改善。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002_RELATED_0",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "交接说明已交付客服试用。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003",
+          "issue_ids": [
+            "ISSUE_QUANT_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "核对字段定义并编写说明",
+          "general_value": "核对字段定义并编写说明。",
+          "targeted_value": "核对字段定义并编写说明。",
+          "source_refs": [
+            "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "补齐末尾句号以规范标点格式，忠实保留原有行动内容。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_0",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "核对字段定义并编写说明",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_1",
+          "issue_ids": [
+            "ISSUE_PROF_01"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "核对字段定义并编写说明",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_2",
+          "issue_ids": [
+            "ISSUE_READ_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "核对字段定义并编写说明",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_004",
+          "issue_ids": [
+            "ISSUE_QUANT_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.r",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "新说明通过运营验收并在试用环境使用。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "现有描述缺乏量化业务结果，向用户询问具体指标和成果数据。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_004_RELATED_0",
+          "issue_ids": [
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "新说明通过运营验收并在试用环境使用。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_005",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.s",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "客服人员需要统一处理工单交接。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "当前情境描述清晰明确，符合事实且无多余冗余，保持现状。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_006",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.t",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "负责整理交接规则。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "任务描述准确清晰，事实完备，保持现状不变。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_006_RELATED_0",
+          "issue_ids": [
+            "ISSUE_READ_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.t",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "负责整理交接规则。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_0",
+          "issue_ids": [
+            "RUBRIC_内容完整_0"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      ],
+      "questions": [
+        {
+          "question_id": "QUESTION_TASK_002",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.r",
+          "text": "请问交接说明交付客服试用后，取得了哪些具体的量化成效或业务指标改善？",
+          "reason": "现有内容缺乏定量成果，向用户询问具体量化成效及业务指标改善。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHANGE_TASK_002"
+          ],
+          "priority": 1
+        },
+        {
+          "question_id": "QUESTION_TASK_004",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.r",
+          "text": "请问新说明通过验收并在试用环境使用后，对运营效率或数据一致性带来了哪些具体的量化改善？",
+          "reason": "现有描述缺乏量化业务结果，向用户询问具体指标和成果数据。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHANGE_TASK_004"
+          ],
+          "priority": 2
+        }
+      ],
+      "bank_suggestions": [],
+      "safety_summary": {
+        "allowed_change_ids": [],
+        "blocked_change_ids": [],
+        "pending_change_ids": [],
+        "findings": []
+      },
+      "coverage": [
+        {
+          "issue_id": "ISSUE_LOGIC_01",
+          "dimension": "逻辑清晰",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_01",
+          "dimension": "逻辑清晰",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.s",
+          "status": "uncovered",
+          "description": "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。"
+        },
+        {
+          "issue_id": "ISSUE_LOGIC_01",
+          "dimension": "逻辑清晰",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.t",
+          "status": "uncovered",
+          "description": "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_01",
+          "dimension": "STAR应用",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_01",
+          "dimension": "STAR应用",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_01",
+          "dimension": "STAR应用",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。"
+        },
+        {
+          "issue_id": "ISSUE_STAR_01",
+          "dimension": "STAR应用",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。"
+        },
+        {
+          "issue_id": "ISSUE_READ_01",
+          "dimension": "内容可读",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。"
+        },
+        {
+          "issue_id": "ISSUE_READ_01",
+          "dimension": "内容可读",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.t",
+          "status": "uncovered",
+          "description": "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。"
+        },
+        {
+          "issue_id": "ISSUE_READ_01",
+          "dimension": "内容可读",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_01",
+          "dimension": "专业表达",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "行动动词与岗位专业术语表达较为基础（多用“核对”、“编写”、“整理”），产品方法论与业务方案的深度精确度有提升空间。"
+        },
+        {
+          "issue_id": "ISSUE_PROF_01",
+          "dimension": "专业表达",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "行动动词与岗位专业术语表达较为基础（多用“核对”、“编写”、“整理”），产品方法论与业务方案的深度精确度有提升空间。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_01",
+          "dimension": "成果量化",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_01",
+          "dimension": "成果量化",
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_01",
+          "dimension": "成果量化",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_01",
+          "dimension": "成果量化",
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_0",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        }
+      ],
+      "planning_tasks": {
+        "TASK_001": {
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.a",
+          "before": "整理交接规则并完成验收",
+          "issue_ids": [
+            "ISSUE_QUANT_01",
+            "ISSUE_LOGIC_01",
+            "ISSUE_STAR_01",
+            "ISSUE_PROF_01",
+            "ISSUE_READ_01"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/s",
+              "text": "客服人员需要统一处理工单交接。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/t",
+              "text": "负责整理交接规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a",
+              "text": "整理交接规则并完成验收"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/r",
+              "text": "交接说明已交付客服试用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/s",
+              "text": "客服人员需要统一处理工单交接。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/t",
+              "text": "负责整理交接规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a",
+              "text": "整理交接规则并完成验收"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/r",
+              "text": "交接说明已交付客服试用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。",
+            "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。",
+            "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。",
+            "行动动词与岗位专业术语表达较为基础（多用“核对”、“编写”、“整理”），产品方法论与业务方案的深度精确度有提升空间。",
+            "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。"
+          ]
+        },
+        "TASK_002": {
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.r",
+          "before": "交接说明已交付客服试用。",
+          "issue_ids": [
+            "ISSUE_QUANT_01",
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/s",
+              "text": "客服人员需要统一处理工单交接。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/t",
+              "text": "负责整理交接规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a",
+              "text": "整理交接规则并完成验收"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/r",
+              "text": "交接说明已交付客服试用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/s",
+              "text": "客服人员需要统一处理工单交接。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/t",
+              "text": "负责整理交接规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a",
+              "text": "整理交接规则并完成验收"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/r",
+              "text": "交接说明已交付客服试用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。",
+            "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。"
+          ]
+        },
+        "TASK_003": {
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.a",
+          "before": "核对字段定义并编写说明",
+          "issue_ids": [
+            "ISSUE_QUANT_01",
+            "ISSUE_STAR_01",
+            "ISSUE_PROF_01",
+            "ISSUE_READ_01"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/s",
+              "text": "运营人员反馈客户资料字段含义不统一。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/t",
+              "text": "负责整理字段定义及验收规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/a",
+              "text": "核对字段定义并编写说明"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/r",
+              "text": "新说明通过运营验收并在试用环境使用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/s",
+              "text": "运营人员反馈客户资料字段含义不统一。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/t",
+              "text": "负责整理字段定义及验收规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/a",
+              "text": "核对字段定义并编写说明"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/r",
+              "text": "新说明通过运营验收并在试用环境使用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。",
+            "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。",
+            "行动动词与岗位专业术语表达较为基础（多用“核对”、“编写”、“整理”），产品方法论与业务方案的深度精确度有提升空间。",
+            "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。"
+          ]
+        },
+        "TASK_004": {
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.r",
+          "before": "新说明通过运营验收并在试用环境使用。",
+          "issue_ids": [
+            "ISSUE_QUANT_01",
+            "ISSUE_STAR_01"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/s",
+              "text": "运营人员反馈客户资料字段含义不统一。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/t",
+              "text": "负责整理字段定义及验收规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/a",
+              "text": "核对字段定义并编写说明"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/r",
+              "text": "新说明通过运营验收并在试用环境使用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/s",
+              "text": "运营人员反馈客户资料字段含义不统一。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/t",
+              "text": "负责整理字段定义及验收规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/a",
+              "text": "核对字段定义并编写说明"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/r",
+              "text": "新说明通过运营验收并在试用环境使用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。",
+            "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。"
+          ]
+        },
+        "TASK_005": {
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.s",
+          "before": "客服人员需要统一处理工单交接。",
+          "issue_ids": [
+            "ISSUE_LOGIC_01"
+          ],
+          "dimension": "逻辑清晰",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/s",
+              "text": "客服人员需要统一处理工单交接。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/t",
+              "text": "负责整理交接规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a",
+              "text": "整理交接规则并完成验收"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/r",
+              "text": "交接说明已交付客服试用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/s",
+              "text": "客服人员需要统一处理工单交接。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/t",
+              "text": "负责整理交接规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a",
+              "text": "整理交接规则并完成验收"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/r",
+              "text": "交接说明已交付客服试用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。"
+          ]
+        },
+        "TASK_006": {
+          "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+          "field_path": "star.t",
+          "before": "负责整理交接规则。",
+          "issue_ids": [
+            "ISSUE_LOGIC_01",
+            "ISSUE_READ_01"
+          ],
+          "dimension": "逻辑清晰",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/s",
+              "text": "客服人员需要统一处理工单交接。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/t",
+              "text": "负责整理交接规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a",
+              "text": "整理交接规则并完成验收"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/r",
+              "text": "交接说明已交付客服试用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/s",
+              "text": "客服人员需要统一处理工单交接。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/t",
+              "text": "负责整理交接规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a",
+              "text": "整理交接规则并完成验收"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/r",
+              "text": "交接说明已交付客服试用。"
+            }
+          },
+          "allow_question": false,
+          "problems": [
+            "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。",
+            "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。"
+          ]
+        },
+        "RETAINED_FIELD_007": {
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "before": "参与企业软件需求梳理和交付验收。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_008": {
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.s",
+          "before": "运营人员反馈客户资料字段含义不统一。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_009": {
+          "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+          "field_path": "star.t",
+          "before": "负责整理字段定义及验收规则。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        }
+      },
+      "cleanup_fallbacks": {}
+    },
+    "coverage": [
+      {
+        "issue_id": "ISSUE_LOGIC_01",
+        "dimension": "逻辑清晰",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改动仅为末尾添加标点符号，未对项目标题与交接规则之间的逻辑衔接进行任何调整或改进。",
+        "reviewed_candidates": [
+          "90098f38660dc32ad0b13d4ec2946d07c2950a6910f61f343fff1931973c4584"
+        ],
+        "coverage_input_hash": "7f19407782b00b0477274bf70b04d92d6f7978ec8d08edd7684e764b18a6294f"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_01",
+        "dimension": "逻辑清晰",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.s",
+        "status": "uncovered",
+        "description": "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。"
+      },
+      {
+        "issue_id": "ISSUE_LOGIC_01",
+        "dimension": "逻辑清晰",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.t",
+        "status": "uncovered",
+        "description": "项目标题“运营周报自动化”与下文描述的客服工单交接规则整理之间存在主题聚焦偏差，因果衔接不够严密。"
+      },
+      {
+        "issue_id": "ISSUE_STAR_01",
+        "dimension": "STAR应用",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改动仅添加了句号，未补充行动展开细节或业务闭环成效描述。",
+        "reviewed_candidates": [
+          "90098f38660dc32ad0b13d4ec2946d07c2950a6910f61f343fff1931973c4584"
+        ],
+        "coverage_input_hash": "53c588472f08de39b8768023eafda15de8ba9b9d9d07de1b6116ae44e5d32cbb"
+      },
+      {
+        "issue_id": "ISSUE_STAR_01",
+        "dimension": "STAR应用",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。"
+      },
+      {
+        "issue_id": "ISSUE_STAR_01",
+        "dimension": "STAR应用",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改动仅补充句末标点，未丰富行动展开及业务结果闭环。",
+        "reviewed_candidates": [
+          "036441e2d0c350550013b2fd0f584f0ceb0fae42c8ce1d215debebb0dcbb4a63"
+        ],
+        "coverage_input_hash": "9a2e826be9d2243be84a9dbea08b2260a55e63512152e6ce32fd7265ed7d295f"
+      },
+      {
+        "issue_id": "ISSUE_STAR_01",
+        "dimension": "STAR应用",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "Action部分行动展开偏短，且Result部分仅为定性试用/交付，缺少对实施后具体业务成效和改进成果的深入闭环描述。"
+      },
+      {
+        "issue_id": "ISSUE_READ_01",
+        "dimension": "内容可读",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。",
+        "repair_verdict": "partial",
+        "repair_reason": "修改补充了句末句号，但未解决信息密度低和任务与行动短语重复的问题，仅部分改善。",
+        "reviewed_candidates": [
+          "90098f38660dc32ad0b13d4ec2946d07c2950a6910f61f343fff1931973c4584"
+        ],
+        "coverage_input_hash": "d85d5c9f15140ec07269cc79e37e830a504ca3dfe4f890345f3d72a22fee612a"
+      },
+      {
+        "issue_id": "ISSUE_READ_01",
+        "dimension": "内容可读",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.t",
+        "status": "uncovered",
+        "description": "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。"
+      },
+      {
+        "issue_id": "ISSUE_READ_01",
+        "dimension": "内容可读",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "经历中的Action行动条目缺少句末句号标点，且存在任务与行动短语局部重复（如“整理交接规则”），信息展开密度偏低。",
+        "repair_verdict": "partial",
+        "repair_reason": "修改补充了句末句号，但未解决信息展开密度偏低等问题，属于部分改善。",
+        "reviewed_candidates": [
+          "036441e2d0c350550013b2fd0f584f0ceb0fae42c8ce1d215debebb0dcbb4a63"
+        ],
+        "coverage_input_hash": "35f08c9d626deff8bda4538af6eb8c29321ca531b5030a27320b75a8e51653d8"
+      },
+      {
+        "issue_id": "ISSUE_PROF_01",
+        "dimension": "专业表达",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "行动动词与岗位专业术语表达较为基础（多用“核对”、“编写”、“整理”），产品方法论与业务方案的深度精确度有提升空间。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改动仅补齐标点，未优化动词及专业术语表达。",
+        "reviewed_candidates": [
+          "90098f38660dc32ad0b13d4ec2946d07c2950a6910f61f343fff1931973c4584"
+        ],
+        "coverage_input_hash": "17fe248159a8c0352d0142ae3a7cef38fe005cfa279b47f95d3eb06ec01cc51c"
+      },
+      {
+        "issue_id": "ISSUE_PROF_01",
+        "dimension": "专业表达",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "行动动词与岗位专业术语表达较为基础（多用“核对”、“编写”、“整理”），产品方法论与业务方案的深度精确度有提升空间。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改动仅补齐句号标点，未对专业术语和深度进行升级。",
+        "reviewed_candidates": [
+          "036441e2d0c350550013b2fd0f584f0ceb0fae42c8ce1d215debebb0dcbb4a63"
+        ],
+        "coverage_input_hash": "a4ab98944665f619f351f805a250a30d9d8185a1c585599b23074a810812364a"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_01",
+        "dimension": "成果量化",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改动未引入任何定量数据支撑。",
+        "reviewed_candidates": [
+          "90098f38660dc32ad0b13d4ec2946d07c2950a6910f61f343fff1931973c4584"
+        ],
+        "coverage_input_hash": "210e063aa8cdb26bb998f522c3f952d1f4eda6e534b10f32b181d2b0e7164f43"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_01",
+        "dimension": "成果量化",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_01",
+        "dimension": "成果量化",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改动未添加任何量化指标或数据对比。",
+        "reviewed_candidates": [
+          "036441e2d0c350550013b2fd0f584f0ceb0fae42c8ce1d215debebb0dcbb4a63"
+        ],
+        "coverage_input_hash": "6e6bb1c01caf12e436091c70cdcceafe84b75a6a3119cbf45bb60e85f71bea06"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_01",
+        "dimension": "成果量化",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "经历中完全缺乏任何定量数据（包括业务结果指标、前后基线对比、覆盖规模、时间窗口及过程数量），导致成果量化维度无有效支撑。"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_0",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      }
+    ],
+    "changes": [
+      {
+        "change_id": "CHANGE_TASK_001",
+        "issue_ids": [
+          "ISSUE_QUANT_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "整理交接规则并完成验收",
+        "general_value": "整理交接规则并完成验收。",
+        "targeted_value": "整理交接规则并完成验收。",
+        "source_refs": [
+          "/currentResume/experiences/86a3dffc-b4b4-5de7-a380-09dd065ba2e9/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "补齐末尾句号以规范标点，保留原有的全部事实信息。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "90098f38660dc32ad0b13d4ec2946d07c2950a6910f61f343fff1931973c4584",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改动仅在原始内容后添加句号，内容与来源完全一致。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_0",
+        "issue_ids": [
+          "ISSUE_LOGIC_01"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "整理交接规则并完成验收",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_1",
+        "issue_ids": [
+          "ISSUE_STAR_01"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "整理交接规则并完成验收",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_2",
+        "issue_ids": [
+          "ISSUE_PROF_01"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "整理交接规则并完成验收",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_3",
+        "issue_ids": [
+          "ISSUE_READ_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "整理交接规则并完成验收",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002",
+        "issue_ids": [
+          "ISSUE_QUANT_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "交接说明已交付客服试用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002_RELATED_0",
+        "issue_ids": [
+          "ISSUE_STAR_01"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "交接说明已交付客服试用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003",
+        "issue_ids": [
+          "ISSUE_QUANT_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "核对字段定义并编写说明",
+        "general_value": "核对字段定义并编写说明。",
+        "targeted_value": "核对字段定义并编写说明。",
+        "source_refs": [
+          "/currentResume/experiences/f18fc830-4399-53b0-bc06-6b833c6f9d6d/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "补齐末尾句号以规范标点格式，忠实保留原有行动内容。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "036441e2d0c350550013b2fd0f584f0ceb0fae42c8ce1d215debebb0dcbb4a63",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改动仅在原始内容后添加句号，内容与来源完全一致。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_0",
+        "issue_ids": [
+          "ISSUE_STAR_01"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "核对字段定义并编写说明",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_1",
+        "issue_ids": [
+          "ISSUE_PROF_01"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "核对字段定义并编写说明",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_2",
+        "issue_ids": [
+          "ISSUE_READ_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "核对字段定义并编写说明",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_004",
+        "issue_ids": [
+          "ISSUE_QUANT_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "新说明通过运营验收并在试用环境使用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_004_RELATED_0",
+        "issue_ids": [
+          "ISSUE_STAR_01"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "新说明通过运营验收并在试用环境使用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_005",
+        "issue_ids": [
+          "ISSUE_LOGIC_01"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.s",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "客服人员需要统一处理工单交接。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "当前情境描述清晰明确，符合事实且无多余冗余，保持现状。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_006",
+        "issue_ids": [
+          "ISSUE_LOGIC_01"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.t",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "负责整理交接规则。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "任务描述准确清晰，事实完备，保持现状不变。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_006_RELATED_0",
+        "issue_ids": [
+          "ISSUE_READ_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9",
+        "field_path": "star.t",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "负责整理交接规则。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_0",
+        "issue_ids": [
+          "RUBRIC_内容完整_0"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHANGE_TASK_001",
+        "CHANGE_TASK_003"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHANGE_TASK_001_RELATED_0",
+        "CHANGE_TASK_001_RELATED_1",
+        "CHANGE_TASK_001_RELATED_2",
+        "CHANGE_TASK_001_RELATED_3",
+        "CHANGE_TASK_002",
+        "CHANGE_TASK_002_RELATED_0",
+        "CHANGE_TASK_003_RELATED_0",
+        "CHANGE_TASK_003_RELATED_1",
+        "CHANGE_TASK_003_RELATED_2",
+        "CHANGE_TASK_004",
+        "CHANGE_TASK_004_RELATED_0",
+        "CHANGE_TASK_005",
+        "CHANGE_TASK_006",
+        "CHANGE_TASK_006_RELATED_0",
+        "RETAINED_0"
+      ],
+      "findings": []
+    },
+    "answers": [
+      {
+        "question_id": "QUESTION_TASK_002",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      },
+      {
+        "question_id": "QUESTION_TASK_004",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      }
+    ],
+    "accepted": [
+      "CHANGE_TASK_001",
+      "CHANGE_TASK_003"
+    ],
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "参与企业软件需求梳理和交付验收。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "望川企业服务（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "运营人员反馈客户资料字段含义不统一。",
+            "t": "负责整理字段定义及验收规则。",
+            "a": "核对字段定义并编写说明。",
+            "r": "新说明通过运营验收并在试用环境使用。"
+          },
+          "id": "f18fc830-4399-53b0-bc06-6b833c6f9d6d"
+        },
+        {
+          "category": "project",
+          "title": "运营周报自动化",
+          "org": "望川企业服务（虚构）",
+          "start_date": "2024-04-01",
+          "end_date": "2024-06-30",
+          "is_current": false,
+          "star": {
+            "s": "客服人员需要统一处理工单交接。",
+            "t": "负责整理交接规则。",
+            "a": "整理交接规则并完成验收。",
+            "r": "交接说明已交付客服试用。"
+          },
+          "id": "86a3dffc-b4b4-5de7-a380-09dd065ba2e9"
+        }
+      ]
+    }
+  },
+  "diagnostics": []
+}

@@ -3,6 +3,8 @@ import type {
     JDAnalysisResult,
     JDInterpretation,
     RawJDAnalysisResult,
+    GuidanceAuditEvaluation,
+    LegacyResumeEvaluation,
     ResumeEvaluation,
     ResumeEvaluationDimension,
     ResumeEvaluationDimensionName,
@@ -10,11 +12,13 @@ import type {
     ResumeEvaluationRiskFlag,
 } from '../types/ai';
 import {
+    GUIDANCE_AUDIT_EVALUATION_VERSION,
     RESUME_EVALUATION_DIMENSIONS,
     RESUME_EVALUATION_VERSION,
 } from '../types/ai';
 
 export type { RawJDAnalysisResult } from '../types/ai';
+export { isGuidanceAuditEvaluation } from '../types/ai';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -352,7 +356,7 @@ const POSITIVE_EVIDENCE_VERIFICATION_STATUSES = new Set([
     'user_claimed',
 ]);
 
-const normalizeEvidence = (value: unknown): ResumeEvaluation['evidence'][number] | null => {
+const normalizeEvidence = (value: unknown): LegacyResumeEvaluation['evidence'][number] | null => {
     const record = toRecord(value);
     if (!record) {
         return null;
@@ -391,7 +395,7 @@ const normalizeEvidence = (value: unknown): ResumeEvaluation['evidence'][number]
 
 const normalizeMissingInformation = (
     value: unknown
-): ResumeEvaluation['missingInformation'][number] | null => {
+): LegacyResumeEvaluation['missingInformation'][number] | null => {
     const record = toRecord(value);
     if (!record) {
         return null;
@@ -458,7 +462,7 @@ const normalizeRiskFlag = (value: unknown): ResumeEvaluationRiskFlag | null => {
 
 const normalizeTopPriority = (
     value: unknown
-): ResumeEvaluation['topPriorities'][number] | null => {
+): LegacyResumeEvaluation['topPriorities'][number] | null => {
     const record = toRecord(value);
     if (!record) {
         return null;
@@ -483,7 +487,7 @@ const normalizeTopPriority = (
 };
 
 export const isResumeEvaluationIntegrityDegraded = (
-    evaluation: Pick<ResumeEvaluation, 'dimensions' | 'issues' | 'topPriorities'>
+    evaluation: Pick<LegacyResumeEvaluation, 'dimensions' | 'issues' | 'topPriorities'>
 ) => (
     evaluation.issues.some((issue) => /^SERVER_GAP_/i.test(issue.issueId))
     || evaluation.topPriorities.some((priority) => /^SERVER_GAP_/i.test(priority.issueId))
@@ -496,7 +500,7 @@ export const isResumeEvaluationIntegrityDegraded = (
     ))
 );
 
-const hasClosedEvaluationReferenceGraph = (evaluation: ResumeEvaluation) => {
+const hasClosedEvaluationReferenceGraph = (evaluation: LegacyResumeEvaluation) => {
     const evidenceById = new Map(
         evaluation.evidence.map((evidence) => [evidence.evidenceId, evidence])
     );
@@ -666,7 +670,7 @@ const hasClosedEvaluationReferenceGraph = (evaluation: ResumeEvaluation) => {
         ));
 };
 
-export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | undefined => {
+export const normalizeLegacyResumeEvaluation = (value: unknown): LegacyResumeEvaluation | undefined => {
     const record = toRecord(value);
     if (!record) {
         return undefined;
@@ -815,7 +819,7 @@ export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | un
     topPriorities.forEach((priority, index) => {
         priority.priority = index + 1;
     });
-    const normalized: ResumeEvaluation = {
+    const normalized: LegacyResumeEvaluation = {
         evaluationVersion: RESUME_EVALUATION_VERSION,
         ...(typeof scoringVersion === 'string' ? { scoringVersion: scoringVersion.trim() } : {}),
         evaluationScope: 'full_resume',
@@ -841,6 +845,265 @@ export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | un
         || !hasClosedEvaluationReferenceGraph(normalized)
         ? undefined
         : normalized;
+};
+
+const GUIDANCE_BANDS = new Set([
+    'strong',
+    'adequate',
+    'needs_attention',
+    'insufficient_evidence',
+]);
+
+const GUIDANCE_CONFIDENCE = new Set(['high', 'medium', 'low']);
+const GUIDANCE_RECEIPT_ID_PATTERN = /^[a-f0-9]{32}$/;
+const GUIDANCE_HASH_PATTERN = /^[a-f0-9]{64}$/;
+const GUIDANCE_AUDIT_VERSION = 'guidance_task_audit_v1';
+
+const GUIDANCE_SCORE_KEYS = new Set([
+    'overallScore', 'overall_score', 'scoreCalculation', 'score_calculation',
+    'overallLevel', 'overall_level', 'evaluationConfidence', 'evaluation_confidence',
+    'dimensions', 'dimensionScores', 'dimension_scores', 'score', 'subscores',
+    'expectedScoreGain', 'expected_score_gain',
+    'pointsNotEarned', 'points_not_earned', 'dimensionDeltas', 'dimension_deltas',
+]);
+
+const hasGuidanceScoreField = (record: JsonRecord) => (
+    Object.keys(record).some((key) => GUIDANCE_SCORE_KEYS.has(key))
+);
+
+const guidanceTextArray = (value: unknown): string[] | null => (
+    normalizeUniqueStringArray(value)
+);
+
+const guidanceRequiredAlias = (
+    record: JsonRecord,
+    camel: string,
+    snake: string,
+) => {
+    const value = getAliased(record, camel, snake);
+    return value === ALIAS_CONFLICT ? null : toRequiredText(value);
+};
+
+const normalizeGuidanceDimension = (
+    value: unknown,
+): GuidanceAuditEvaluation['dimensionGuidance'][number] | null => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return null;
+    const dimension = toText(record.dimension);
+    const status = toText(record.status);
+    const strengths = guidanceTextArray(record.strengths);
+    const issues = guidanceTextArray(record.issues);
+    const actions = guidanceTextArray(record.actions);
+    if (
+        !isDimensionName(dimension)
+        || !GUIDANCE_BANDS.has(status)
+        || strengths === null
+        || issues === null
+        || actions === null
+    ) return null;
+    return {
+        dimension,
+        status: status as GuidanceAuditEvaluation['dimensionGuidance'][number]['status'],
+        strengths,
+        issues,
+        actions,
+    };
+};
+
+const normalizeGuidanceAction = (
+    value: unknown,
+): GuidanceAuditEvaluation['topPriorities'][number] | null => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return null;
+    const taskId = guidanceRequiredAlias(record, 'taskId', 'task_id');
+    const issueId = guidanceRequiredAlias(record, 'issueId', 'issue_id');
+    const dimension = toText(record.dimension);
+    const fieldPath = guidanceRequiredAlias(record, 'fieldPath', 'field_path');
+    const description = guidanceRequiredAlias(record, 'description', 'description');
+    const action = guidanceRequiredAlias(record, 'action', 'action');
+    if (
+        taskId === null
+        || issueId === null
+        || !isDimensionName(dimension)
+        || fieldPath === null
+        || description === null
+        || action === null
+    ) return null;
+    return { taskId, issueId, dimension, fieldPath, description, action };
+};
+
+const normalizeGuidanceRiskFlag = (
+    value: unknown,
+): GuidanceAuditEvaluation['riskFlags'][number] | null => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return null;
+    const taskId = guidanceRequiredAlias(record, 'taskId', 'task_id');
+    const type = toRequiredText(record.type);
+    const description = toRequiredText(record.description);
+    if (taskId === null || type === null || description === null) return null;
+    return { taskId, type, description };
+};
+
+const normalizeGuidanceActionArray = (value: unknown) => {
+    const actions = normalizeRequiredArray(value, normalizeGuidanceAction);
+    if (!actions || new Set(actions.map((action) => action.taskId)).size !== actions.length) {
+        return null;
+    }
+    return actions;
+};
+
+const normalizeGuidanceAuditReceipt = (
+    value: unknown,
+): GuidanceAuditEvaluation['auditReceipt'] | null => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return null;
+    const receiptId = guidanceRequiredAlias(record, 'receiptId', 'receipt_id');
+    const inputHash = guidanceRequiredAlias(record, 'inputHash', 'input_hash');
+    const tasksHash = guidanceRequiredAlias(record, 'tasksHash', 'tasks_hash');
+    const judgmentsHash = guidanceRequiredAlias(record, 'judgmentsHash', 'judgments_hash');
+    const rubricHash = guidanceRequiredAlias(record, 'rubricHash', 'rubric_hash');
+    const schemaHash = guidanceRequiredAlias(record, 'schemaHash', 'schema_hash');
+    const auditVersion = guidanceRequiredAlias(record, 'auditVersion', 'audit_version');
+    if (
+        receiptId === null
+        || inputHash === null
+        || tasksHash === null
+        || judgmentsHash === null
+        || rubricHash === null
+        || schemaHash === null
+        || auditVersion !== GUIDANCE_AUDIT_VERSION
+        || !GUIDANCE_RECEIPT_ID_PATTERN.test(receiptId ?? '')
+        || ![inputHash, tasksHash, judgmentsHash, rubricHash, schemaHash]
+            .every((hash) => GUIDANCE_HASH_PATTERN.test(hash ?? ''))
+    ) return null;
+    return {
+        receiptId,
+        inputHash,
+        tasksHash,
+        judgmentsHash,
+        rubricHash,
+        schemaHash,
+        auditVersion,
+    };
+};
+
+const sameGuidanceAction = (
+    left: GuidanceAuditEvaluation['topPriorities'][number],
+    right: GuidanceAuditEvaluation['topPriorities'][number],
+) => (
+    left.taskId === right.taskId
+    && left.issueId === right.issueId
+    && left.dimension === right.dimension
+    && left.fieldPath === right.fieldPath
+    && left.description === right.description
+    && left.action === right.action
+);
+
+/** Strictly accepts the public, score-free report that has passed the AI audit. */
+export const normalizeGuidanceAuditEvaluation = (
+    value: unknown,
+): GuidanceAuditEvaluation | undefined => {
+    const record = toRecord(value);
+    if (!record || hasGuidanceScoreField(record)) return undefined;
+    const evaluationVersion = toText(
+        getAliased(record, 'evaluationVersion', 'evaluation_version'),
+    );
+    const evaluationScope = toText(
+        getAliased(record, 'evaluationScope', 'evaluation_scope'),
+    );
+    const targetRole = toOptionalText(getAliased(record, 'targetRole', 'target_role'));
+    const overallBand = toText(getAliased(record, 'overallBand', 'overall_band'));
+    const confidence = toText(record.confidence);
+    const dimensionGuidanceValue = getAliased(
+        record,
+        'dimensionGuidance',
+        'dimension_guidance',
+    );
+    const dimensionGuidance = normalizeRequiredArray(
+        dimensionGuidanceValue,
+        normalizeGuidanceDimension,
+    );
+    const guidanceByDimension = new Map(
+        dimensionGuidance?.map((item) => [item.dimension, item]),
+    );
+    const topPriorities = normalizeGuidanceActionArray(
+        getAliased(record, 'topPriorities', 'top_priorities'),
+    );
+    const safeCleanup = normalizeGuidanceActionArray(
+        getAliased(record, 'safeCleanup', 'safe_cleanup'),
+    );
+    const informationNeeded = normalizeGuidanceActionArray(
+        getAliased(record, 'informationNeeded', 'information_needed'),
+    );
+    const riskFlags = normalizeRequiredArray(
+        getAliased(record, 'riskFlags', 'risk_flags'),
+        normalizeGuidanceRiskFlag,
+    );
+    const auditReceipt = normalizeGuidanceAuditReceipt(
+        getAliased(record, 'auditReceipt', 'audit_receipt'),
+    );
+    const jdMatchValue = getAliased(record, 'jdMatch', 'jd_match');
+    const jdMatch = jdMatchValue === null
+        ? null
+        : toStrictInteger(jdMatchValue, 0, 100);
+    const cleanupByTaskId = new Map(safeCleanup?.map((row) => [row.taskId, row]));
+    const informationByTaskId = new Map(informationNeeded?.map((row) => [row.taskId, row]));
+    const conflictingActionClasses = [...cleanupByTaskId.keys()].some(
+        (taskId) => informationByTaskId.has(taskId),
+    );
+    const prioritiesReferenceClassifiedActions = topPriorities?.every((row) => {
+        const classified = cleanupByTaskId.get(row.taskId) ?? informationByTaskId.get(row.taskId);
+        return Boolean(classified && sameGuidanceAction(row, classified));
+    });
+    if (
+        evaluationVersion !== GUIDANCE_AUDIT_EVALUATION_VERSION
+        || evaluationScope !== 'full_resume'
+        || targetRole === null
+        || !GUIDANCE_BANDS.has(overallBand)
+        || !GUIDANCE_CONFIDENCE.has(confidence)
+        || !dimensionGuidance
+        || dimensionGuidance.length !== RESUME_EVALUATION_DIMENSIONS.length
+        || guidanceByDimension.size !== RESUME_EVALUATION_DIMENSIONS.length
+        || RESUME_EVALUATION_DIMENSIONS.some((dimension) => !guidanceByDimension.has(dimension))
+        || topPriorities === null
+        || safeCleanup === null
+        || informationNeeded === null
+        || riskFlags === null
+        || auditReceipt === null
+        || conflictingActionClasses
+        || !prioritiesReferenceClassifiedActions
+        || jdMatch === null && jdMatchValue !== null
+    ) return undefined;
+    return {
+        evaluationVersion: GUIDANCE_AUDIT_EVALUATION_VERSION,
+        evaluationScope: 'full_resume',
+        targetRole,
+        overallBand: overallBand as GuidanceAuditEvaluation['overallBand'],
+        confidence: confidence as GuidanceAuditEvaluation['confidence'],
+        dimensionGuidance: RESUME_EVALUATION_DIMENSIONS.map(
+            (dimension) => guidanceByDimension.get(dimension)!,
+        ),
+        topPriorities,
+        safeCleanup,
+        informationNeeded,
+        riskFlags,
+        auditReceipt,
+        jdMatch,
+    };
+};
+
+/** Reads legacy numeric reports and the new guidance contract without coercing one into the other. */
+export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | undefined => {
+    const record = toRecord(value);
+    if (!record) return undefined;
+    const version = toText(getAliased(record, 'evaluationVersion', 'evaluation_version'));
+    if (version === GUIDANCE_AUDIT_EVALUATION_VERSION) {
+        return normalizeGuidanceAuditEvaluation(record);
+    }
+    if (version === RESUME_EVALUATION_VERSION) {
+        return normalizeLegacyResumeEvaluation(record);
+    }
+    return undefined;
 };
 
 export const normalizeJDAnalysisResult = (result: RawJDAnalysisResult): JDAnalysisResult => {

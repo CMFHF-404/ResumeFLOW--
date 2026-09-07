@@ -121,3 +121,11 @@ class DecodeProbeTests(unittest.TestCase):
             with self.subTest(args=args), patch('sys.argv', [script, *args]):
                 with self.assertRaisesRegex(SystemExit, 'NEW_RUN_TAG'):
                     runpy.run_path(script, run_name='__main__')
+
+
+def setUpModule():
+    # Exercise historical cache/account contracts with a mocked numeric service.
+    # Current CLI rejection is covered without this mock in test_qa_numeric_contract_guard.
+    gate = patch("qa_resume_blind_benchmark.reject_retired_numeric_run")
+    gate.start()
+    unittest.addModuleCleanup(gate.stop)

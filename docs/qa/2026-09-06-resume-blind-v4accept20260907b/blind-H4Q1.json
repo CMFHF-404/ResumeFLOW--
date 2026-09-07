@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "seconds": 3.09,
+  "value": {
+    "documents": [
+      {
+        "id": "ba38a63b",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容清晰具体，STAR结构完整且客观，职责范围明确，完全契合提供的来源信息。"
+      },
+      {
+        "id": "6ca2c111",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容清晰具体，STAR结构完整且客观，职责范围明确，完全契合提供的来源信息。"
+      }
+    ],
+    "preferredId": "tie"
+  },
+  "diagnostics": []
+}

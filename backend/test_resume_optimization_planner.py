@@ -14,7 +14,7 @@ from app.domain.resume_optimization.normalizers import (
 )
 from app.domain.resume_optimization.planner_service import (
     OptimizationAnswerRewriteNormalizationError,
-    plan_resume_optimization,
+    _plan_resume_optimization_v3 as plan_resume_optimization,
     rewrite_answered_modules,
 )
 from app.domain.resume_optimization.prompts import (
@@ -245,7 +245,7 @@ class PromptContractTests(unittest.TestCase):
     def test_system_prompt_defines_the_exact_flat_plan_schema(self) -> None:
         prompt = OPTIMIZATION_SYSTEM_PROMPT.lower()
         for contract in (
-            r"root object must contain exactly `changes` and `questions` arrays",
+            r"root object must contain `changes`, `questions`, and `safecleanupcandidates` arrays",
             r"never group\s+changes under action names",
             r"fieldpath must be exactly one of star\.s,\s+star\.t, star\.a, star\.r",
             r"affectschangeids must reference the\s+exact changeid",

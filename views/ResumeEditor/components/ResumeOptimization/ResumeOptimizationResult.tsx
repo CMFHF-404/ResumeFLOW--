@@ -38,6 +38,9 @@ export const ResumeOptimizationResult: React.FC<ResumeOptimizationResultProps> =
 }) => {
     const plan = run.result ?? run.plan;
     const evaluation = run.postEvaluation;
+    const guidanceEvaluation = evaluation?.version === 'guidance_optimization_post_v1'
+        ? evaluation
+        : null;
     const isApplied = run.status === 'applied';
     const canRevert = run.status === 'applied' || run.status === 'completed';
     const acceptedCount = evaluation?.acceptedChangeCount ?? run.acceptedChangeIds.length;
@@ -61,35 +64,36 @@ export const ResumeOptimizationResult: React.FC<ResumeOptimizationResultProps> =
                     <div className="min-w-0">
                         <p className="text-[10px] font-bold tracking-[0.14em] text-emerald-700 dark:text-emerald-300">VERIFIED RESULT</p>
                         <h3 id="resume-optimization-result-title" className="mt-1 text-lg font-black text-slate-950 dark:text-white">
-                            {evaluation ? '优化与六维复评已完成' : '内容已应用，评分尚未完成'}
+                            {evaluation ? '优化与六维指导审核已完成' : '内容已应用，审核尚未完成'}
                         </h3>
                         <p className="mt-2 text-[12px] leading-6 text-slate-600 dark:text-slate-300">
                             {evaluation
-                                ? '以下分数来自应用后实际简历的六维复评。'
-                                : '已确认的文字不会自动回滚；复评可以安全重试。'}
+                                ? '以下等级和问题状态来自应用后实际简历的独立审核。'
+                                : '已确认的文字不会自动回滚；审核可以安全重试。'}
                         </p>
                     </div>
                 </div>
             </div>
 
-            {evaluation ? (
+            {guidanceEvaluation ? (
                 <ResumeOptimizationScoreDelta
-                    beforeScore={evaluation.beforeScore}
-                    afterScore={evaluation.afterScore}
-                    scoreDelta={evaluation.scoreDelta}
-                    dimensionDeltas={evaluation.dimensionDeltas}
+                    overallBandBefore={guidanceEvaluation.overallBandBefore}
+                    overallBandAfter={guidanceEvaluation.overallBandAfter}
+                    dimensionStatusChanges={guidanceEvaluation.dimensionStatusChanges}
                 />
-            ) : run.sourceBeforeScore !== null ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-100/80 p-4 dark:border-slate-700 dark:bg-slate-900">
-                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">优化前真实分数</p>
-                    <p className="mt-1 text-2xl font-black tabular-nums text-slate-900 dark:text-white">{run.sourceBeforeScore}</p>
-                </div>
             ) : null}
 
             <div className="grid grid-cols-2 gap-2 md:grid-cols-5 md:gap-3">
                 <Metric label="已接受修改" value={acceptedCount} tone="emerald" />
-                <Metric label="已解决问题" value={evaluation?.issueCounts.resolved ?? '待复评'} tone="emerald" />
-                <Metric label="事实缺口" value={evaluation?.unresolvedFactGapCount ?? '待复评'} tone="amber" />
+                <Metric
+                    label="已解决问题"
+                    value={guidanceEvaluation?.issueSummary.resolved
+                        ?? (evaluation?.version === 'resume_optimization_post_evaluation_v1'
+                            ? evaluation.issueCounts.resolved
+                            : '待审核')}
+                    tone="emerald"
+                />
+                <Metric label="事实缺口" value={evaluation?.unresolvedFactGapCount ?? '待审核'} tone="amber" />
                 <Metric label="安全阻断" value={blockedCount} tone={blockedCount > 0 ? 'amber' : 'slate'} />
                 <Metric label="经历库机会" value={bankCount} />
             </div>
@@ -116,7 +120,7 @@ export const ResumeOptimizationResult: React.FC<ResumeOptimizationResultProps> =
                         className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400"
                     >
                         <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
-                        重试复评
+                        重试审核
                     </button>
                 ) : null}
                 {canRevert ? (

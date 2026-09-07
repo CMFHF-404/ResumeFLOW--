@@ -1,6 +1,8 @@
 import hashlib
 import json
 import logging
+import re
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional
 
 from .public_errors import AiProviderPayloadError
@@ -9,6 +11,21 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MATCH_SCORE = 0
 RESUME_SKILLS_KEY = "skills"
+strict_response_objects: ContextVar[bool] = ContextVar('strict_response_objects', default=False)
+response_evidence_sink: ContextVar[list | None] = ContextVar('response_evidence_sink', default=None)
+
+
+def _unique_object_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise AiProviderPayloadError('Duplicate object key in model response')
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value):
+    raise AiProviderPayloadError('Non-finite value in model response')
 
 
 def _hash_text(text: str) -> str:
@@ -92,9 +109,16 @@ def _loads_json_with_trailing_closer_recovery(payload: str) -> Any:
 
 
 def _parse_json_content(text: str) -> Dict[str, Any]:
-    payload = _extract_json_payload(text)
+    if strict_response_objects.get():
+        payload = text.strip()
+        envelope = re.fullmatch(r'```(?:json)?\s*(.*?)\s*```', payload, re.DOTALL | re.IGNORECASE)
+        if envelope:
+            payload = envelope[1]
+    else:
+        payload = _extract_json_payload(text)
     try:
-        parsed = _loads_json_with_trailing_closer_recovery(payload)
+        parsed = (json.loads(payload, object_pairs_hook=_unique_object_pairs, parse_constant=_reject_json_constant)
+                  if strict_response_objects.get() else _loads_json_with_trailing_closer_recovery(payload))
     except json.JSONDecodeError as exc:
         logger.error("JSON Parse Error: %s", exc)
         logger.error("Raw Text Summary: %s", _summarize_text(text))
@@ -108,6 +132,10 @@ def _parse_json_content(text: str) -> Dict[str, Any]:
 
 
 def _parse_json_content_candidates(candidates: List[str]) -> Dict[str, Any]:
+    evidence = response_evidence_sink.get()
+    if evidence is not None:
+        # Only explicit synthetic QA opts in; production diagnostics never retain text.
+        evidence.append({'candidates': list(candidates[:3])})
     last_error: AiProviderPayloadError | None = None
     for candidate in candidates:
         cleaned = candidate.strip()

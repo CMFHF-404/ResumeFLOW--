@@ -97,7 +97,7 @@ class JDAnalysisRouterErrorMappingTests(unittest.IsolatedAsyncioTestCase):
             {
                 "error": {
                     "code": "resume_evaluation_integrity_failed",
-                    "message": "本次六维报告未通过完整性校验，未保存本次结果，请重试。",
+                    "message": "评估生成失败，未保存本次结果，可手动重试。",
                     "retryable": True,
                 }
             },
@@ -116,7 +116,7 @@ class JDAnalysisRouterErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(event["retryable"])
         self.assertEqual(
             event["message"],
-            "本次六维报告未通过完整性校验，未保存本次结果，请重试。",
+            "评估生成失败，未保存本次结果，可手动重试。",
         )
         self.assertNotIn("PRIVATE", json.dumps(event))
 
@@ -1058,6 +1058,8 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # These tests isolate one generation/repair transaction. Ensemble behavior
         # has dedicated tests with independently varying validated reports.
+        self.enterContext(patch.object(resume_evaluation_service, "_analyze_resume_evaluation_consensus",
+                                       resume_evaluation_service._analyze_resume_evaluation_consensus_v3))
         consensus_patch = patch.object(resume_evaluation_service, "_CONSENSUS_SAMPLE_COUNT", 1)
         consensus_patch.start()
         self.addCleanup(consensus_patch.stop)
@@ -1180,7 +1182,7 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
             {
                 "error": {
                     "code": "resume_evaluation_integrity_failed",
-                    "message": "本次六维报告未通过完整性校验，未保存本次结果，请重试。",
+                    "message": "评估生成失败，未保存本次结果，可手动重试。",
                     "retryable": True,
                 }
             },
@@ -2610,7 +2612,7 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_mock.await_args.kwargs["lane"], "default")
         self.assertEqual(call_mock.await_args.kwargs["gemini_thinking_level"], "low")
         thought_callback.assert_awaited_once_with(
-            {"type": "thought", "summary": "正在生成六维简历报告"}
+            {"type": "thought", "summary": "正在生成简历改进指导并独立审核依据"}
         )
 
 

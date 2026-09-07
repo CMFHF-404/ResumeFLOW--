@@ -1,0 +1,535 @@
+{
+  "ok": true,
+  "seconds": 10.85,
+  "value": {
+    "initial_plan": {
+      "changes": [
+        {
+          "change_id": "CHANGE_TASK_001",
+          "issue_ids": [
+            "ISSUE_QUANT_001",
+            "ISSUE_QUANT_002",
+            "ISSUE_QUANT_003",
+            "ISSUE_QUANT_004"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+          "general_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+          "targeted_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+          "source_refs": [
+            "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "规范句末标点符号，保持内容事实与原意完全一致。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_0",
+          "issue_ids": [
+            "ISSUE_READABILITY_001"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_0",
+          "issue_ids": [
+            "RUBRIC_内容完整_0"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_1",
+          "issue_ids": [
+            "RUBRIC_内容完整_1"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      ],
+      "questions": [],
+      "bank_suggestions": [],
+      "safety_summary": {
+        "allowed_change_ids": [],
+        "blocked_change_ids": [],
+        "pending_change_ids": [],
+        "findings": []
+      },
+      "coverage": [
+        {
+          "issue_id": "ISSUE_READABILITY_001",
+          "dimension": "内容可读",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "工作经历行动描述缺少末尾标点符号，影响句式规范与排版一致性。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_001",
+          "dimension": "成果量化",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "工作经历结果仅包含定性验收与部署，缺少业务改善结果的量化指标。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_002",
+          "dimension": "成果量化",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "缺少与基线数据的对比说明，无法直观体现优化前后的提升幅度。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_003",
+          "dimension": "成果量化",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "未说明试用环境或上线后的企业用户/账号覆盖规模。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_004",
+          "dimension": "成果量化",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "未明确结果收益的统计或观察时间窗口。"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_0",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_1",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        }
+      ],
+      "planning_tasks": {
+        "TASK_001": {
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "before": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+          "issue_ids": [
+            "ISSUE_QUANT_001",
+            "ISSUE_QUANT_002",
+            "ISSUE_QUANT_003",
+            "ISSUE_READABILITY_001",
+            "ISSUE_QUANT_004"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/s",
+              "text": "企业管理员反馈权限申请流程难以理解。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/t",
+              "text": "负责梳理权限申请需求及验收规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/a",
+              "text": "访谈15名管理员，整理20条反馈需求并完成需求说明"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/r",
+              "text": "交付的新流程通过验收并部署到内部试用环境。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/s",
+              "text": "企业管理员反馈权限申请流程难以理解。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/t",
+              "text": "负责梳理权限申请需求及验收规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/a",
+              "text": "访谈15名管理员，整理20条反馈需求并完成需求说明"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/r",
+              "text": "交付的新流程通过验收并部署到内部试用环境。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "工作经历结果仅包含定性验收与部署，缺少业务改善结果的量化指标。",
+            "缺少与基线数据的对比说明，无法直观体现优化前后的提升幅度。",
+            "未说明试用环境或上线后的企业用户/账号覆盖规模。",
+            "工作经历行动描述缺少末尾标点符号，影响句式规范与排版一致性。",
+            "未明确结果收益的统计或观察时间窗口。"
+          ]
+        },
+        "RETAINED_FIELD_002": {
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "before": "有企业协作软件的产品需求与交付经验。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_003": {
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.s",
+          "before": "企业管理员反馈权限申请流程难以理解。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_004": {
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.t",
+          "before": "负责梳理权限申请需求及验收规则。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        },
+        "RETAINED_FIELD_005": {
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.r",
+          "before": "交付的新流程通过验收并部署到内部试用环境。",
+          "issue_ids": [],
+          "sources": {},
+          "status": "preserved",
+          "reason": "当前问题未安全定位到该字段，或字段受保护，不请求模型改写。"
+        }
+      },
+      "cleanup_fallbacks": {}
+    },
+    "coverage": [
+      {
+        "issue_id": "ISSUE_READABILITY_001",
+        "dimension": "内容可读",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "工作经历行动描述缺少末尾标点符号，影响句式规范与排版一致性。",
+        "repair_verdict": "repaired",
+        "repair_reason": "两个改写候选均补充了末尾句号，修复了标点符号缺失的问题。",
+        "reviewed_candidates": [
+          "2505a7cc75d87ec3e23eb8b5fbfa7b1e4bfb871e5d67bb19edf782fbdd0249f0"
+        ],
+        "coverage_input_hash": "8dcc8f6615db593faa67e69b5a629358bcf18a97b0ec63160286ae1e28c8c0ea"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_001",
+        "dimension": "成果量化",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "工作经历结果仅包含定性验收与部署，缺少业务改善结果的量化指标。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改写仅补充了标点符号，未补充任何业务改善结果的量化指标。",
+        "reviewed_candidates": [
+          "2505a7cc75d87ec3e23eb8b5fbfa7b1e4bfb871e5d67bb19edf782fbdd0249f0"
+        ],
+        "coverage_input_hash": "5d3d3b87dbeff0f4c6fd5a0b3ee2fe225f7f00e3c9ff0e44f783de1516683972"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_002",
+        "dimension": "成果量化",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "缺少与基线数据的对比说明，无法直观体现优化前后的提升幅度。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改写未补充任何基线数据对比或提升幅度说明。",
+        "reviewed_candidates": [
+          "2505a7cc75d87ec3e23eb8b5fbfa7b1e4bfb871e5d67bb19edf782fbdd0249f0"
+        ],
+        "coverage_input_hash": "4a56ab536e0f0931fdbbc8c684aad5d7488a83ef438ef471597b393c79fe4963"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_003",
+        "dimension": "成果量化",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "未说明试用环境或上线后的企业用户/账号覆盖规模。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改写未提及企业用户或账号覆盖规模。",
+        "reviewed_candidates": [
+          "2505a7cc75d87ec3e23eb8b5fbfa7b1e4bfb871e5d67bb19edf782fbdd0249f0"
+        ],
+        "coverage_input_hash": "7d96f5d01cabbc866f45c4238cbe38109c253aced3f632d99723c9603dd58b74"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_004",
+        "dimension": "成果量化",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "未明确结果收益的统计或观察时间窗口。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改写未明确统计或观察的时间窗口。",
+        "reviewed_candidates": [
+          "2505a7cc75d87ec3e23eb8b5fbfa7b1e4bfb871e5d67bb19edf782fbdd0249f0"
+        ],
+        "coverage_input_hash": "23b8fbdcfabb0453335c87b5e7d1752082141bf3db5c8176260f9973457ab761"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_0",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_1",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      }
+    ],
+    "changes": [
+      {
+        "change_id": "CHANGE_TASK_001",
+        "issue_ids": [
+          "ISSUE_QUANT_001",
+          "ISSUE_QUANT_002",
+          "ISSUE_QUANT_003",
+          "ISSUE_QUANT_004"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+        "general_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+        "targeted_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+        "source_refs": [
+          "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "规范句末标点符号，保持内容事实与原意完全一致。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "2505a7cc75d87ec3e23eb8b5fbfa7b1e4bfb871e5d67bb19edf782fbdd0249f0",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写仅补充了末尾句号，内容与原始来源完全一致，获得充分支持。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_0",
+        "issue_ids": [
+          "ISSUE_READABILITY_001"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_0",
+        "issue_ids": [
+          "RUBRIC_内容完整_0"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_1",
+        "issue_ids": [
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHANGE_TASK_001"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHANGE_TASK_001_RELATED_0",
+        "RETAINED_0",
+        "RETAINED_1"
+      ],
+      "findings": []
+    },
+    "answers": [],
+    "accepted": [
+      "CHANGE_TASK_001"
+    ],
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "有企业协作软件的产品需求与交付经验。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "岚舟协作软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "企业管理员反馈权限申请流程难以理解。",
+            "t": "负责梳理权限申请需求及验收规则。",
+            "a": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+            "r": "交付的新流程通过验收并部署到内部试用环境。"
+          },
+          "id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba"
+        }
+      ]
+    }
+  },
+  "diagnostics": []
+}

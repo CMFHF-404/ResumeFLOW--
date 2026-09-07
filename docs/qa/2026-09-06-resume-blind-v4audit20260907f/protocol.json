@@ -1,0 +1,14 @@
+{
+  "audit_version": "resume_rubric_audit_v3",
+  "rounds": 2,
+  "seeds": [
+    4071,
+    9832
+  ],
+  "target_dimension": "per_case",
+  "expected": "all nine labeled verdicts correct in BOTH rounds",
+  "gate_contract_version": 2,
+  "boundary": "live audit-only gate; does not prove whole-report validity or score stability",
+  "external_notifications": false,
+  "no_retry_filtering": true
+}

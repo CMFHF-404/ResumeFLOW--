@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import nullcontext
 from datetime import date, datetime, timezone
 import json
 import os
@@ -95,7 +96,7 @@ def _evaluation() -> dict:
         )
     return {
         "evaluationVersion": "resume_flow_v1",
-        "scoringVersion": "coverage_consensus_v2",
+        "scoringVersion": "coverage_consensus_v4",
         "evaluationScope": "full_resume",
         "targetRole": "Product Manager",
         "overallScore": 83,
@@ -506,6 +507,7 @@ class _ContextFixture:
         bank: dict | None = None,
         category_map: dict | None = None,
         session=None,
+        use_guidance_receipt_stub: bool = True,
     ) -> None:
         self.testcase = testcase
         self.resume = resume or _resume()
@@ -522,6 +524,7 @@ class _ContextFixture:
             str(SELECTED_MASTER_ID): ExperienceCategory.WORK,
         }
         self.session = session or object()
+        self.use_guidance_receipt_stub = use_guidance_receipt_stub
         analysis = self.resume.config.get("jdAnalysis", {})
         analysis_result = analysis.get("result")
         if (
@@ -549,6 +552,52 @@ class _ContextFixture:
         async def get_version(_session, _user_id, version_id):
             return version_by_id[str(version_id)]
 
+        analysis_result = self.resume.config["jdAnalysis"]["result"]
+        original_evaluation = analysis_result.get("resumeEvaluation")
+        resolver_context = nullcontext()
+        if self.use_guidance_receipt_stub and isinstance(original_evaluation, dict):
+            source_evaluation = deepcopy(original_evaluation)
+            fixture_snapshot = _frontend_snapshot_from_analysis_text(self.analysis_text)
+            fixture_resume = context_service._allowlist_current_resume(
+                fixture_snapshot.get("resume"),
+                target_role=str(getattr(self.resume, "target_role", "") or ""),
+            )
+            fixture_facts = context_service._allowlist_fact_metadata(
+                fixture_snapshot.get("fact_metadata"),
+                current_resume=fixture_resume,
+            )
+            public_guidance = deepcopy(original_evaluation)
+            public_guidance["evaluationVersion"] = context_service.GUIDANCE_VERSION
+            public_guidance["auditReceipt"] = {"receiptId": "fixture-receipt"}
+            analysis_result["resumeEvaluation"] = public_guidance
+
+            async def resolve_stub(
+                _public,
+                *,
+                user_id,
+                evaluation_input,
+                jd_available,
+            ):
+                del _public, user_id
+                try:
+                    internal = context_service.normalize_resume_evaluation(
+                        source_evaluation,
+                        jd_available=jd_available,
+                        fact_metadata=fixture_facts,
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise context_service.OptimizationEvaluationInvalidError(
+                        "The persisted six-dimensional evaluation failed integrity checks"
+                    ) from exc
+                internal["scoringVersion"] = context_service.GUIDANCE_VERSION
+                return internal, {"receiptId": "fixture-receipt"}, [], {}
+
+            resolver_context = patch.object(
+                context_service,
+                "_resolve_guidance_evaluation",
+                new=AsyncMock(side_effect=resolve_stub),
+            )
+
         with (
             patch.object(
                 context_service,
@@ -575,6 +624,7 @@ class _ContextFixture:
                 "build_resume_analysis_text",
                 new=AsyncMock(return_value=self.analysis_text),
             ) as build_analysis,
+            resolver_context,
         ):
             resolved_request = request or _request(
                 evaluation_signature=self.resume.config["jdAnalysis"][
@@ -588,15 +638,128 @@ class _ContextFixture:
                 request=resolved_request,
             )
 
+        if self.use_guidance_receipt_stub:
+            analysis_result["resumeEvaluation"] = original_evaluation
+
         get_detail.assert_awaited_once()
         return result, build_analysis, get_version_mock
 
 
 class ResumeOptimizationContextTests(unittest.IsolatedAsyncioTestCase):
+    async def test_builds_context_from_real_reproducible_guidance_receipt(self) -> None:
+        from app.domain.ai.guidance_evaluation import (
+            AUDIT_VERSION,
+            assemble_guidance,
+            audit_schema,
+            guidance_rubric,
+        )
+        from app.domain.ai.guidance_receipts import (
+            canonical_json_hash,
+            guidance_public_hash,
+        )
+        from app.domain.ai.guidance_tasks import (
+            build_task_contract,
+            validate_judgments,
+        )
+
+        parsed = json.loads(_analysis_text())
+        receipt_input = {
+            "resume": deepcopy(parsed["resume"]),
+            "fact_metadata": deepcopy(parsed["fact_metadata"]),
+        }
+        contract = build_task_contract(receipt_input)
+        model_rows = {}
+        for task in contract["tasks"]:
+            if task["taskId"] in contract["deterministic"]:
+                continue
+            model_rows[task["taskId"]] = {
+                "assessment": task["allowedAssessments"][0],
+                "sourceRefs": list(task["allowedSources"]),
+                "reason": "当前内容支持该判断。",
+                "guidance": {"type": "none", "prompt": ""},
+            }
+        judgments = validate_judgments(model_rows, contract)
+        audit = {
+            task["taskId"]: {
+                "sourceSupported": True,
+                "assessmentSupported": True,
+                "guidanceActionable": True,
+                "guidanceSafe": True,
+                "verdict": "approved",
+                "reason": "判断有依据。",
+            }
+            for task in contract["tasks"]
+        }
+        public, internal = assemble_guidance(
+            contract,
+            judgments,
+            audit=audit,
+            target_role="Product Manager",
+            jd_match=88,
+        )
+        schemas = {
+            "generation": contract["generationSchema"],
+            "audit": audit_schema(contract),
+        }
+        rubric = guidance_rubric()
+        receipt = {
+            "receipt_id": "a" * 32,
+            "public_hash": guidance_public_hash(public),
+            "input_hash": canonical_json_hash(receipt_input),
+            "tasks_hash": canonical_json_hash(contract["tasks"]),
+            "judgments_hash": canonical_json_hash(judgments),
+            "rubric_hash": canonical_json_hash(rubric),
+            "schema_hash": canonical_json_hash(schemas),
+            "audit_version": AUDIT_VERSION,
+            "input": receipt_input,
+            "tasks": contract["tasks"],
+            "sources": contract["sources"],
+            "judgments": judgments,
+            "internal_report": internal,
+            "audit": audit,
+            "rubric": rubric,
+            "schema": schemas,
+        }
+        public["auditReceipt"] = {
+            "receiptId": receipt["receipt_id"],
+            "inputHash": receipt["input_hash"],
+            "tasksHash": receipt["tasks_hash"],
+            "judgmentsHash": receipt["judgments_hash"],
+            "rubricHash": receipt["rubric_hash"],
+            "schemaHash": receipt["schema_hash"],
+            "auditVersion": AUDIT_VERSION,
+        }
+        resume = _resume()
+        resume.config["jdAnalysis"]["result"]["resumeEvaluation"] = public
+        fixture = _ContextFixture(
+            self,
+            resume=resume,
+            use_guidance_receipt_stub=False,
+        )
+        with patch.object(
+            context_service,
+            "load_guidance_receipt",
+            new=AsyncMock(return_value=receipt),
+        ) as load:
+            context, _builder, _version = await fixture.build()
+
+        load.assert_awaited_once_with(receipt_id="a" * 32, user_id=USER_ID)
+        self.assertEqual(context.evaluation["scoringVersion"], "guidance_audit_v1")
+        self.assertEqual(
+            context.evaluation["_guidanceReceiptBinding"],
+            public["auditReceipt"],
+        )
+        self.assertEqual(context.evaluation["_guidanceTasks"], contract["tasks"])
+
     async def test_old_scoring_rules_are_readable_but_cannot_start_optimization(self):
-        for version in (None, "previous_rules", "coverage_consensus_v1"):
+        for version in (
+            None,
+            "previous_rules",
+            "coverage_consensus_v1",
+            "coverage_consensus_v4",
+        ):
             with self.subTest(version=version):
-                fixture = _ContextFixture(self)
+                fixture = _ContextFixture(self, use_guidance_receipt_stub=False)
                 evaluation = fixture.resume.config["jdAnalysis"]["result"]["resumeEvaluation"]
                 if version is None:
                     evaluation.pop("scoringVersion", None)
@@ -1449,6 +1612,9 @@ class ResumeOptimizationContextTests(unittest.IsolatedAsyncioTestCase):
                 }
             }
         )
+        resume_without_jd.config["jdAnalysis"]["result"]["resumeEvaluation"][
+            "jdMatch"
+        ] = None
         context, _builder, _get_version = await _ContextFixture(
             self,
             resume=resume_without_jd,
@@ -1546,6 +1712,9 @@ class ResumeOptimizationContextTests(unittest.IsolatedAsyncioTestCase):
                 }
             }
         )
+        resume_without_jd.config["jdAnalysis"]["result"]["resumeEvaluation"][
+            "jdMatch"
+        ] = None
 
         context, _builder, _get_version = await _ContextFixture(
             self,

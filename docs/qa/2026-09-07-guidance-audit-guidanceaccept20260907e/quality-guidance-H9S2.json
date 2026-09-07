@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "H9S2",
+  "seconds": 3.33,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导内容准确反映了简历中缺少电话和标点等事实，量化建议明确提示如有真实记录再补充否则保留原文，未诱导编造或引入虚假事实，多版本之间不存在冲突。",
+    "publishedVariantCount": 3
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导内容准确反映了简历中缺少电话和标点等事实，量化建议明确提示如有真实记录再补充否则保留原文，未诱导编造或引入虚假事实，多版本之间不存在冲突。\"}",
+        "保留原文，未诱导编造或引入虚假事实，多版本之间不存在冲突。\"}",
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities"
+      ]
+    }
+  ]
+}

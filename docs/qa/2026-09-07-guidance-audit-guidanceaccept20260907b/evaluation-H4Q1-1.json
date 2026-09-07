@@ -1,0 +1,158 @@
+{
+  "ok": false,
+  "seconds": 21.8,
+  "sample": "H4Q1",
+  "repeat": 1,
+  "error_type": "ConnectError",
+  "message": "Guidance evaluation failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 306,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 401,
+      "function": "generate_guidance"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 359,
+      "function": "_stage"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1805,
+      "function": "_stream_gemini_json_response_once"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 214,
+      "function": "__aenter__"
+    },
+    {
+      "file": "_client.py",
+      "line": 1583,
+      "function": "stream"
+    },
+    {
+      "file": "_client.py",
+      "line": 1629,
+      "function": "send"
+    },
+    {
+      "file": "_client.py",
+      "line": 1657,
+      "function": "_send_handling_auth"
+    },
+    {
+      "file": "_client.py",
+      "line": 1694,
+      "function": "_send_handling_redirects"
+    },
+    {
+      "file": "_client.py",
+      "line": 1730,
+      "function": "_send_single_request"
+    },
+    {
+      "file": "default.py",
+      "line": 393,
+      "function": "handle_async_request"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 162,
+      "function": "__exit__"
+    },
+    {
+      "file": "default.py",
+      "line": 118,
+      "function": "map_httpcore_exceptions"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 16.108
+    },
+    {
+      "stage": "generation",
+      "category": "generated"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "transport_failure",
+      "cause_type": "ConnectError"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "duration",
+      "seconds": 5.665
+    }
+  ],
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\n  \"GLOBAL_LOGIC_ORDER\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_013\", \"SRC_014\", \"SRC_015\", \"SRC_016\", \"SRC_017\", \"SRC_019\", \"SRC_020\", \"SRC_021\", \"SRC_022\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"各模块排布合理，时间线与内容叙述顺序清晰连贯。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_CAUSALITY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"背景痛点、所做工作与等待时间下降的成效之间因果关系清晰完整。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_HIERARCHY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_013\", \"SRC_014\", \"SRC_015\", \"SRC_019\", \"SRC_020\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"信息层级分明，个人总结、经历与技能归类明确。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_FOCUS\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_019\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"全文围绕B端协同软件产品经理职责展开，技能与经历高度聚焦。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_SITUATION\": {\n    \"assessment\": \"clear_context\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"明确交代了权限申请多级确认及审批等待时间长达72小时的业务背景。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_TASK\": {\n    \"assessment\": \"clear_task\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"清晰界定了负责梳理需求和验收标准、协助改版的具体任务及职责范围。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_ACTION\": {\n    \"assessment\": \"concrete_action\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"包含访谈管理员、SQL核对记录、编写需求说明及联合验证验收等具体行动。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_STAR_RESULT\": {\n    \"assessment\": \"clear_result\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"给出了等待时间从72小时降至24小时的具体产出及观测周期与范围。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_ACTION_VERBS\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"使用了访谈、核对、梳理、编写、验证、验收等准确具体的工作动词。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_TERMINOLOGY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"规范使用了权限申请、流转记录、阻塞节点、需求说明、分级审批等岗位术语。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_PRECISION\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"工作对象与行动表述具体明确，无泛化含糊占位词。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_RESPONSIBILITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"主动说明协助改版及团队协作归属，职责边界清晰客观。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_OBJECTIVITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"陈述严谨客观，边界清晰，未见夸大或自相矛盾之处。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_RESULT_METRIC\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"给出了平均等待时间降至24小时的结果指标。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_BASELINE_COMPARISON\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_026\"],\n    \"reason\": \"明确提供了从72小时降至24小时的前后对比基线。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_COVERAGE_SCALE\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"列明了覆盖30家企业申请的业务规模数据。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_TIME_WINDOW\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"明确了“上线后连续4周”的具体观测时间窗口。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_PROCESS_QUANTITY\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_025\", \"SRC_026\"],\n    \"reason\": \"提供了访谈15名管理员的过程工作量数据。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_001_QUANT_DATA_CREDIBILITY\": {\n    \"assessment\": \"supported\",\n    \"sourceRefs\": [\"SRC_023\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"指标来源、基准时间与样本范围完整，数据可信度良好。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_SCAN\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\", \"SRC_019\", \"SRC_020\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"各模块信息分布清晰，易于快速扫读获取关键点。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_SENTENCES\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"语句通顺流畅，表意清晰简洁。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_DENSITY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"信息紧凑且有效承载具体工作细节，无冗长低效内容。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_GRAMMAR\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"语法与标点使用规范，表达自然。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_REDUNDANCY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"未发现无意义的重复表述或空洞套话。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_COMPLETENESS_DIRECTION\": {\n    \"assessment\": \"function\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_019\"],\n    \"reason\": \"求职方向明确指向产品经理职能，并具备协作软件业务经验。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"RISK_EXAGGERATED_CLAIM\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"],\n    \"reason\": \"表述严谨克制，主动界定个人贡献与团队成果，未见夸大情况。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"RISK_CONFLICTING_DATE\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\"SRC_013\", \"SRC_016\", \"SRC_017\", \"SRC_019\", \"SRC_020\", \"SRC_021\", \"SRC_022\"],\n    \"reason\": \"教育经历与工作经历时间段连贯合理，不存在冲突。\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  }\n}",
+        "type\": \"none\",\n      \"prompt\": \"\"\n    }\n  }\n}",
+        " [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_013\", \"SRC_014\", \"SRC_015\", \"SRC_016\", \"SRC_017\", \"SRC_019\", \"SRC_020\", \"SRC_021\", \"SRC_022\", \"SRC_023\", \"SRC_024\", \"SRC_02"
+      ]
+    }
+  ]
+}

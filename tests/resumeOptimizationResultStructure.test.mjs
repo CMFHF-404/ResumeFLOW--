@@ -31,7 +31,7 @@ const importResult = async () => {
   }
 };
 
-const dimensions = ['内容完整性', 'STAR应用', '量化成果', '技能匹配', '教育背景', '证书完整性'];
+const dimensions = ['逻辑清晰', 'STAR应用', '内容可读', '内容完整', '专业表达', '成果量化'];
 
 const plan = {
   changes: [],
@@ -56,23 +56,22 @@ const run = (status, postEvaluation) => ({
 });
 
 const postEvaluation = {
-  beforeScore: 61,
-  afterScore: 76,
-  scoreDelta: 15,
-  dimensionDeltas: dimensions.map((dimension, index) => ({
+  version: 'guidance_optimization_post_v1',
+  overallBandBefore: 'needs_attention',
+  overallBandAfter: 'adequate',
+  dimensionStatusChanges: dimensions.map((dimension) => ({
     dimension,
-    beforeScore: 50 + index,
-    afterScore: 55 + index,
-    delta: 5,
+    beforeStatus: 'needs_attention',
+    afterStatus: 'adequate',
   })),
-  issueCounts: { before: 6, after: 2, resolved: 4, remaining: 2, introduced: 0 },
+  issueSummary: { resolved: 4, remaining: 2 },
   unresolvedFactGapCount: 2,
   acceptedChangeCount: 2,
   blockedChangeCount: 1,
   bankSuggestionCount: 1,
 };
 
-test('completed result renders only authoritative post-evaluation scores and compact metrics', async () => {
+test('completed result renders only audited guidance status changes and compact metrics', async () => {
   const { ResumeOptimizationResult, cleanup } = await importResult();
   try {
     const html = renderToStaticMarkup(React.createElement(ResumeOptimizationResult, {
@@ -84,12 +83,12 @@ test('completed result renders only authoritative post-evaluation scores and com
     }));
 
     for (const copy of [
-      '优化前总分', '61', '优化后总分', '76', '\\+15',
+      '优化前状态', '有明显改进空间', '优化后状态', '基本到位',
       '已接受修改', '2', '安全阻断', '1', '事实缺口', '经历库机会',
       ...dimensions,
     ]) assert.match(html, new RegExp(copy));
     assert.match(html, /撤销本次应用/);
-    assert.doesNotMatch(html, /重试复评|预测分|expectedScoreGain|expected_score_gain/);
+    assert.doesNotMatch(html, /重试复评|总分|分数差|预测分|expectedScoreGain|expected_score_gain|61|76|\+15/);
   } finally {
     cleanup();
   }
@@ -106,22 +105,23 @@ test('applied result exposes retry without inventing a final score', async () =>
       onRevert: () => undefined,
     }));
 
-    assert.match(html, /内容已应用，评分尚未完成/);
-    assert.match(html, /重试复评/);
+    assert.match(html, /内容已应用，审核尚未完成/);
+    assert.match(html, /重试审核/);
     assert.match(html, /撤销本次应用/);
     assert.match(html, /后续手工编辑/);
-    assert.doesNotMatch(html, /优化后总分|预测分|expectedScoreGain|expected_score_gain/);
+    assert.doesNotMatch(html, /优化后总分|评分|预测分|expectedScoreGain|expected_score_gain/);
   } finally {
     cleanup();
   }
 });
 
-test('score delta uses emerald, slate, and amber semantic tones', () => {
+test('status comparison uses audited bands without numeric quality fields', () => {
   const score = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationScoreDelta.tsx');
   assert.match(score, /emerald/);
   assert.match(score, /slate/);
   assert.match(score, /amber/);
-  assert.doesNotMatch(score, /expectedScoreGain|predicted/i);
+  assert.match(score, /overallBandBefore|overallBandAfter|dimensionStatusChanges/);
+  assert.doesNotMatch(score, /\bbeforeScore\b|\bafterScore\b|\bscoreDelta\b|expectedScoreGain|predicted/i);
 });
 
 test('workspace confirms accepted count, disables zero apply, and wires result actions', () => {

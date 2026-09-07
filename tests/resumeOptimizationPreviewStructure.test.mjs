@@ -69,7 +69,6 @@ const change = (overrides) => ({
   sourceLabels: ['本轮补充信息', '已选经历原始版本'],
   introducedTerms: [],
   rationale: '保留可核验事实并提高可读性',
-  expectedScoreGain: 4,
   defaultSelected: true,
   safetyStatus: 'allowed',
   safetyFindings: [],
@@ -103,7 +102,7 @@ test('diff and bank components expose safe responsive controls and documented la
   assert.match(overview, /plan\.changes\.filter\(isResumeOptimizationChangeReviewable\)/);
   assert.match(overview, /plan\.changes\.filter\(\(change\) => change\.safetyStatus === 'blocked'\)/);
   assert.match(overview, /buildResumeOptimizationSafetyFindingCopy/);
-  assert.match(overview, /所有改写均经过自动事实边界检查，请在应用前核对；最终效果以应用后的六维复评为准。/);
+  assert.match(overview, /所有改写均经过自动事实边界检查，请在应用前核对；最终效果以应用后的独立审核为准。/);
   assert.doesNotMatch(overview, /所有改写都受事实边界约束/);
   assert.doesNotMatch(`${overview}\n${card}`, /预计提升|expectedScoreGain|sortResumeOptimizationChangesByExpectedGain/);
   assert.match(card, /bg-slate/);

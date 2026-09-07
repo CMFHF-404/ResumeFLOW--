@@ -1,6 +1,7 @@
 """Run a new immutable live benchmark wave on the original blinded corpus."""
 import asyncio, json, sys
 import qa_resume_blind_benchmark as b
+b.reject_retired_numeric_run()
 
 if len(sys.argv)!=2 or not sys.argv[1].isalnum():
     raise SystemExit('Usage: python qa_resume_blind_wave.py wave1')

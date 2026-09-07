@@ -1,0 +1,27 @@
+{
+  "evaluation_version": "guidance_audit_v1",
+  "samples": [
+    "R7K2",
+    "R2M9",
+    "R8P4",
+    "R3V6",
+    "H4Q1",
+    "H9S2",
+    "N6D2",
+    "N4T8",
+    "P5L2",
+    "P8C6"
+  ],
+  "repeats": 3,
+  "normal_transaction": "one semantic generation followed by one audit; no automatic semantic retry",
+  "publication": "all core tasks must have an approved audit receipt; optional display items may only be omitted or merged",
+  "selection": "all completed logical attempts count, including generation, audit, transport and cancellation failures",
+  "stability": {
+    "overall_band": "all three published reports equal",
+    "dimension_band": "each dimension may vary by at most one adjacent fixed band",
+    "top_priorities": "at least two taskIds appear in every non-empty top-three list",
+    "classification": "safeCleanup versus informationNeeded is equal for each common taskId"
+  },
+  "notifications": false,
+  "boundary": "synthetic evaluation only; no database seeding, planner execution, rewrite, blind judge or HTTP apply/finalize"
+}

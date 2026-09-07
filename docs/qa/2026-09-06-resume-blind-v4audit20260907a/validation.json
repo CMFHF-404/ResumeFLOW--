@@ -1,0 +1,19 @@
+{
+  "backend": {
+    "total": 1054,
+    "passed": 1049,
+    "skipped": 5,
+    "failed": 0
+  },
+  "frontend": {
+    "total": 205,
+    "passed": 205
+  },
+  "typecheck": "passed",
+  "build": "passed",
+  "diff_check": "passed",
+  "frozen_code_and_artifacts": "unchanged",
+  "external_notifications": "disabled",
+  "live_gate": "failed",
+  "full_benchmark": "not_started_due_to_gate_failure"
+}

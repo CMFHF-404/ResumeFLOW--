@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "R8P4",
+  "seconds": 3.14,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导准确指出了简历中电话为空的问题，建议清晰、可执行且安全，未引入未验证的事实或要求不切实际的高级职责，各版本指导一致无冲突。",
+    "publishedVariantCount": 2
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导准确指出了简历中电话为空的问题，建议清晰、可执行且安全，未引入未验证的事实或要求不切实际的高级职责，各版本指导一致无冲突。\"}",
+        "切实际的高级职责，各版本指导一致无冲突。\"}",
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities"
+      ]
+    }
+  ]
+}

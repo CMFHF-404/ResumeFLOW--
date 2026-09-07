@@ -8,12 +8,12 @@ test('valid resume reports expose the restrained emerald optimization CTA', () =
   const report = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx');
 
   assert.match(report, /import \{[^}]*Wand2[^}]*\} from 'lucide-react'/s);
-  assert.match(report, /根据报告优化/);
+  assert.match(report, /根据指导优化/);
   assert.match(report, /data-resume-optimization-focus-return="true"/);
   assert.match(report, /isOptimizationEnabled && onStartOptimization/);
   assert.match(
     report,
-    /disabled=\{isOutdated \|\| isOptimizationBusy \|\| !canStartOptimization\}/,
+    /disabled=\{!isGuidance \|\| isOutdated \|\| isOptimizationBusy \|\| !canStartOptimization\}/,
   );
   assert.match(report, /resolvedOptimizationDisabledReason/);
   assert.match(report, /\{resolvedOptimizationDisabledReason\}/);
@@ -31,9 +31,9 @@ test('valid resume reports expose the restrained emerald optimization CTA', () =
   ]) {
     assert.ok(report.includes(className), `missing CTA class: ${className}`);
   }
-  assert.match(report, /重新生成六维报告/);
+  assert.match(report, /重新生成简历改进指导/);
   assert.ok(
-    report.indexOf('根据报告优化') > report.indexOf('if (!report)'),
+    report.indexOf('根据指导优化') > report.indexOf('if (!report)'),
     'the optimization CTA must exist only in the valid-report branch',
   );
 });

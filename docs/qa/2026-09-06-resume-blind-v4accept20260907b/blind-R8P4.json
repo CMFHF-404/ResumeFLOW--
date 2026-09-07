@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "seconds": 3.76,
+  "value": {
+    "documents": [
+      {
+        "id": "bbe00574",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容结构完整清晰，STAR结构表述严谨，包含量化数据及客观归因，且与源数据完全一致。"
+      },
+      {
+        "id": "66935b3d",
+        "clarity": 5,
+        "specificity": 5,
+        "groundedness": 5,
+        "defects": [],
+        "unsupportedClaims": [],
+        "reason": "内容结构完整清晰，STAR结构表述严谨，包含量化数据及客观归因，且与源数据完全一致。"
+      }
+    ],
+    "preferredId": "tie"
+  },
+  "diagnostics": []
+}

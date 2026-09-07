@@ -74,6 +74,7 @@ from .schemas import (
     ResumeOptimizationApplyResponse,
     ResumeOptimizationFinalizeRequest,
     ResumeOptimizationFinalizeResponse,
+    ResumeOptimizationGuidancePostEvaluation,
     ResumeOptimizationPostEvaluation,
     ResumeOptimizationRescoreClaimRequest,
     ResumeOptimizationRevertRequest,
@@ -281,16 +282,6 @@ def _answers_from_run(run: ResumeOptimizationRun) -> list[OptimizationAnswer]:
     return answers
 
 
-_PERSISTED_PLAN_ROOT_KEYS = frozenset(
-    {
-        "changes",
-        "questions",
-        "bank_suggestions",
-        "safety_summary",
-    }
-)
-
-
 def _validated_persisted_plan(
     payload: Any,
     *,
@@ -300,10 +291,7 @@ def _validated_persisted_plan(
         raise ValueError("persisted plan payload must be an object")
     if not payload:
         return None if empty_as_missing else OptimizationPlan()
-    if set(payload) != _PERSISTED_PLAN_ROOT_KEYS:
-        raise ValueError("persisted plan payload must have the complete root shape")
-
-    plan = OptimizationPlan.model_validate(payload)
+    plan = OptimizationPlan.from_storage(payload)
     change_ids = [change.change_id for change in plan.changes]
     if len(change_ids) != len(set(change_ids)):
         raise ValueError("persisted changes must have unique change IDs")
@@ -352,14 +340,28 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
         raw_post_evaluation = run.post_evaluation_json
         if not isinstance(raw_post_evaluation, dict):
             raise ValueError("post_evaluation_json must be an object")
-        post_evaluation = (
-            ResumeOptimizationPostEvaluation.model_validate(raw_post_evaluation)
-            if raw_post_evaluation
-            else None
+        post_evaluation = None
+        if raw_post_evaluation:
+            post_evaluation = (
+                ResumeOptimizationGuidancePostEvaluation.model_validate(
+                    raw_post_evaluation
+                )
+                if raw_post_evaluation.get("version")
+                == "guidance_optimization_post_v1"
+                else ResumeOptimizationPostEvaluation.model_validate(
+                    raw_post_evaluation
+                )
+            )
+        guidance_source = (
+            isinstance(run.before_snapshot, dict)
+            and isinstance(run.before_snapshot.get("evaluation"), dict)
+            and run.before_snapshot["evaluation"].get("scoringVersion")
+            == "guidance_audit_v1"
         )
         source_before_score = (
             source_before_score_from_run(run, allow_legacy=True)
             if bool(run.before_snapshot)
+            and not guidance_source
             and str(run.source_evaluation_signature).lstrip().startswith("{")
             and run.status
             in {
@@ -374,7 +376,7 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
             post_evaluation is None
         ):
             raise ValueError("completed runs require post_evaluation_json")
-        if post_evaluation is not None:
+        if isinstance(post_evaluation, ResumeOptimizationPostEvaluation):
             if (
                 source_before_score is None
                 or post_evaluation.beforeScore != source_before_score
@@ -387,6 +389,18 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
                 or post_evaluation.safetySummary != plan.safety_summary
             ):
                 raise ValueError("post evaluation summary disagrees with run plan")
+        if isinstance(post_evaluation, ResumeOptimizationGuidancePostEvaluation):
+            if (
+                not guidance_source
+                or post_evaluation.acceptedChangeCount
+                != len(run.accepted_change_ids)
+                or post_evaluation.blockedChangeCount
+                != len(plan.safety_summary.blocked_change_ids)
+                or post_evaluation.bankSuggestionCount
+                != len(plan.bank_suggestions)
+                or post_evaluation.safetySummary != plan.safety_summary
+            ):
+                raise ValueError("guidance post evaluation disagrees with run plan")
         return ResumeOptimizationRunRead(
             id=str(run.id),
             resume_id=str(run.resume_id),

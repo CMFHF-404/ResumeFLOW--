@@ -1,7 +1,8 @@
 import type { MatchScoreEntry, MatchTrend } from "./analysis";
 
 export const RESUME_EVALUATION_VERSION = "resume_flow_v1" as const;
-export const RESUME_SCORING_VERSION = "coverage_consensus_v2" as const;
+export const GUIDANCE_AUDIT_EVALUATION_VERSION = "guidance_audit_v1" as const;
+export const RESUME_SCORING_VERSION = "coverage_consensus_v4" as const;
 
 export const RESUME_EVALUATION_DIMENSIONS = [
   "逻辑清晰",
@@ -77,7 +78,8 @@ export type ResumeEvaluationTopPriority = {
   expectedScoreGain: number;
 };
 
-export type ResumeEvaluation = {
+/** Historical numeric report. It remains readable but cannot start a new optimization. */
+export type LegacyResumeEvaluation = {
   evaluationVersion: typeof RESUME_EVALUATION_VERSION;
   scoringVersion?: string;
   evaluationScope: "full_resume";
@@ -99,6 +101,70 @@ export type ResumeEvaluation = {
   riskFlags: ResumeEvaluationRiskFlag[];
   topPriorities: ResumeEvaluationTopPriority[];
 };
+
+export type ResumeGuidanceBand =
+  | "strong"
+  | "adequate"
+  | "needs_attention"
+  | "insufficient_evidence";
+
+export type ResumeGuidanceDimension = {
+  dimension: ResumeEvaluationDimensionName;
+  status: ResumeGuidanceBand;
+  strengths: string[];
+  issues: string[];
+  actions: string[];
+};
+
+export type ResumeGuidanceAction = {
+  taskId: string;
+  issueId: string;
+  dimension: ResumeEvaluationDimensionName;
+  fieldPath: string;
+  description: string;
+  action: string;
+};
+
+export type ResumeGuidanceRiskFlag = {
+  taskId: string;
+  type: string;
+  description: string;
+};
+
+export type ResumeGuidanceAuditReceipt = {
+  receiptId: string;
+  inputHash: string;
+  tasksHash: string;
+  judgmentsHash: string;
+  rubricHash: string;
+  schemaHash: string;
+  auditVersion: "guidance_task_audit_v1";
+};
+
+/** Public, non-numeric guidance report produced by one judgment plus one audit. */
+export type GuidanceAuditEvaluation = {
+  evaluationVersion: typeof GUIDANCE_AUDIT_EVALUATION_VERSION;
+  evaluationScope: "full_resume";
+  targetRole: string;
+  overallBand: ResumeGuidanceBand;
+  confidence: "high" | "medium" | "low";
+  dimensionGuidance: ResumeGuidanceDimension[];
+  topPriorities: ResumeGuidanceAction[];
+  safeCleanup: ResumeGuidanceAction[];
+  informationNeeded: ResumeGuidanceAction[];
+  riskFlags: ResumeGuidanceRiskFlag[];
+  auditReceipt: ResumeGuidanceAuditReceipt;
+  /** JD fit stays its own numeric product contract. */
+  jdMatch: number | null;
+};
+
+export type ResumeEvaluation = LegacyResumeEvaluation | GuidanceAuditEvaluation;
+
+export const isGuidanceAuditEvaluation = (
+  evaluation: ResumeEvaluation | null | undefined,
+): evaluation is GuidanceAuditEvaluation => (
+  evaluation?.evaluationVersion === GUIDANCE_AUDIT_EVALUATION_VERSION
+);
 
 export interface JDAnalysisResult {
   /** 六维简历质量总分。旧数据缺少 resumeEvaluation 时仅作历史值处理。 */

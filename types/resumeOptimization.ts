@@ -1,4 +1,4 @@
-import type { ResumeEvaluationDimensionName } from './ai';
+import type { ResumeEvaluationDimensionName, ResumeGuidanceBand } from './ai';
 
 export const RESUME_OPTIMIZATION_STATUSES = [
   'planning',
@@ -81,7 +81,6 @@ export interface ResumeOptimizationChange {
   sourceLabels: ResumeOptimizationSourceLabel[];
   introducedTerms: string[];
   rationale: string;
-  expectedScoreGain: number;
   defaultSelected: boolean;
   safetyStatus: ResumeOptimizationSafetyStatus;
   safetyFindings: string[];
@@ -135,14 +134,14 @@ export interface ResumeOptimizationPlan {
   safetySummary: ResumeOptimizationSafetySummary;
 }
 
-export interface ResumeOptimizationDimensionDelta {
+export interface LegacyResumeOptimizationDimensionDelta {
   dimension: ResumeEvaluationDimensionName;
   beforeScore: number;
   afterScore: number;
   delta: number;
 }
 
-export interface ResumeOptimizationIssueCounts {
+export interface LegacyResumeOptimizationIssueCounts {
   before: number;
   after: number;
   resolved: number;
@@ -150,15 +149,15 @@ export interface ResumeOptimizationIssueCounts {
   introduced: number;
 }
 
-export interface ResumeOptimizationPostEvaluation {
+export interface LegacyResumeOptimizationPostEvaluation {
   version: 'resume_optimization_post_evaluation_v1';
   evaluationSignature: string;
   resumeUpdatedAt: string;
   beforeScore: number;
   afterScore: number;
   scoreDelta: number;
-  dimensionDeltas: ResumeOptimizationDimensionDelta[];
-  issueCounts: ResumeOptimizationIssueCounts;
+  dimensionDeltas: LegacyResumeOptimizationDimensionDelta[];
+  issueCounts: LegacyResumeOptimizationIssueCounts;
   unresolvedFactGapCount: number;
   acceptedChangeCount: number;
   blockedChangeCount: number;
@@ -166,13 +165,43 @@ export interface ResumeOptimizationPostEvaluation {
   safetySummary: ResumeOptimizationSafetySummary;
 }
 
+export interface ResumeOptimizationDimensionStatusChange {
+  dimension: ResumeEvaluationDimensionName;
+  beforeStatus: ResumeGuidanceBand;
+  afterStatus: ResumeGuidanceBand;
+}
+
+export interface ResumeOptimizationIssueSummary {
+  resolved: number;
+  remaining: number;
+}
+
+export interface GuidanceResumeOptimizationPostEvaluation {
+  version: 'guidance_optimization_post_v1';
+  evaluationSignature: string;
+  resumeUpdatedAt: string;
+  overallBandBefore: ResumeGuidanceBand;
+  overallBandAfter: ResumeGuidanceBand;
+  dimensionStatusChanges: ResumeOptimizationDimensionStatusChange[];
+  issueSummary: ResumeOptimizationIssueSummary;
+  unresolvedFactGapCount: number;
+  acceptedChangeCount: number;
+  blockedChangeCount: number;
+  bankSuggestionCount: number;
+  safetySummary: ResumeOptimizationSafetySummary;
+}
+
+export type ResumeOptimizationPostEvaluation =
+  | LegacyResumeOptimizationPostEvaluation
+  | GuidanceResumeOptimizationPostEvaluation;
+
 export interface ResumeOptimizationRun {
   id: string;
   resumeId: string;
   status: ResumeOptimizationStatus;
   optimizerVersion: 'resume_optimization_v1';
   policyVersion: 'thin_safety_v1' | 'evidence_semantic_v2';
-  promptVersion: 'resume_optimization_prompt_v1';
+  promptVersion: 'resume_optimization_prompt_v1' | 'resume_optimization_tasks_v2';
   sourceResumeUpdatedAt: string;
   sourceEvaluationSignature: string;
   sourceJdSignature: string;

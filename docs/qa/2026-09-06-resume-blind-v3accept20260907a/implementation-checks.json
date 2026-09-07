@@ -1,0 +1,16 @@
+{
+  "backend": {
+    "tests": 979,
+    "skipped": 5,
+    "status": "passed"
+  },
+  "frontend_targeted": {
+    "tests": 204,
+    "status": "passed"
+  },
+  "typescript": "passed",
+  "vite_build": "passed",
+  "diff_whitespace": "passed",
+  "verification_boundary": "local offline checks; live acceptance recorded separately",
+  "frontend_scoring_type_sha256": "737b8604f5847c1e1e1a30dbcb774a862feb3ac9c424e7b6a745a4c761a3b3e4"
+}

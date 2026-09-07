@@ -63,7 +63,7 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                         先看优化范围，再决定下一步
                     </h3>
                     <p className="mt-2 text-[12px] leading-6 text-slate-500 dark:text-slate-400">
-                        所有改写均经过自动事实边界检查，请在应用前核对；最终效果以应用后的六维复评为准。
+                        所有改写均经过自动事实边界检查，请在应用前核对；最终效果以应用后的独立审核为准。
                     </p>
                 </div>
 

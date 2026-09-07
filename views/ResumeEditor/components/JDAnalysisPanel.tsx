@@ -15,6 +15,7 @@ import {
     X,
 } from 'lucide-react';
 import type { JDAnalysisResult, JDCoreCapability, JDInterpretation } from '../../../services/aiService';
+import { isGuidanceAuditEvaluation } from '../../../types/ai';
 import { JD_PANEL_BOTTOM_SPACING_CLASS, JD_PANEL_STICKY_CLASS } from '../constants';
 import { ResumeScoreBadge } from './Badges';
 import { ResumeEvaluationReport } from './ResumeEvaluationReport/ResumeEvaluationReport';
@@ -507,7 +508,7 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
     onCopyText,
 }) => {
     const evaluation = analysisResult.resumeEvaluation;
-    const isCurrentEvaluation = evaluation?.evaluationVersion === 'resume_flow_v1';
+    const isCurrentEvaluation = isGuidanceAuditEvaluation(evaluation);
     const shouldShowJdAnalysis = Boolean(jdText.trim())
         && (!isCurrentEvaluation || evaluation.jdMatch !== null);
     const [activeReport, setActiveReport] = useState<'jd' | 'resume'>(() => shouldShowJdAnalysis ? 'jd' : 'resume');

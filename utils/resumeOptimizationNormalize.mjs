@@ -33,6 +33,12 @@ const ANSWER_STATE_VALUES = new Set([
   'skipped',
 ]);
 const SAFETY_STATUS_VALUES = new Set(['pending', 'allowed', 'blocked']);
+const GUIDANCE_BAND_VALUES = new Set([
+  'strong',
+  'adequate',
+  'needs_attention',
+  'insufficient_evidence',
+]);
 const PROGRESS_NODES = new Set([
   'freeze_snapshot',
   'prepare_context',
@@ -302,11 +308,6 @@ const normalizeChange = (value, index) => {
       `${fieldName}.introduced_terms`,
     ),
     rationale: requiredText(record.rationale, `${fieldName}.rationale`),
-    expectedScoreGain: integer(
-      aliased(record, 'expectedScoreGain', 'expected_score_gain'),
-      `${fieldName}.expected_score_gain`,
-      { min: 0, max: 100 },
-    ),
     defaultSelected: safetyStatus === 'blocked' ? false : requestedDefault,
     safetyStatus,
     safetyFindings: uniqueTextArray(
@@ -466,11 +467,7 @@ const normalizePlan = (value, fieldName) => {
   return { changes, questions, bankSuggestions, safetySummary };
 };
 
-const normalizePostEvaluation = (value, knownChangeIds) => {
-  const record = toRecord(value, 'post_evaluation');
-  if (record.version !== 'resume_optimization_post_evaluation_v1') {
-    fail('post_evaluation.version is unsupported');
-  }
+const normalizeLegacyPostEvaluation = (record, knownChangeIds) => {
   const beforeScore = integer(record.beforeScore, 'post_evaluation.beforeScore', { min: 0, max: 100 });
   const afterScore = integer(record.afterScore, 'post_evaluation.afterScore', { min: 0, max: 100 });
   const scoreDelta = integer(record.scoreDelta, 'post_evaluation.scoreDelta', { min: -100, max: 100 });
@@ -527,6 +524,114 @@ const normalizePostEvaluation = (value, knownChangeIds) => {
   };
 };
 
+const normalizeGuidancePostEvaluation = (record, knownChangeIds) => {
+  for (const forbiddenField of [
+    'beforeScore', 'before_score', 'afterScore', 'after_score',
+    'scoreDelta', 'score_delta', 'dimensionDeltas', 'dimension_deltas',
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(record, forbiddenField)) {
+      fail(`post_evaluation.${forbiddenField} is not public guidance data`);
+    }
+  }
+  const rawDimensionChanges = aliased(
+    record,
+    'dimensionStatusChanges',
+    'dimension_status_changes',
+  );
+  if (!Array.isArray(rawDimensionChanges) || rawDimensionChanges.length !== 6) {
+    fail('post_evaluation.dimensionStatusChanges must contain six items');
+  }
+  const dimensionStatusChanges = rawDimensionChanges.map((item, index) => {
+    const change = toRecord(item, `post_evaluation.dimensionStatusChanges[${index}]`);
+    const dimension = requiredText(
+      change.dimension,
+      `post_evaluation.dimensionStatusChanges[${index}].dimension`,
+    );
+    if (dimension !== RESUME_OPTIMIZATION_DIMENSIONS[index]) {
+      fail('post_evaluation dimension order is invalid');
+    }
+    return {
+      dimension,
+      beforeStatus: enumValue(
+        aliased(change, 'beforeStatus', 'before_status'),
+        GUIDANCE_BAND_VALUES,
+        `post_evaluation.dimensionStatusChanges[${index}].beforeStatus`,
+      ),
+      afterStatus: enumValue(
+        aliased(change, 'afterStatus', 'after_status'),
+        GUIDANCE_BAND_VALUES,
+        `post_evaluation.dimensionStatusChanges[${index}].afterStatus`,
+      ),
+    };
+  });
+  const issueRecord = toRecord(
+    aliased(record, 'issueSummary', 'issue_summary'),
+    'post_evaluation.issueSummary',
+  );
+  return {
+    version: 'guidance_optimization_post_v1',
+    evaluationSignature: requiredText(
+      aliased(record, 'evaluationSignature', 'evaluation_signature'),
+      'post_evaluation.evaluationSignature',
+    ),
+    resumeUpdatedAt: canonicalizeResumeOptimizationTimestamp(
+      aliased(record, 'resumeUpdatedAt', 'resume_updated_at'),
+      'post_evaluation.resumeUpdatedAt',
+    ),
+    overallBandBefore: enumValue(
+      aliased(record, 'overallBandBefore', 'overall_band_before'),
+      GUIDANCE_BAND_VALUES,
+      'post_evaluation.overallBandBefore',
+    ),
+    overallBandAfter: enumValue(
+      aliased(record, 'overallBandAfter', 'overall_band_after'),
+      GUIDANCE_BAND_VALUES,
+      'post_evaluation.overallBandAfter',
+    ),
+    dimensionStatusChanges,
+    issueSummary: {
+      resolved: integer(issueRecord.resolved, 'post_evaluation.issueSummary.resolved', { min: 0 }),
+      remaining: integer(issueRecord.remaining, 'post_evaluation.issueSummary.remaining', { min: 0 }),
+    },
+    unresolvedFactGapCount: integer(
+      aliased(record, 'unresolvedFactGapCount', 'unresolved_fact_gap_count'),
+      'post_evaluation.unresolvedFactGapCount',
+      { min: 0 },
+    ),
+    acceptedChangeCount: integer(
+      aliased(record, 'acceptedChangeCount', 'accepted_change_count'),
+      'post_evaluation.acceptedChangeCount',
+      { min: 0 },
+    ),
+    blockedChangeCount: integer(
+      aliased(record, 'blockedChangeCount', 'blocked_change_count'),
+      'post_evaluation.blockedChangeCount',
+      { min: 0 },
+    ),
+    bankSuggestionCount: integer(
+      aliased(record, 'bankSuggestionCount', 'bank_suggestion_count'),
+      'post_evaluation.bankSuggestionCount',
+      { min: 0 },
+    ),
+    safetySummary: normalizeSafetySummary(
+      aliased(record, 'safetySummary', 'safety_summary'),
+      'post_evaluation.safetySummary',
+      knownChangeIds,
+    ),
+  };
+};
+
+const normalizePostEvaluation = (value, knownChangeIds) => {
+  const record = toRecord(value, 'post_evaluation');
+  if (record.version === 'resume_optimization_post_evaluation_v1') {
+    return normalizeLegacyPostEvaluation(record, knownChangeIds);
+  }
+  if (record.version === 'guidance_optimization_post_v1') {
+    return normalizeGuidancePostEvaluation(record, knownChangeIds);
+  }
+  fail('post_evaluation.version is unsupported');
+};
+
 const sameSafetySummary = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
 export const normalizeResumeOptimizationRun = (value) => {
@@ -534,7 +639,7 @@ export const normalizeResumeOptimizationRun = (value) => {
   const status = enumValue(record.status, STATUS_VALUES, 'run.status');
   if (record.optimizer_version !== 'resume_optimization_v1') fail('run.optimizer_version is unsupported');
   if (!['thin_safety_v1', 'evidence_semantic_v2'].includes(record.policy_version)) fail('run.policy_version is unsupported');
-  if (record.prompt_version !== 'resume_optimization_prompt_v1') fail('run.prompt_version is unsupported');
+  if (!['resume_optimization_prompt_v1', 'resume_optimization_tasks_v2'].includes(record.prompt_version)) fail('run.prompt_version is unsupported');
 
   const plan = normalizePlan(record.plan, 'run.plan');
   const rawResult = record.result;
@@ -579,12 +684,16 @@ export const normalizeResumeOptimizationRun = (value) => {
   }
   if (postEvaluation) {
     if (
-      sourceBeforeScore === null
-      || postEvaluation.beforeScore !== sourceBeforeScore
-      || postEvaluation.acceptedChangeCount !== acceptedChangeIds.length
+      postEvaluation.acceptedChangeCount !== acceptedChangeIds.length
       || postEvaluation.blockedChangeCount !== effectivePlan.safetySummary.blockedChangeIds.length
       || postEvaluation.bankSuggestionCount !== effectivePlan.bankSuggestions.length
       || !sameSafetySummary(postEvaluation.safetySummary, effectivePlan.safetySummary)
+    ) {
+      fail('post_evaluation disagrees with the run result');
+    }
+    if (
+      postEvaluation.version === 'resume_optimization_post_evaluation_v1'
+      && (sourceBeforeScore === null || postEvaluation.beforeScore !== sourceBeforeScore)
     ) {
       fail('post_evaluation disagrees with the run result');
     }
@@ -596,7 +705,7 @@ export const normalizeResumeOptimizationRun = (value) => {
     status,
     optimizerVersion: 'resume_optimization_v1',
     policyVersion: record.policy_version,
-    promptVersion: 'resume_optimization_prompt_v1',
+    promptVersion: record.prompt_version,
     sourceResumeUpdatedAt: canonicalizeResumeOptimizationTimestamp(
       record.source_resume_updated_at,
       'run.source_resume_updated_at',

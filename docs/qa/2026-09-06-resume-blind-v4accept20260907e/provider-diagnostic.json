@@ -1,0 +1,10 @@
+{
+  "status": 403,
+  "classifications": [
+    "quota_exhausted"
+  ],
+  "body_bytes": 191,
+  "body_sha256": "8d5271af014226d576ae327227eb049430ca4f7f83570087af47afb1f58d79d7",
+  "retries": 0,
+  "same_model": true
+}

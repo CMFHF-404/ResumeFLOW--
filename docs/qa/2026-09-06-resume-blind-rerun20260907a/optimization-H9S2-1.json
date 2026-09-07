@@ -1,0 +1,425 @@
+{
+  "ok": true,
+  "seconds": 19.39,
+  "value": {
+    "initial_plan": {
+      "changes": [
+        {
+          "change_id": "CHG_001",
+          "issue_ids": [
+            "ISSUE_READ_001"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+          "general_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+          "targeted_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+          "source_refs": [
+            "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "修复行动描述末尾缺失的句号标点，使语句结构完整、符合可读性规范。",
+          "expected_score_gain": 12,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_002",
+          "issue_ids": [
+            "ISSUE_QUANT_001"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.r",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "交付的新流程通过验收并部署到内部试用环境。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [
+            "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/r"
+          ],
+          "introduced_terms": [],
+          "rationale": "当前结果缺少可量化的业务成效或试用效果指标，需向用户核实真实业务数据。",
+          "expected_score_gain": 65,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_003",
+          "issue_ids": [
+            "ISSUE_LOGIC_001"
+          ],
+          "dimension": "逻辑清晰",
+          "module_type": "experience_star",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "交付的新流程通过验收并部署到内部试用环境。",
+          "general_value": "交付的新流程通过验收并部署到内部试用环境。",
+          "targeted_value": "交付的新流程通过验收并部署到内部试用环境。",
+          "source_refs": [
+            "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/r"
+          ],
+          "introduced_terms": [],
+          "rationale": "该字段已有量化维度的交互变更，且现有事实素材不足以在不引入未证实信息的前提下改写因果闭环，故保留现状。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_004",
+          "issue_ids": [
+            "ISSUE_STAR_001"
+          ],
+          "dimension": "STAR应用",
+          "module_type": "experience_star",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "交付的新流程通过验收并部署到内部试用环境。",
+          "general_value": "交付的新流程通过验收并部署到内部试用环境。",
+          "targeted_value": "交付的新流程通过验收并部署到内部试用环境。",
+          "source_refs": [
+            "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/r"
+          ],
+          "introduced_terms": [],
+          "rationale": "当前结果项结构完整，在获取具体量化补充前保持现有表述。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_005",
+          "issue_ids": [
+            "ISSUE_PROF_001"
+          ],
+          "dimension": "专业表达",
+          "module_type": "experience_star",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+          "general_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+          "targeted_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+          "source_refs": [
+            "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "该字段已由内容可读性变更进行标点修正，为避免无事实依据替换专业术语，维持原意表达。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHG_006",
+          "issue_ids": [
+            "RUBRIC_内容完整_0",
+            "RUBRIC_内容完整_1",
+            "RUBRIC_内容完整_2"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "基础信息、求职意向及补充模块等未支持项在当前版本保持只读与现状。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      ],
+      "questions": [
+        {
+          "question_id": "QST_001",
+          "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+          "field_path": "star.r",
+          "text": "在权限申请新流程上线/试用后，是否有具体的量化成效数据（如审批时长缩短比例、管理员满意度评分、工单减少量等）？",
+          "reason": "补充真实的结果量化指标有助于显著增强成果可信度与STAR结果说服力。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHG_002"
+          ],
+          "priority": 1
+        }
+      ],
+      "bank_suggestions": [],
+      "safety_summary": {
+        "allowed_change_ids": [],
+        "blocked_change_ids": [],
+        "pending_change_ids": [],
+        "findings": []
+      }
+    },
+    "changes": [
+      {
+        "change_id": "CHG_001",
+        "issue_ids": [
+          "ISSUE_READ_001"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+        "general_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+        "targeted_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+        "source_refs": [
+          "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "修复行动描述末尾缺失的句号标点，使语句结构完整、符合可读性规范。",
+        "expected_score_gain": 12,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "d9116cfe5d593dd54d66266f03039255111b013defe160db862800973c9c7a85",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写内容与提供的参考来源完全一致，仅补充了句末标点，事实信息均得到完全支持。"
+        }
+      },
+      {
+        "change_id": "CHG_002",
+        "issue_ids": [
+          "ISSUE_QUANT_001"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "交付的新流程通过验收并部署到内部试用环境。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_003",
+        "issue_ids": [
+          "ISSUE_LOGIC_001"
+        ],
+        "dimension": "逻辑清晰",
+        "module_type": "experience_star",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "交付的新流程通过验收并部署到内部试用环境。",
+        "general_value": "交付的新流程通过验收并部署到内部试用环境。",
+        "targeted_value": "交付的新流程通过验收并部署到内部试用环境。",
+        "source_refs": [
+          "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/r"
+        ],
+        "introduced_terms": [],
+        "rationale": "该字段已有量化维度的交互变更，且现有事实素材不足以在不引入未证实信息的前提下改写因果闭环，故保留现状。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_004",
+        "issue_ids": [
+          "ISSUE_STAR_001"
+        ],
+        "dimension": "STAR应用",
+        "module_type": "experience_star",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "交付的新流程通过验收并部署到内部试用环境。",
+        "general_value": "交付的新流程通过验收并部署到内部试用环境。",
+        "targeted_value": "交付的新流程通过验收并部署到内部试用环境。",
+        "source_refs": [
+          "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/r"
+        ],
+        "introduced_terms": [],
+        "rationale": "当前结果项结构完整，在获取具体量化补充前保持现有表述。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_005",
+        "issue_ids": [
+          "ISSUE_PROF_001"
+        ],
+        "dimension": "专业表达",
+        "module_type": "experience_star",
+        "module_id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "访谈15名管理员，整理20条反馈需求并完成需求说明",
+        "general_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+        "targeted_value": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+        "source_refs": [
+          "/currentResume/experiences/8fd327e1-3fd8-57d5-b2d4-9afafddb2eba/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "该字段已由内容可读性变更进行标点修正，为避免无事实依据替换专业术语，维持原意表达。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHG_006",
+        "issue_ids": [
+          "RUBRIC_内容完整_0",
+          "RUBRIC_内容完整_1",
+          "RUBRIC_内容完整_2"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "基础信息、求职意向及补充模块等未支持项在当前版本保持只读与现状。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHG_001"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHG_002",
+        "CHG_003",
+        "CHG_004",
+        "CHG_005",
+        "CHG_006"
+      ],
+      "findings": []
+    },
+    "answers": [
+      {
+        "question_id": "QST_001",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      }
+    ],
+    "accepted": [
+      "CHG_001"
+    ],
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "有企业协作软件的产品需求与交付经验。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "岚舟协作软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "企业管理员反馈权限申请流程难以理解。",
+            "t": "负责梳理权限申请需求及验收规则。",
+            "a": "访谈15名管理员，整理20条反馈需求并完成需求说明。",
+            "r": "交付的新流程通过验收并部署到内部试用环境。"
+          },
+          "id": "8fd327e1-3fd8-57d5-b2d4-9afafddb2eba"
+        }
+      ]
+    }
+  }
+}

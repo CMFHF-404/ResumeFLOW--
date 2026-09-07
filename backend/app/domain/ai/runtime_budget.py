@@ -7,6 +7,9 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 import uuid
 
+# Callers with a shared generation/audit budget own transport retries themselves.
+provider_retries_managed: ContextVar[bool] = ContextVar('provider_retries_managed', default=False)
+
 from fastapi import HTTPException, Request
 from fastapi.routing import APIRoute
 from starlette.status import HTTP_413_CONTENT_TOO_LARGE

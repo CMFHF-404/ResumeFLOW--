@@ -145,3 +145,11 @@ class PrepareEntrypointTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, 'NEW run tag'):
                 benchmark.prepare()
             self.assertEqual(snapshot(Path(directory)), before)
+
+
+def setUpModule():
+    # Exercise historical cache/account contracts with a mocked numeric service.
+    # Current CLI rejection is covered without this mock in test_qa_numeric_contract_guard.
+    gate = patch("qa_resume_blind_benchmark.reject_retired_numeric_run")
+    gate.start()
+    unittest.addModuleCleanup(gate.stop)

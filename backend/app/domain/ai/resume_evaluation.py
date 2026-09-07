@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
 EVALUATION_VERSION = "resume_flow_v1"
-SCORING_VERSION = "coverage_consensus_v2"
+SCORING_VERSION = "coverage_consensus_v4"
 EVALUATION_SCOPE = "full_resume"
 
 DIMENSION_SUBSCORES: Tuple[Tuple[str, Tuple[Tuple[str, int], ...]], ...] = (
@@ -842,6 +842,9 @@ def normalize_resume_evaluation(
     jd_available: bool,
     fact_metadata: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
+    if isinstance(raw, dict) and raw.get("evaluationVersion") == "guidance_audit_v1":
+        from .guidance_evaluation import normalize_guidance_report
+        return normalize_guidance_report(raw)
     evaluation = _require_dict(_camelize(raw), "resumeEvaluation")
     if has_lossy_resume_evaluation_artifact(evaluation):
         raise ValueError("resumeEvaluation contains a lossy repair artifact")

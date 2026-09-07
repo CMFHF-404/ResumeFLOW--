@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "sample": "P5L2",
+  "seconds": 3.63,
+  "value": {
+    "documents": [
+      {
+        "id": "2de84bc18ca7",
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "语句完整规范，补全了行动项末尾缺失的句号，忠实于原文事实。"
+      },
+      {
+        "id": "b32edc2cb325",
+        "unsupportedClaims": [],
+        "defects": [
+          "经历中的行动描述结尾缺失标点符号"
+        ],
+        "reason": "工作经历与项目经历中的行动（a）结尾均缺失标点符号。"
+      }
+    ],
+    "preferredId": "2de84bc18ca7",
+    "mapping": {
+      "before": "b32edc2cb325",
+      "after": "2de84bc18ca7"
+    }
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "```json\n{\n  \"documents\": [\n    {\n      \"id\": \"2de84bc18ca7\",\n      \"unsupportedClaims\": [],\n      \"defects\": [],\n      \"reason\": \"语句完整规范，补全了行动项末尾缺失的句号，忠实于原文事实。\"\n    },\n    {\n      \"id\": \"b32edc2cb325\",\n      \"unsupportedClaims\": [],\n      \"defects\": [\"经历中的行动描述结尾缺失标点符号\"],\n      \"reason\": \"工作经历与项目经历中的行动（a）结尾均缺失标点符号。\"\n    }\n  ],\n  \"preferredId\": \"2de84bc18ca7\"\n}\n```",
+        " \"2de84bc18ca7\"\n}\n```",
+        " [\n    {\n      \"id\": \"2de84bc18ca7\",\n      \"unsupportedClaims\": [],\n      \"defects\": [],"
+      ]
+    }
+  ]
+}

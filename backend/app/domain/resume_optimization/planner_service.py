@@ -180,6 +180,9 @@ for _candidate_key in ("beforeValue", "generalValue", "targetedValue"):
     }
 _PLAN_RESPONSE_SCHEMA = _strict_object_schema({
     "changes": {"type": "array", "items": _PLAN_CHANGE_SCHEMA},
+    "safeCleanupCandidates": {"type": "array", "maxItems": 5, "items": _strict_object_schema({
+        "changeId": {"type": "string"}, "value": {"type": "string"},
+    })},
     "questions": {"type": "array", "maxItems": 5, "items": _strict_object_schema({
         "questionId": {"type": "string"}, "moduleId": {"type": "string"},
         "fieldPath": {"type": "string"}, "text": {"type": "string"},
@@ -1205,7 +1208,7 @@ def _messages(*, system_prompt: str, payload: Mapping[str, Any]) -> list[dict[st
 
 
 @runtime_budget.ai_wall_clock_limited
-async def plan_resume_optimization(
+async def _plan_resume_optimization_v3(
     context: FrozenOptimizationContext,
 ) -> OptimizationPlan:
     known_issue_dimensions = _known_issue_dimensions(context.evaluation)
@@ -1214,11 +1217,16 @@ async def plan_resume_optimization(
         for issue_id, alias in _planner_issue_id_aliases(context.evaluation).items()
     }
     model_payload = _minimized_planner_model_payload(context)
+    from .coverage import coverage_targets, reconcile_coverage, bind_cleanup_fallbacks
     raw = await _bounded_model_call(
         _messages(
             system_prompt=OPTIMIZATION_SYSTEM_PROMPT,
             payload={
                 "context": model_payload,
+                "fieldCoverageTargets": [
+                    {**target, "issue_id": _planner_issue_id_aliases(context.evaluation).get(target['issue_id'], target['issue_id'])}
+                    for target in coverage_targets(context)
+                ],
                 "allowedSourceRoots": list(_ALLOWED_SOURCE_ROOTS),
                 "sourceGuidance": (
                     "Use only JSON pointers under the listed roots. A selected "
@@ -1233,6 +1241,7 @@ async def plan_resume_optimization(
         gemini_response_json_schema=_PLAN_RESPONSE_SCHEMA,
     )
     raw = _restore_planner_issue_ids(raw, issue_alias_to_original)
+    cleanup_raw = raw.pop("safeCleanupCandidates", []) if isinstance(raw, dict) else []
     _bind_identical_owned_sources(raw,context)
     if isinstance(raw, dict) and isinstance(raw.get("changes"), list):
         for change in raw["changes"]:
@@ -1264,7 +1273,29 @@ async def plan_resume_optimization(
         question.choices = [
             OptimizationQuestionChoice(value="no_data", label="暂无可确认的信息"),
         ]
+    plan = reconcile_coverage(plan, context)
+    bind_cleanup_fallbacks(plan, cleanup_raw, context)
     return _protect_private_target_changes(plan, context)
+
+
+@runtime_budget.ai_wall_clock_limited
+async def plan_resume_optimization(context: FrozenOptimizationContext) -> OptimizationPlan:
+    from .planner_tasks import build_tasks, task_payload, task_schema, assemble_plan, TASK_PROMPT
+    tasks, retained = build_tasks(context)
+    if tasks:
+        payload = _scrub_human_text(
+            {"targetRole": context.target_role, "tasks": task_payload(tasks)},
+            _collect_profile_values(context.current_resume),
+        )
+        schema = task_schema(tasks)
+        raw = await _bounded_model_call(
+            _messages(system_prompt=TASK_PROMPT + '\nOUTPUT_JSON_SCHEMA:\n' + json.dumps(schema, ensure_ascii=False), payload=payload), json_mode=True,
+            request_label="resume_optimization_plan", gemini_thinking_level="low", gemini_stream=True,
+            gemini_response_json_schema=schema,
+        )
+    else:
+        raw = {}
+    return _protect_private_target_changes(assemble_plan(raw, tasks, retained, context), context)
 
 
 def _unique_answers_by_question(
@@ -1384,6 +1415,17 @@ async def rewrite_answered_modules(
             for question_id, answer in answers_by_question.items()
         )
         if not has_answered_fact:
+            states = {answer.state.value for question_id, answer in answers_by_question.items()
+                      if change.change_id in questions_by_id[question_id].affects_change_ids}
+            fallback = existing_plan.cleanup_fallbacks.get(change.change_id)
+            if (states and states <= {"no_data", "unknown"} and fallback is not None
+                    and change.safety_status != "blocked"
+                    and private_original is None and frozen_before == fallback.before_value
+                    and (fallback.module_id, fallback.field_path) == (change.module_id, change.field_path)):
+                locally_protected_changes.append(fallback.model_copy(deep=True, update={
+                    "safety_status": "pending", "safety_findings": [], "semantic_review": None,
+                }))
+                continue
             # Absence of new facts is a local state transition, not a generation
             # task. Preserve identity and never turn no_data into evidence.
             locally_protected_changes.append(change.model_copy(deep=True, update={
