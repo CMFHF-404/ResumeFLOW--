@@ -1,0 +1,10 @@
+{
+  "tier": "事实充足但表述退化",
+  "defects": [
+    "摘要重复空泛",
+    "行动重复空泛",
+    "行动末尾缺少句号",
+    "当前简历遗漏来源中明确的量化成果"
+  ],
+  "expected_answer_policy": "no_data for missing facts; supplied sources only"
+}

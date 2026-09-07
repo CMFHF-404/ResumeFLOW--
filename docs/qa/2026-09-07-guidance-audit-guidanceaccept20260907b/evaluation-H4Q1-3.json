@@ -1,0 +1,137 @@
+{
+  "ok": false,
+  "seconds": 5.68,
+  "sample": "H4Q1",
+  "repeat": 3,
+  "error_type": "ConnectError",
+  "message": "Guidance evaluation failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 306,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 386,
+      "function": "generate_guidance"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 359,
+      "function": "_stage"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1805,
+      "function": "_stream_gemini_json_response_once"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 214,
+      "function": "__aenter__"
+    },
+    {
+      "file": "_client.py",
+      "line": 1583,
+      "function": "stream"
+    },
+    {
+      "file": "_client.py",
+      "line": 1629,
+      "function": "send"
+    },
+    {
+      "file": "_client.py",
+      "line": 1657,
+      "function": "_send_handling_auth"
+    },
+    {
+      "file": "_client.py",
+      "line": 1694,
+      "function": "_send_handling_redirects"
+    },
+    {
+      "file": "_client.py",
+      "line": 1730,
+      "function": "_send_single_request"
+    },
+    {
+      "file": "default.py",
+      "line": 393,
+      "function": "handle_async_request"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 162,
+      "function": "__exit__"
+    },
+    {
+      "file": "default.py",
+      "line": 118,
+      "function": "map_httpcore_exceptions"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "transport_failure",
+      "cause_type": "ConnectError"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 5.671
+    }
+  ],
+  "providerResponses": []
+}

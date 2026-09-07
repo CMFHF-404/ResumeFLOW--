@@ -131,17 +131,17 @@ const evaluationAt = (score) => {
   };
 };
 
-test('dashboard score accepts only the current full-resume evaluation version', async () => {
+test('dashboard never exposes a resume-quality score', async () => {
   const { resolveDashboardResumeEvaluationScore } = await importDashboardScoreUtils();
 
-  assert.equal(resolveDashboardResumeEvaluationScore(evaluationAt(86)), 86);
-  assert.equal(resolveDashboardResumeEvaluationScore(evaluationAt(0)), 0);
+  assert.equal(resolveDashboardResumeEvaluationScore(evaluationAt(86)), null);
+  assert.equal(resolveDashboardResumeEvaluationScore(evaluationAt(0)), null);
   assert.equal(resolveDashboardResumeEvaluationScore({ ...evaluationAt(86), overallScore: 99 }), null);
   assert.equal(resolveDashboardResumeEvaluationScore({ evaluationVersion: 'legacy', overallScore: 99 }), null);
   assert.equal(resolveDashboardResumeEvaluationScore(undefined), null);
 });
 
-test('dashboard rejects current scores with stale, missing, or mismatched signatures', async () => {
+test('dashboard keeps guidance persistence boundaries without projecting a quality score', async () => {
   globalThis.localStorage = {
     getItem: () => null,
     setItem: () => {},
@@ -171,7 +171,7 @@ test('dashboard rejects current scores with stale, missing, or mismatched signat
       { jdAnalysis: persisted },
       targetRoleSignature
     ),
-    86
+    null
   );
   assert.equal(
     resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
@@ -183,7 +183,7 @@ test('dashboard rejects current scores with stale, missing, or mismatched signat
     resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
       jdAnalysis: { ...persisted, isOutdated: true, evaluationIsOutdated: false },
     }, targetRoleSignature),
-    86
+    null
   );
   assert.equal(
     resolveDashboardResumeEvaluationScoreForResume('owner-1', 'resume-1', {
@@ -361,7 +361,7 @@ test('dashboard rejects a pending local score when its backend base fingerprint 
   );
 });
 
-test('dashboard accepts a pending local score only when it is based on the current backend snapshot', async () => {
+test('dashboard does not project a pending local quality score', async () => {
   const storage = new Map();
   globalThis.localStorage = {
     getItem: (key) => storage.get(key) ?? null,
@@ -393,7 +393,7 @@ test('dashboard accepts a pending local score only when it is based on the curre
       'current-backend-fingerprint',
       '{"targetRole":"PM"}'
     ),
-    86
+    null
   );
 });
 

@@ -120,7 +120,7 @@ test('exports the complete optimization funnel and only emits allowlisted aggreg
   const calls = globalThis.__resumeOptimizationAnalyticsCalls;
   assert.equal(calls.length, plannedTrackers.length);
   const allowedKeys = new Set([
-    'resume_id', 'run_id', 'action', 'before_score', 'after_score', 'score_delta', 'direct_change_count',
+    'resume_id', 'run_id', 'action', 'direct_change_count',
     'question_count', 'answered_count', 'no_data_count', 'unknown_count',
     'not_my_work_count', 'skipped_count', 'accepted_change_count',
     'blocked_change_count', 'bank_suggestion_count', 'duration_ms', 'failure_code',
@@ -133,7 +133,12 @@ test('exports the complete optimization funnel and only emits allowlisted aggreg
     assert.doesNotMatch(JSON.stringify(properties), /(?:jd|answer|question|change|suggestion|master|module|private|signature|hash)-secret/);
   }
   const ctaCalls = calls.filter(({ event }) => event === 'resume_optimization_cta_view' || event === 'resume_optimization_cta_click');
-  for (const { properties } of ctaCalls) assert.equal(properties.before_score, 61);
+  for (const { properties } of ctaCalls) assert.deepEqual(properties, {});
+  for (const { properties } of calls) {
+    assert.equal('before_score' in properties, false);
+    assert.equal('after_score' in properties, false);
+    assert.equal('score_delta' in properties, false);
+  }
   const planStart = calls.find(({ event }) => event === 'resume_optimization_plan_start');
   assert.equal(planStart.properties.resume_id, resumeId);
   assert.equal('run_id' in planStart.properties, false);
@@ -182,9 +187,9 @@ test('event constants and tracker source use explicit safe property construction
 
 test('CTA impression is visibility-gated and deduped while exact Token copy precedes click', () => {
   const report = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx');
-  const copy = '本次优化按实际模型用量消耗 Token，包含一轮事实补充和一次应用后复评。';
+  const copy = '本次优化按实际模型用量消耗 Token，改写会保持在可核实的事实边界内。';
   const copyIndex = report.indexOf(copy);
-  const buttonIndex = report.indexOf('根据报告优化', copyIndex);
+  const buttonIndex = report.indexOf('根据指导优化', copyIndex);
   assert.ok(copyIndex >= 0 && copyIndex < buttonIndex);
   assert.match(report, /IntersectionObserver/);
   assert.match(report, /ctaViewTrackedRef/);
@@ -192,8 +197,9 @@ test('CTA impression is visibility-gated and deduped while exact Token copy prec
     report,
     /!canStartOptimization \|\| isOutdated \|\| isOptimizationBusy[\s\S]*return undefined/,
   );
-  assert.match(report, /trackResumeOptimizationCtaView\(\{\s*beforeScore: report\.overallScore/);
-  assert.match(report, /trackResumeOptimizationCtaClick\(\{\s*beforeScore: report\.overallScore[\s\S]*onStartOptimization\?\.\(\)/);
+  assert.match(report, /trackResumeOptimizationCtaView\(\)/);
+  assert.match(report, /trackResumeOptimizationCtaClick\(\)[\s\S]*onStartOptimization\?\.\(\)/);
+  assert.doesNotMatch(report, /beforeScore|report\.overallScore/);
 });
 
 test('hook emits aggregate events at frozen mutation boundaries without leaking identifiers', () => {
@@ -208,10 +214,7 @@ test('hook emits aggregate events at frozen mutation boundaries without leaking 
   const retryBlock = hook.slice(hook.indexOf('const retryRescore'), hook.indexOf('const revertRun'));
 
   assert.match(startBlock, /trackResumeOptimizationPlanStart/);
-  assert.match(
-    startBlock,
-    /const planMetrics = summarizeResumeOptimizationPlan\(nextRun\)[\s\S]*beforeScore: planMetrics\.beforeScore \?\? evaluation\?\.overallScore/,
-  );
+  assert.match(startBlock, /const planMetrics = summarizeResumeOptimizationPlan\(nextRun\)/);
   assert.match(submitBlock, /answerAttempt\.answers[\s\S]*trackResumeOptimizationQuestionsSubmit/);
   assert.match(toggleBlock, /const next = [\s\S]*trackResumeOptimizationChangeToggle\(\{[\s\S]*acceptedChangeCount: next\.length/);
   assert.ok(applyBlock.indexOf('trackResumeOptimizationApplyStart') < applyBlock.indexOf('resumeOptimizationService.apply'));
@@ -237,6 +240,7 @@ test('hook emits aggregate events at frozen mutation boundaries without leaking 
   assert.match(rescoreBlock, /trackResumeOptimizationRescoreResult\(\{[\s\S]*resumeId[\s\S]*runId/);
   assert.match(revertBlock, /trackResumeOptimizationRevertResult\(\{[\s\S]*resumeId[\s\S]*runId/);
   assert.doesNotMatch(hook, /trackResumeOptimization\w+\(\{[^}]*?(?:questionId|changeId|moduleId)/s);
+  assert.doesNotMatch(hook, /beforeScore|afterScore|scoreDelta|overallScore/);
 });
 
 test('question and preview views are real-step deduped and bank clicks send only action plus total count', () => {

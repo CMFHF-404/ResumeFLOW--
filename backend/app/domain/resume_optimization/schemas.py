@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
@@ -10,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 OPTIMIZER_VERSION = "resume_optimization_v1"
 POLICY_VERSION = "evidence_semantic_v2"
-PROMPT_VERSION = "resume_optimization_prompt_v1"
+PROMPT_VERSION = "resume_optimization_tasks_v2"
 RESUME_EVALUATION_DIMENSION_NAMES = (
     "逻辑清晰",
     "STAR应用",
@@ -122,7 +123,9 @@ class OptimizationChange(BaseModel):
     source_refs: list[str]
     introduced_terms: list[str] = Field(default_factory=list)
     rationale: str
-    expected_score_gain: int = Field(default=0, ge=0, le=100)
+    # Retained only for historical/internal ranking compatibility. It is never
+    # serialized into storage or a public optimization response.
+    expected_score_gain: int = Field(default=0, ge=0, le=100, exclude=True)
     default_selected: bool = True
     safety_status: Literal["pending", "allowed", "blocked"] = "pending"
     safety_findings: list[str] = Field(default_factory=list)
@@ -264,6 +267,29 @@ class OptimizationPlan(BaseModel):
     safety_summary: OptimizationSafetySummary = Field(
         default_factory=OptimizationSafetySummary,
     )
+    # Server-side planning evidence, never part of a public preview/apply payload.
+    coverage: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
+    cleanup_fallbacks: dict[str, OptimizationChange] = Field(default_factory=dict, exclude=True)
+    planning_tasks: dict[str, Any] = Field(default_factory=dict, exclude=True)
+
+    @classmethod
+    def from_storage(cls, payload: Any) -> OptimizationPlan:
+        """Read complete public plans with optional server-owned metadata."""
+        public_keys = {"changes", "questions", "bank_suggestions", "safety_summary"}
+        private_keys = {"coverage", "cleanup_fallbacks", "planning_tasks"}
+        if not isinstance(payload, Mapping) or set(payload) - private_keys != public_keys:
+            raise ValueError("Persisted plan must have the complete root shape")
+        return cls.model_validate(dict(payload))
+
+    def storage_dump(self) -> dict[str, Any]:
+        return {
+            **self.model_dump(mode="json"),
+            "coverage": self.coverage,
+            "planning_tasks": self.planning_tasks,
+            "cleanup_fallbacks": {
+                key: value.model_dump(mode="json") for key, value in self.cleanup_fallbacks.items()
+            },
+        }
 
 
 class ResumeOptimizationDimensionDelta(BaseModel):
@@ -347,13 +373,78 @@ class ResumeOptimizationPostEvaluation(BaseModel):
         return self
 
 
+GuidanceBand = Literal[
+    "strong",
+    "adequate",
+    "needs_attention",
+    "insufficient_evidence",
+]
+
+
+class ResumeOptimizationGuidanceDimensionStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dimension: str
+    beforeStatus: GuidanceBand
+    afterStatus: GuidanceBand
+
+
+class ResumeOptimizationGuidanceIssueSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resolved: int = Field(ge=0)
+    remaining: int = Field(ge=0)
+
+
+class ResumeOptimizationGuidancePostEvaluation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal["guidance_optimization_post_v1"]
+    evaluationSignature: str
+    resumeUpdatedAt: datetime
+    overallBandBefore: GuidanceBand
+    overallBandAfter: GuidanceBand
+    dimensionStatusChanges: list[ResumeOptimizationGuidanceDimensionStatus] = Field(
+        min_length=6,
+        max_length=6,
+    )
+    issueSummary: ResumeOptimizationGuidanceIssueSummary
+    unresolvedFactGapCount: int = Field(ge=0)
+    acceptedChangeCount: int = Field(ge=0)
+    blockedChangeCount: int = Field(ge=0)
+    bankSuggestionCount: int = Field(ge=0)
+    safetySummary: OptimizationSafetySummary
+
+    @field_validator("evaluationSignature")
+    @classmethod
+    def _validate_guidance_evaluation_signature(cls, value: str) -> str:
+        return _require_non_empty(value, field_name="evaluationSignature")
+
+    @field_validator("resumeUpdatedAt")
+    @classmethod
+    def _validate_guidance_post_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("resumeUpdatedAt must include a timezone")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_guidance_dimension_order(self):
+        if tuple(item.dimension for item in self.dimensionStatusChanges) != (
+            RESUME_EVALUATION_DIMENSION_NAMES
+        ):
+            raise ValueError(
+                "dimensionStatusChanges must use the fixed dimension order"
+            )
+        return self
+
+
 class ResumeOptimizationRunRead(BaseModel):
     id: str
     resume_id: str
     status: ResumeOptimizationStatus
     optimizer_version: Literal[OPTIMIZER_VERSION] = OPTIMIZER_VERSION
     policy_version: Literal["thin_safety_v1", POLICY_VERSION] = POLICY_VERSION
-    prompt_version: Literal[PROMPT_VERSION] = PROMPT_VERSION
+    prompt_version: Literal["resume_optimization_prompt_v1", "resume_optimization_tasks_v2"] = PROMPT_VERSION
     source_resume_updated_at: datetime
     source_evaluation_signature: str
     source_jd_signature: str = ""
@@ -362,7 +453,11 @@ class ResumeOptimizationRunRead(BaseModel):
     plan: OptimizationPlan = Field(default_factory=OptimizationPlan)
     answers: list[OptimizationAnswer] = Field(default_factory=list)
     result: dict[str, Any] = Field(default_factory=dict)
-    post_evaluation: ResumeOptimizationPostEvaluation | None = None
+    post_evaluation: (
+        ResumeOptimizationPostEvaluation
+        | ResumeOptimizationGuidancePostEvaluation
+        | None
+    ) = None
     accepted_change_ids: list[str] = Field(default_factory=list)
     applied_content_signature: str | None = None
     created_at: datetime

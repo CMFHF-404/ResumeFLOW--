@@ -1,6 +1,7 @@
 """Unseen content, fixed before inspecting its scores; separate from tuning cases."""
 import asyncio,copy,json,sys
 import qa_resume_blind_benchmark as b
+b.reject_retired_numeric_run()
 
 original=b.OUT
 suffix=sys.argv[1] if len(sys.argv)>1 else ''

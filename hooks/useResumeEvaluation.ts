@@ -3,6 +3,7 @@ import { useAuthOwnerOperationGuard } from "./useAuthOwnerOperationGuard";
 import { isAuthContextChangedError } from "../services/apiClient";
 import { aiService, type AnalyzeStreamEvent, type JDAnalysisResult } from "../services/aiService";
 import type { ResumeEvaluation } from "../types/ai";
+import { GUIDANCE_AUDIT_EVALUATION_VERSION } from "../types/ai";
 import type { ResumeEvaluationSnapshot } from "../utils/resumeEvaluationSnapshot";
 import { canonicalStringify } from "./jdAnalysisSignatureUtils";
 import { resolveThoughtDisplayEvent } from "../utils/aiThought";
@@ -124,11 +125,11 @@ const isAbortError = (error: unknown) => (
   && (error as { name?: unknown }).name === "AbortError"
 );
 
-const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次六维报告未保存，请重试。";
+const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次简历改进指导未保存，请重试。";
 const RESUME_EVALUATION_RETAINED_ERROR_MESSAGE =
-  "本次六维报告未保存，已保留上一份可信报告，请重试。";
+  "本次简历改进指导未保存，已保留上一份可信指导，请重试。";
 const RESUME_EVALUATION_MISSING_ATTACHMENT_MESSAGE =
-  "当前 JD 附件正文不可用，请重新上传并完成 JD 分析后再生成六维报告。";
+  "当前 JD 附件正文不可用，请重新上传并完成 JD 分析后再生成简历改进指导。";
 const RESUME_EVALUATION_MISSING_MATCH_MESSAGE =
   "当前 JD 匹配结果不可用，请先重新完成 JD 分析。";
 const RESUME_EVALUATION_PENDING_ATTACHMENT_MESSAGE =
@@ -156,7 +157,7 @@ export const resolveResumeEvaluationOutdated = ({
   persistedEvaluationIsOutdated?: boolean;
   hasMissingAttachmentText: boolean;
 }) => (
-  evaluationVersion !== "resume_flow_v1"
+  evaluationVersion !== GUIDANCE_AUDIT_EVALUATION_VERSION
   || boundEvaluationSignature !== currentEvaluationSignature
   || persistedEvaluationIsOutdated === true
   || hasMissingAttachmentText

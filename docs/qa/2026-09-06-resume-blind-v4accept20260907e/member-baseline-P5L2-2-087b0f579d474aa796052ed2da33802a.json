@@ -1,0 +1,1062 @@
+{
+  "ok": true,
+  "value": {
+    "resumeEvaluation": {
+      "evaluationVersion": "resume_flow_v1",
+      "evaluationScope": "full_resume",
+      "targetRole": "B2B SaaS 产品经理",
+      "overallScore": 77,
+      "overallLevel": "良好",
+      "evaluationConfidence": 0.89,
+      "scoreCalculation": {
+        "dimensionSum": 462,
+        "rawAverage": 77.0,
+        "roundingRule": "round_half_up",
+        "finalScore": 77
+      },
+      "dimensions": [
+        {
+          "dimension": "逻辑清晰",
+          "score": 95,
+          "level": "卓越",
+          "subscores": [
+            {
+              "name": "信息顺序",
+              "maxScore": 25,
+              "score": 25,
+              "evidenceIds": [
+                "E005",
+                "E006",
+                "E007",
+                "E008",
+                "E009"
+              ]
+            },
+            {
+              "name": "因果关系",
+              "maxScore": 30,
+              "score": 30,
+              "evidenceIds": [
+                "E023",
+                "E024",
+                "E025",
+                "E026",
+                "E032",
+                "E033",
+                "E034",
+                "E035"
+              ]
+            },
+            {
+              "name": "信息层级",
+              "maxScore": 20,
+              "score": 20,
+              "evidenceIds": [
+                "E018",
+                "E019",
+                "E020",
+                "E027",
+                "E028",
+                "E029"
+              ]
+            },
+            {
+              "name": "一致性与聚焦",
+              "maxScore": 25,
+              "score": 20,
+              "evidenceIds": [
+                "E028",
+                "E032",
+                "E034"
+              ]
+            }
+          ],
+          "strengths": [
+            "各经历内STAR结构因果关系连贯，问题、行动与交付结果对应清晰。",
+            "简历模块排布符合先概览、后工作与项目、再教育与技能的标准逻辑。"
+          ],
+          "issues": [
+            "ISSUE_LOGIC_MISMATCH"
+          ],
+          "improvementQuestions": [
+            "项目名称为“运营周报自动化”，但具体任务与行动描述为“客服工单交接规则”，建议调整项目名称或补充自动化相关具体工作，使主题与内容保持一致。"
+          ]
+        },
+        {
+          "dimension": "STAR应用",
+          "score": 100,
+          "level": "卓越",
+          "subscores": [
+            {
+              "name": "Situation情境",
+              "maxScore": 15,
+              "score": 15,
+              "evidenceIds": [
+                "E023",
+                "E032"
+              ]
+            },
+            {
+              "name": "Task任务",
+              "maxScore": 15,
+              "score": 15,
+              "evidenceIds": [
+                "E024",
+                "E033"
+              ]
+            },
+            {
+              "name": "Action行动",
+              "maxScore": 35,
+              "score": 35,
+              "evidenceIds": [
+                "E025",
+                "E034"
+              ]
+            },
+            {
+              "name": "Result结果",
+              "maxScore": 35,
+              "score": 35,
+              "evidenceIds": [
+                "E026",
+                "E035"
+              ]
+            }
+          ],
+          "strengths": [
+            "工作与项目经历均完整具备背景、任务、行动与结果（交付验收）四要素。"
+          ],
+          "issues": [],
+          "improvementQuestions": []
+        },
+        {
+          "dimension": "内容可读",
+          "score": 95,
+          "level": "卓越",
+          "subscores": [
+            {
+              "name": "扫读结构",
+              "maxScore": 25,
+              "score": 25,
+              "evidenceIds": [
+                "E005",
+                "E006",
+                "E007",
+                "E008",
+                "E009"
+              ]
+            },
+            {
+              "name": "句子清晰度",
+              "maxScore": 25,
+              "score": 25,
+              "evidenceIds": [
+                "E004",
+                "E023",
+                "E024",
+                "E026"
+              ]
+            },
+            {
+              "name": "信息密度",
+              "maxScore": 20,
+              "score": 20,
+              "evidenceIds": [
+                "E025",
+                "E026",
+                "E034",
+                "E035"
+              ]
+            },
+            {
+              "name": "语法与自然度",
+              "maxScore": 15,
+              "score": 13,
+              "evidenceIds": [
+                "E025",
+                "E034"
+              ]
+            },
+            {
+              "name": "重复与冗余",
+              "maxScore": 15,
+              "score": 12,
+              "evidenceIds": [
+                "E033",
+                "E034"
+              ]
+            }
+          ],
+          "strengths": [
+            "语句通顺精炼，结构清晰，便于快速扫读。"
+          ],
+          "issues": [
+            "ISSUE_READABILITY_PUNCTUATION",
+            "ISSUE_READABILITY_REDUNDANCY"
+          ],
+          "improvementQuestions": [
+            "Action行动句末尾建议补齐中文句号以保持格式统一规范。",
+            "项目经历中Task与Action存在词句直接重复（“整理交接规则”），建议在Action中扩充具体落地步骤以减少冗余。"
+          ]
+        },
+        {
+          "dimension": "内容完整",
+          "score": 97,
+          "level": "卓越",
+          "subscores": [
+            {
+              "name": "基础信息",
+              "maxScore": 10,
+              "score": 7,
+              "evidenceIds": [
+                "E001",
+                "E002"
+              ]
+            },
+            {
+              "name": "教育经历",
+              "maxScore": 15,
+              "score": 15,
+              "evidenceIds": [
+                "E013",
+                "E014",
+                "E015"
+              ]
+            },
+            {
+              "name": "核心经历模块",
+              "maxScore": 25,
+              "score": 25,
+              "evidenceIds": [
+                "E019",
+                "E020",
+                "E023",
+                "E024",
+                "E025",
+                "E026",
+                "E028",
+                "E029",
+                "E032",
+                "E033",
+                "E034",
+                "E035"
+              ]
+            },
+            {
+              "name": "经历必要字段",
+              "maxScore": 20,
+              "score": 20,
+              "evidenceIds": [
+                "E019",
+                "E020",
+                "E021",
+                "E022",
+                "E028",
+                "E029",
+                "E030",
+                "E031"
+              ]
+            },
+            {
+              "name": "技能与资格",
+              "maxScore": 15,
+              "score": 15,
+              "evidenceIds": [
+                "E010",
+                "E011",
+                "E012"
+              ]
+            },
+            {
+              "name": "求职方向",
+              "maxScore": 10,
+              "score": 10,
+              "evidenceIds": [
+                "E004",
+                "E019",
+                "E012"
+              ]
+            },
+            {
+              "name": "补充信息",
+              "maxScore": 5,
+              "score": 5,
+              "evidenceIds": [
+                "E028"
+              ]
+            }
+          ],
+          "strengths": [
+            "工作经历、项目经历、教育经历以及核心技能均完整提供，字段覆盖全面。"
+          ],
+          "issues": [
+            "RUBRIC_内容完整_0"
+          ],
+          "improvementQuestions": [
+            "基础信息中缺少联系电话，建议补充有效手机号以便招聘方沟通。",
+            "可根据求职岗位补充相关专业认证或资质证书以增强竞争力。"
+          ]
+        },
+        {
+          "dimension": "专业表达",
+          "score": 75,
+          "level": "良好",
+          "subscores": [
+            {
+              "name": "行动动词",
+              "maxScore": 20,
+              "score": 15,
+              "evidenceIds": [
+                "E025",
+                "E034"
+              ]
+            },
+            {
+              "name": "岗位术语",
+              "maxScore": 20,
+              "score": 15,
+              "evidenceIds": [
+                "E023",
+                "E024",
+                "E026",
+                "E034"
+              ]
+            },
+            {
+              "name": "表达精确度",
+              "maxScore": 20,
+              "score": 15,
+              "evidenceIds": [
+                "E025",
+                "E034"
+              ]
+            },
+            {
+              "name": "贡献与责任边界",
+              "maxScore": 20,
+              "score": 15,
+              "evidenceIds": [
+                "E004",
+                "E024",
+                "E033"
+              ]
+            },
+            {
+              "name": "客观与可信",
+              "maxScore": 20,
+              "score": 15,
+              "evidenceIds": [
+                "E026",
+                "E035"
+              ]
+            }
+          ],
+          "strengths": [
+            "职责边界与行动叙述平实客观，无夸大陈述。"
+          ],
+          "issues": [
+            "ISSUE_PROF_ACTION_VERBS",
+            "ISSUE_PROF_TERMINOLOGY",
+            "ISSUE_PROF_PRECISION",
+            "ISSUE_PROF_BOUNDARY",
+            "ISSUE_PROF_OBJECTIVITY"
+          ],
+          "improvementQuestions": [
+            "行动动词较为基础（如“核对”、“整理”），建议使用“梳理体系”、“制定规范”、“主导评审”等更具产品专业度的动词。",
+            "建议结合B2B SaaS产品场景引入更多行业术语（如数据字典、工单流转流、SLA、PRD等）。",
+            "补充具体产出物名称与落地形式，提升描述的精确度。"
+          ]
+        },
+        {
+          "dimension": "成果量化",
+          "score": 0,
+          "level": "不足",
+          "subscores": [
+            {
+              "name": "结果指标",
+              "maxScore": 30,
+              "score": 0,
+              "evidenceIds": []
+            },
+            {
+              "name": "基线与前后对比",
+              "maxScore": 25,
+              "score": 0,
+              "evidenceIds": []
+            },
+            {
+              "name": "覆盖规模",
+              "maxScore": 15,
+              "score": 0,
+              "evidenceIds": []
+            },
+            {
+              "name": "时间窗口",
+              "maxScore": 10,
+              "score": 0,
+              "evidenceIds": []
+            },
+            {
+              "name": "过程数量",
+              "maxScore": 10,
+              "score": 0,
+              "evidenceIds": []
+            },
+            {
+              "name": "数据可信度",
+              "maxScore": 10,
+              "score": 0,
+              "evidenceIds": []
+            }
+          ],
+          "strengths": [],
+          "issues": [
+            "ISSUE_NO_METRICS",
+            "ISSUE_NO_BASELINE",
+            "ISSUE_NO_SCALE",
+            "ISSUE_NO_TIME_WINDOW",
+            "ISSUE_NO_PROCESS_COUNT",
+            "ISSUE_NO_CREDIBILITY"
+          ],
+          "improvementQuestions": [
+            "请补充业务结果指标：字段统一或工单规则交付后，运营/客服效率提升了多少？字段错误率或交接耗时降低了多少？",
+            "请补充规模与过程数据：涉及多少个核心业务字段、多少名客服/运营人员、覆盖多少个工单类型或试用租户？",
+            "请补充效果验证的时间周期（例如上线后观察4周）。"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "E001",
+          "sourceText": "林澈",
+          "location": "resume.profile.name",
+          "factId": "LEGACY_FACT_001",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E002",
+          "sourceText": "linche@example.invalid",
+          "location": "resume.profile.email",
+          "factId": "LEGACY_FACT_002",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E003",
+          "sourceText": "深圳",
+          "location": "resume.profile.location",
+          "factId": "LEGACY_FACT_003",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E004",
+          "sourceText": "参与企业软件需求梳理和交付验收。",
+          "location": "resume.personal_summary",
+          "factId": "LEGACY_FACT_004",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容可读",
+            "内容完整",
+            "专业表达"
+          ]
+        },
+        {
+          "evidenceId": "E005",
+          "sourceText": "summary",
+          "location": "resume.section_order[0]",
+          "factId": "LEGACY_FACT_005",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容可读"
+          ]
+        },
+        {
+          "evidenceId": "E006",
+          "sourceText": "work",
+          "location": "resume.section_order[1]",
+          "factId": "LEGACY_FACT_006",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容可读"
+          ]
+        },
+        {
+          "evidenceId": "E007",
+          "sourceText": "project",
+          "location": "resume.section_order[2]",
+          "factId": "LEGACY_FACT_007",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容可读"
+          ]
+        },
+        {
+          "evidenceId": "E008",
+          "sourceText": "education",
+          "location": "resume.section_order[3]",
+          "factId": "LEGACY_FACT_008",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容可读"
+          ]
+        },
+        {
+          "evidenceId": "E009",
+          "sourceText": "skills",
+          "location": "resume.section_order[4]",
+          "factId": "LEGACY_FACT_009",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容可读"
+          ]
+        },
+        {
+          "evidenceId": "E010",
+          "sourceText": "SQL",
+          "location": "resume.skills[0].name",
+          "factId": "LEGACY_FACT_010",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E011",
+          "sourceText": "Excel",
+          "location": "resume.skills[1].name",
+          "factId": "LEGACY_FACT_011",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E012",
+          "sourceText": "需求分析与PRD",
+          "location": "resume.skills[2].name",
+          "factId": "LEGACY_FACT_012",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E013",
+          "sourceText": "星城大学（虚构）",
+          "location": "resume.educations[0].school",
+          "factId": "LEGACY_FACT_013",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E014",
+          "sourceText": "信息管理",
+          "location": "resume.educations[0].major",
+          "factId": "LEGACY_FACT_014",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E015",
+          "sourceText": "本科",
+          "location": "resume.educations[0].degree",
+          "factId": "LEGACY_FACT_015",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E016",
+          "sourceText": "2017-09-01",
+          "location": "resume.educations[0].start_date",
+          "factId": "LEGACY_FACT_016",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E017",
+          "sourceText": "2021-06-30",
+          "location": "resume.educations[0].end_date",
+          "factId": "LEGACY_FACT_017",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E018",
+          "sourceText": "work",
+          "location": "resume.experiences[0].category",
+          "factId": "LEGACY_FACT_018",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E019",
+          "sourceText": "产品经理",
+          "location": "resume.experiences[0].title",
+          "factId": "LEGACY_FACT_019",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E020",
+          "sourceText": "望川企业服务（虚构）",
+          "location": "resume.experiences[0].org",
+          "factId": "LEGACY_FACT_020",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E021",
+          "sourceText": "2022-07-01",
+          "location": "resume.experiences[0].start_date",
+          "factId": "LEGACY_FACT_021",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E022",
+          "sourceText": "2025-06-30",
+          "location": "resume.experiences[0].end_date",
+          "factId": "LEGACY_FACT_022",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E023",
+          "sourceText": "运营人员反馈客户资料字段含义不统一。",
+          "location": "resume.experiences[0].star.s",
+          "factId": "LEGACY_FACT_023",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "STAR应用",
+            "内容可读",
+            "内容完整",
+            "专业表达",
+            "成果量化"
+          ]
+        },
+        {
+          "evidenceId": "E024",
+          "sourceText": "负责整理字段定义及验收规则。",
+          "location": "resume.experiences[0].star.t",
+          "factId": "LEGACY_FACT_024",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "STAR应用",
+            "内容可读",
+            "内容完整",
+            "专业表达"
+          ]
+        },
+        {
+          "evidenceId": "E025",
+          "sourceText": "核对字段定义并编写说明",
+          "location": "resume.experiences[0].star.a",
+          "factId": "LEGACY_FACT_025",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "STAR应用",
+            "内容可读",
+            "内容完整",
+            "专业表达",
+            "成果量化"
+          ]
+        },
+        {
+          "evidenceId": "E026",
+          "sourceText": "新说明通过运营验收并在试用环境使用。",
+          "location": "resume.experiences[0].star.r",
+          "factId": "LEGACY_FACT_026",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "STAR应用",
+            "内容可读",
+            "内容完整",
+            "专业表达",
+            "成果量化"
+          ]
+        },
+        {
+          "evidenceId": "E027",
+          "sourceText": "project",
+          "location": "resume.experiences[1].category",
+          "factId": "LEGACY_FACT_027",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E028",
+          "sourceText": "运营周报自动化",
+          "location": "resume.experiences[1].title",
+          "factId": "LEGACY_FACT_028",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E029",
+          "sourceText": "望川企业服务（虚构）",
+          "location": "resume.experiences[1].org",
+          "factId": "LEGACY_FACT_029",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E030",
+          "sourceText": "2024-04-01",
+          "location": "resume.experiences[1].start_date",
+          "factId": "LEGACY_FACT_030",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E031",
+          "sourceText": "2024-06-30",
+          "location": "resume.experiences[1].end_date",
+          "factId": "LEGACY_FACT_031",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "内容完整"
+          ]
+        },
+        {
+          "evidenceId": "E032",
+          "sourceText": "客服人员需要统一处理工单交接。",
+          "location": "resume.experiences[1].star.s",
+          "factId": "LEGACY_FACT_032",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "STAR应用",
+            "内容完整",
+            "成果量化"
+          ]
+        },
+        {
+          "evidenceId": "E033",
+          "sourceText": "负责整理交接规则。",
+          "location": "resume.experiences[1].star.t",
+          "factId": "LEGACY_FACT_033",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "STAR应用",
+            "内容可读",
+            "内容完整",
+            "专业表达"
+          ]
+        },
+        {
+          "evidenceId": "E034",
+          "sourceText": "整理交接规则并完成验收",
+          "location": "resume.experiences[1].star.a",
+          "factId": "LEGACY_FACT_034",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "STAR应用",
+            "内容可读",
+            "内容完整",
+            "专业表达",
+            "成果量化"
+          ]
+        },
+        {
+          "evidenceId": "E035",
+          "sourceText": "交接说明已交付客服试用。",
+          "location": "resume.experiences[1].star.r",
+          "factId": "LEGACY_FACT_035",
+          "verificationStatus": "user_claimed",
+          "supportedDimensions": [
+            "逻辑清晰",
+            "STAR应用",
+            "内容可读",
+            "内容完整",
+            "专业表达",
+            "成果量化"
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "issueId": "ISSUE_LOGIC_MISMATCH",
+          "description": "项目标题为“运营周报自动化”，但其情境与行动内容为客服工单交接规则整理，标题与内容聚焦不一致。",
+          "primaryDimension": "逻辑清晰",
+          "relatedDimensions": [
+            "专业表达"
+          ],
+          "evidenceIds": [
+            "E028",
+            "E032",
+            "E034"
+          ],
+          "severity": "low",
+          "pointsNotEarned": 5
+        },
+        {
+          "issueId": "ISSUE_READABILITY_PUNCTUATION",
+          "description": "经历中的Action行动语句缺少句末中文句号标点。",
+          "primaryDimension": "内容可读",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E025",
+            "E034"
+          ],
+          "severity": "low",
+          "pointsNotEarned": 2
+        },
+        {
+          "issueId": "ISSUE_READABILITY_REDUNDANCY",
+          "description": "项目经历中Task（负责整理交接规则）与Action（整理交接规则并完成验收）字句重合度较高，存在表达冗余。",
+          "primaryDimension": "内容可读",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E033",
+            "E034"
+          ],
+          "severity": "low",
+          "pointsNotEarned": 3
+        },
+        {
+          "issueId": "ISSUE_PROF_ACTION_VERBS",
+          "description": "行动动词偏向于“核对”、“整理”等基础事务性动作，缺乏更具产品经理主导性与专业度的动词。",
+          "primaryDimension": "专业表达",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E025",
+            "E034"
+          ],
+          "severity": "medium",
+          "pointsNotEarned": 5
+        },
+        {
+          "issueId": "ISSUE_PROF_TERMINOLOGY",
+          "description": "经历陈述中行业术语较为简略，缺乏B2B SaaS产品功能设计与规范落地的专业术语。",
+          "primaryDimension": "专业表达",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E023",
+            "E024",
+            "E026",
+            "E034"
+          ],
+          "severity": "medium",
+          "pointsNotEarned": 5
+        },
+        {
+          "issueId": "ISSUE_PROF_PRECISION",
+          "description": "产出物表述为泛化的“说明”或“规则”，缺乏具体产品交付文档与规范精确表达。",
+          "primaryDimension": "专业表达",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E025",
+            "E034"
+          ],
+          "severity": "medium",
+          "pointsNotEarned": 5
+        },
+        {
+          "issueId": "ISSUE_PROF_BOUNDARY",
+          "description": "个人在跨职能团队协作中的具体角色、边界与沟通协调职责界定不够清晰。",
+          "primaryDimension": "专业表达",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E004",
+            "E024",
+            "E033"
+          ],
+          "severity": "medium",
+          "pointsNotEarned": 5
+        },
+        {
+          "issueId": "ISSUE_PROF_OBJECTIVITY",
+          "description": "结果陈述较为笼统，缺乏独立客观的验收标准或效能依据支撑。",
+          "primaryDimension": "专业表达",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E026",
+            "E035"
+          ],
+          "severity": "medium",
+          "pointsNotEarned": 5
+        },
+        {
+          "issueId": "ISSUE_NO_METRICS",
+          "description": "经历中完全缺少可量化的业务结果指标数据。",
+          "primaryDimension": "成果量化",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E026",
+            "E035"
+          ],
+          "severity": "high",
+          "pointsNotEarned": 30
+        },
+        {
+          "issueId": "ISSUE_NO_BASELINE",
+          "description": "未提供任何基线数据与前后对比指标以证明改进幅度。",
+          "primaryDimension": "成果量化",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E026",
+            "E035"
+          ],
+          "severity": "high",
+          "pointsNotEarned": 25
+        },
+        {
+          "issueId": "ISSUE_NO_SCALE",
+          "description": "未量化业务覆盖规模（如涉及的客户数、工单量、字段数等）。",
+          "primaryDimension": "成果量化",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E023",
+            "E032"
+          ],
+          "severity": "medium",
+          "pointsNotEarned": 15
+        },
+        {
+          "issueId": "ISSUE_NO_TIME_WINDOW",
+          "description": "未指明结果观测或成效统计的具体时间窗口。",
+          "primaryDimension": "成果量化",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E026",
+            "E035"
+          ],
+          "severity": "low",
+          "pointsNotEarned": 10
+        },
+        {
+          "issueId": "ISSUE_NO_PROCESS_COUNT",
+          "description": "缺少过程产出数量（如完成梳理的具体字段量、交付规则条目数）。",
+          "primaryDimension": "成果量化",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E025",
+            "E034"
+          ],
+          "severity": "low",
+          "pointsNotEarned": 10
+        },
+        {
+          "issueId": "ISSUE_NO_CREDIBILITY",
+          "description": "由于完全缺乏定量数据，无法建立定量可信度。",
+          "primaryDimension": "成果量化",
+          "relatedDimensions": [],
+          "evidenceIds": [
+            "E026",
+            "E035"
+          ],
+          "severity": "low",
+          "pointsNotEarned": 10
+        },
+        {
+          "issueId": "RUBRIC_内容完整_0",
+          "description": "基础信息缺少电话，请补充。",
+          "primaryDimension": "内容完整",
+          "relatedDimensions": [],
+          "evidenceIds": [],
+          "severity": "medium",
+          "pointsNotEarned": 3
+        }
+      ],
+      "missingInformation": [
+        {
+          "field": "phone",
+          "reason": "基础联系方式不完整，影响招聘方联络效率",
+          "question": "请提供常用的手机联系电话",
+          "potentialDimension": "内容完整",
+          "potentialScoreGain": 3
+        },
+        {
+          "field": "quantified_results",
+          "reason": "缺乏量化成效与业务规模数据",
+          "question": "在字段规范与工单交接规则上线后，分别覆盖了多少字段/工单/租户？处理效率或准确率提升了百分之几？",
+          "potentialDimension": "成果量化",
+          "potentialScoreGain": 40
+        }
+      ],
+      "riskFlags": [],
+      "topPriorities": [
+        {
+          "priority": 1,
+          "issueId": "ISSUE_NO_METRICS",
+          "action": "为工作与项目经历补充明确的业务结果数据与对比指标（如错误率降低幅度、效率提升百分比）。",
+          "expectedScoreGain": 30
+        },
+        {
+          "priority": 2,
+          "issueId": "ISSUE_NO_BASELINE",
+          "action": "引入改进前后的基线指标对比，直观展现方案带来的业务收益。",
+          "expectedScoreGain": 25
+        },
+        {
+          "priority": 3,
+          "issueId": "ISSUE_PROF_ACTION_VERBS",
+          "action": "升级Action动词与专业术语，体现产品需求分析、规则制定与跨部门协同的主导深度。",
+          "expectedScoreGain": 5
+        },
+        {
+          "priority": 4,
+          "issueId": "RUBRIC_内容完整_0",
+          "action": "基础信息缺少电话，请补充。",
+          "expectedScoreGain": 3
+        }
+      ],
+      "jdMatch": 68,
+      "scoringVersion": "coverage_consensus_v4"
+    }
+  }
+}

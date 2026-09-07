@@ -24,7 +24,6 @@ const wirePlan = () => ({
     source_refs: ['/currentResume/personal_summary'],
     introduced_terms: [],
     rationale: '补全现有事实',
-    expected_score_gain: 4,
     default_selected: true,
     safety_status: 'allowed',
     safety_findings: [],

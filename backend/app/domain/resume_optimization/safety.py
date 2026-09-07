@@ -4220,6 +4220,24 @@ def _numeric_findings(
     return findings
 
 
+_PROFICIENCY_CLAUSE = re.compile(
+    r'(?:熟练(?:掌握|使用|运用)?|精通|擅长|proficient\s+(?:in|with)|expert\s+(?:in|at))'
+    r'[^。；;，,\n!?！？]{1,100}', re.IGNORECASE,
+)
+
+
+def _proficiency_findings(candidate: str, before: str, sources: list[str]) -> list[str]:
+    # A skill label is not a proficiency claim, even if a semantic verdict says
+    # supported. Require the qualified clause itself in eligible source text.
+    normalize = lambda value: re.sub(r'\s+', '', _fact_visible_text(value)).casefold()
+    evidence = [normalize(value) for value in [before, *sources]]
+    for match in _PROFICIENCY_CLAUSE.finditer(_fact_visible_text(candidate)):
+        claim = normalize(match.group())
+        if not any(claim in source for source in evidence):
+            return ['新增熟练程度或专长声明没有对应的原文来源；技能名称不能证明熟练程度']
+    return []
+
+
 def _candidate_findings(
     candidate: Any,
     *,
@@ -4237,6 +4255,7 @@ def _candidate_findings(
     if allow_explicit_empty and candidate == "":
         return []
     findings: list[str] = []
+    findings.extend(_proficiency_findings(candidate, before, source_texts))
     findings.extend(_rich_text_format_findings(candidate, before))
     findings.extend(
         _numeric_findings(

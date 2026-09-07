@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "R3V6",
+  "seconds": 3.29,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导建议完全基于当前简历的实际问题提出，引导删除冗余词汇、补齐标点与缺失信息，量化建议具备条件约束未诱导编造，各版本间建议一致且无冲突。",
+    "publishedVariantCount": 2
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导建议完全基于当前简历的实际问题提出，引导删除冗余词汇、补齐标点与缺失信息，量化建议具备条件约束未诱导编造，各版本间建议一致且无冲突。\"}",
+        "建议具备条件约束未诱导编造，各版本间建议一致且无冲突。\"}",
+        "\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导建议完全"
+      ]
+    }
+  ]
+}

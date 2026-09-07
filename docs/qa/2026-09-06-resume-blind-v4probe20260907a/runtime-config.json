@@ -1,0 +1,20 @@
+{
+  "route_profile": "gemini_primary",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "transport": "gemini_generate_content",
+  "endpoint_sha256": "38b4f5189a449376fb78218d3931c27c7d29613a7b2b3a5f4221fae490cf2d6e",
+  "provider_timeout_seconds": 300,
+  "external_notifications_enabled": false,
+  "runtime_budget": {
+    "max_request_body_bytes": 8388608,
+    "max_text_field_chars": 200000,
+    "max_sse_event_bytes": 262144,
+    "max_sse_total_bytes": 4194304,
+    "max_sse_events": 10000,
+    "max_assistant_buffer_chars": 1048576,
+    "stream_total_timeout_seconds": 360.0,
+    "stream_queue_max_events": 64,
+    "max_output_tokens": 16384
+  }
+}

@@ -144,7 +144,6 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     progressText,
     error,
     answerDrafts,
-    persistedAnswerIds,
     isAnswerSubmissionFrozen,
     setAnswer,
     submitAnswers,
@@ -430,7 +429,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         displayStep === 'preview' && run?.status === 'preview_ready'
             ? <>将把 {acceptedChangeIds.length} 项修改应用到当前简历。不会改动总经历库，也不会更换已选内容。</>
             : isCloseBlocked
-                ? '应用与复评期间暂不可关闭'
+                ? '应用与审核期间暂不可关闭'
                 : null
     ), [acceptedChangeIds.length, displayStep, isCloseBlocked, run?.status]);
 

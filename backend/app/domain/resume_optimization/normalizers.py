@@ -1201,6 +1201,7 @@ def _validate_issue_coverage(
             _fail("known issue primaryDimension must be one of the fixed six dimensions")
 
     covered: set[str] = set()
+    routed_fields: set[tuple[str, str, str]] = set()
     for change in changes:
         if change.dimension not in RESUME_EVALUATION_DIMENSION_NAMES:
             _fail("change dimension must be one of the fixed six dimensions")
@@ -1212,8 +1213,10 @@ def _validate_issue_coverage(
         for issue_id in change.issue_ids:
             if issue_id not in known_issue_ids:
                 _fail("a change references an unknown issue ID")
-            if issue_id in covered:
-                _fail("each issue ID must be routed exactly once")
+            route = (issue_id, change.module_id, change.field_path)
+            if route in routed_fields:
+                _fail("each issue ID must be routed exactly once per field")
+            routed_fields.add(route)
             covered.add(issue_id)
             issue_dimensions.add(known_issue_dimensions[issue_id])
         if len(issue_dimensions) != 1 or change.dimension not in issue_dimensions:
@@ -1385,7 +1388,12 @@ def normalize_answered_optimization_changes(
                 proposal["targeted_value"]=proposal["general_value"]
         # Identity, beforeValue and selection state are server-owned. Legacy
         # full replies still undergo the unchanged strict identity checks below.
-        original=expected_by_id[cid].model_dump(mode="json")
+        expected_change = expected_by_id[cid]
+        original=expected_change.model_dump(mode="json")
+        # Internal compatibility value is intentionally excluded from public
+        # model serialization, but the normalizer still needs a complete
+        # server-owned identity map while applying an answer PATCH.
+        original["expected_score_gain"] = expected_change.expected_score_gain
         completed_changes.append({**{key:original[key] for key in set(_CHANGE_KEYS.values())},**proposal})
     expected_issue_ids = {
         issue_id for change in expected_changes for issue_id in change.issue_ids

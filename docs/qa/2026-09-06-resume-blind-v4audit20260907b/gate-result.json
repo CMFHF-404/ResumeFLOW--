@@ -1,0 +1,56 @@
+{
+  "passed": true,
+  "rounds": [
+    {
+      "round": 1,
+      "ok": true,
+      "judgments": [
+        {
+          "case": "K3F8",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "K7J2",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "K9B5",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        }
+      ],
+      "passed": true
+    },
+    {
+      "round": 2,
+      "ok": true,
+      "judgments": [
+        {
+          "case": "K7J2",
+          "expected": "符合",
+          "actual": "符合",
+          "passed": true
+        },
+        {
+          "case": "K9B5",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        },
+        {
+          "case": "K3F8",
+          "expected": "不符合",
+          "actual": "不符合",
+          "passed": true
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "finished_at": "2026-09-07T04:35:21.363845+00:00"
+}

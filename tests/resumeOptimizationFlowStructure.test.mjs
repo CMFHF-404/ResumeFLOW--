@@ -202,6 +202,14 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
     ['summary-second', 'skills-second', 'sections-second'],
   );
 
+  const guidanceEvaluation = {
+    evaluationVersion: 'guidance_audit_v1',
+    auditReceipt: {
+      receiptId: 'receipt-1', inputHash: 'input-hash', tasksHash: 'tasks-hash',
+      judgmentsHash: 'judgments-hash', rubricHash: 'rubric-hash', schemaHash: 'schema-hash',
+      auditVersion: 'guidance_task_audit_v1',
+    },
+  };
   const ready = {
     enabled: true,
     authUserKey: 'owner-a',
@@ -209,8 +217,8 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
     sourceResumeUpdatedAt: 'v1',
     evaluationSignature: 'S1',
     persistedEvaluationSignature: 'S1',
-    evaluation: { overallScore: 60, scoringVersion: 'coverage_consensus_v2' },
-    persistedEvaluation: { overallScore: 60, scoringVersion: 'coverage_consensus_v2' },
+    evaluation: guidanceEvaluation,
+    persistedEvaluation: structuredClone(guidanceEvaluation),
     isJDAnalysisOutdated: false,
     isEvaluationOutdated: false,
     hasResumeVersionConflict: false,
@@ -224,13 +232,10 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
     disabledReason: null,
   });
   assert.equal(resolveResumeOptimizationStartAvailability({
-    ...ready, evaluation: { ...ready.evaluation, scoringVersion: undefined },
-    persistedEvaluation: { ...ready.persistedEvaluation, scoringVersion: undefined },
-  }).canStart, false, 'legacy scoring rules require a fresh baseline');
-  assert.equal(resolveResumeOptimizationStartAvailability({
-    ...ready, evaluation: { ...ready.evaluation, scoringVersion: 'coverage_consensus_v1' },
-    persistedEvaluation: { ...ready.persistedEvaluation, scoringVersion: 'coverage_consensus_v1' },
-  }).canStart, false, 'reports from before duration-unit calibration require a fresh baseline');
+    ...ready,
+    evaluation: { evaluationVersion: 'resume_flow_v1', scoringVersion: 'coverage_consensus_v4' },
+    persistedEvaluation: { evaluationVersion: 'resume_flow_v1', scoringVersion: 'coverage_consensus_v4' },
+  }).canStart, false, 'historical numeric reports require a fresh guidance report');
   assert.equal(resolveResumeOptimizationStartAvailability({ ...ready, enabled: false }).canStart, false);
   assert.equal(resolveResumeOptimizationStartAvailability({
     ...ready,
@@ -238,7 +243,7 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
   }).canStart, false);
   assert.equal(resolveResumeOptimizationStartAvailability({
     ...ready,
-    persistedEvaluation: { overallScore: 59 },
+    persistedEvaluation: { ...guidanceEvaluation, confidence: 'low' },
   }).canStart, false, 'same-signature reports must remain blocked until the exact evaluation is persisted');
   assert.equal(resolveResumeOptimizationStartAvailability({
     ...ready,

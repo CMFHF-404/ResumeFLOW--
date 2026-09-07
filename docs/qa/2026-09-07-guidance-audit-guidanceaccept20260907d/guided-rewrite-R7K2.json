@@ -1,0 +1,105 @@
+{
+  "ok": false,
+  "sample": "R7K2",
+  "seconds": 7.16,
+  "error_type": "AiProviderPayloadError",
+  "message": "Anonymous quality judge failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 567,
+      "function": "_quality_call"
+    },
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 670,
+      "function": "_guided_rewrite"
+    },
+    {
+      "file": "qa_resume_blind_direct.py",
+      "line": 15,
+      "function": "direct"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "planner_service.py",
+      "line": 1288,
+      "function": "plan_resume_optimization"
+    },
+    {
+      "file": "planner_service.py",
+      "line": 42,
+      "function": "_bounded_model_call"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2868,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2026,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2006,
+      "function": "_stream_gemini_json_response_once"
+    },
+    {
+      "file": "response_normalizers.py",
+      "line": 150,
+      "function": "_parse_json_content_candidates"
+    },
+    {
+      "file": "response_normalizers.py",
+      "line": 145,
+      "function": "_parse_json_content_candidates"
+    },
+    {
+      "file": "response_normalizers.py",
+      "line": 126,
+      "function": "_parse_json_content"
+    }
+  ],
+  "auditReceiptId": "d02ff9a6242c44a29019dd033febc563"
+}

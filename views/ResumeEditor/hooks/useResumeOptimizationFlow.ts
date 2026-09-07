@@ -15,7 +15,7 @@ import {
   resumeOptimizationService,
 } from '../../../services/resumeOptimizationService';
 import type { ResumeEvaluation } from '../../../types/ai';
-import { RESUME_SCORING_VERSION } from '../../../types/ai';
+import { isGuidanceAuditEvaluation } from '../../../types/ai';
 import type {
   ResumeOptimizationAnswer,
   ResumeOptimizationAnswerState,
@@ -45,6 +45,8 @@ export const TERMINAL_RESUME_OPTIMIZATION_STATUSES = new Set<ResumeOptimizationS
   'reverted',
 ]);
 
+const GUIDANCE_AUDIT_RECEIPT_VERSION = 'guidance_task_audit_v1';
+
 const RESUME_OPTIMIZATION_PROGRESS_TITLES: Record<ResumeOptimizationProgressNode, string> = {
   freeze_snapshot: '冻结当前简历版本',
   prepare_context: '整理六维问题与经历信息',
@@ -66,7 +68,6 @@ const ACTIVE_STREAM_UI_STATES = new Set<ResumeOptimizationUiState>([
 const summarizeResumeOptimizationPlan = (run: ResumeOptimizationRun) => {
   const plan = run.result ?? run.plan;
   return {
-    beforeScore: run.sourceBeforeScore,
     directChangeCount: plan.changes.filter((change) => (
       change.safetyStatus === 'allowed'
       && change.actionKind === 'rewrite_now'
@@ -480,8 +481,11 @@ export const isResumeOptimizationEvaluationPersistedAndTrusted = (
   evaluationSignature: string,
   isEvaluationOutdated: boolean,
 ) => Boolean(
-  evaluation
-  && evaluation.scoringVersion === RESUME_SCORING_VERSION
+  isGuidanceAuditEvaluation(evaluation)
+  && evaluation.auditReceipt.auditVersion === GUIDANCE_AUDIT_RECEIPT_VERSION
+  && Object.values(evaluation.auditReceipt).every((value) => (
+    typeof value === 'string' && value.trim().length > 0
+  ))
   && !isEvaluationOutdated
   && doesResumeOptimizationEvaluationReceiptMatch(
     persistedEvaluationSignature,
@@ -499,18 +503,18 @@ export const resolveResumeOptimizationStartAvailability = (
   else if (!input.authUserKey || input.authUserKey === 'anonymous') disabledReason = '请先登录。';
   else if (!input.resumeId) disabledReason = '请先选择简历。';
   else if (input.isJDAnalysisOutdated) disabledReason = 'JD 匹配已过期，请重新进行 JD 匹配。';
-  else if (!input.evaluation || !input.evaluationSignature.trim()) disabledReason = '请先生成最新六维报告。';
-  else if (input.evaluation.scoringVersion !== RESUME_SCORING_VERSION) disabledReason = '评分规则已更新，请重新生成六维报告后再优化。';
+  else if (!input.evaluation || !input.evaluationSignature.trim()) disabledReason = '请先生成最新六维指导报告。';
+  else if (!isGuidanceAuditEvaluation(input.evaluation)) disabledReason = '旧版评分报告不能用于新优化，请重新生成指导报告。';
   else if (!isResumeOptimizationEvaluationPersistedAndTrusted(
     input.evaluation,
     input.persistedEvaluationSignature,
     input.persistedEvaluation,
     input.evaluationSignature,
     input.isEvaluationOutdated,
-  )) disabledReason = '六维报告已过期，请重新生成。';
+  )) disabledReason = '六维指导报告已过期，请重新生成。';
   else if (!input.sourceResumeUpdatedAt) disabledReason = '简历仍在加载，请稍候。';
   else if (input.hasResumeVersionConflict) disabledReason = '简历存在版本冲突，请先处理。';
-  else if (input.isEvaluationRunning) disabledReason = '六维报告正在生成。';
+  else if (input.isEvaluationRunning) disabledReason = '六维指导报告正在生成。';
   else if (input.isPolishing) disabledReason = '简历润色正在进行。';
   else if (input.isAutoAssembling) disabledReason = '智能排版正在进行。';
   else if (input.isFlowBusy) disabledReason = '简历优化正在进行。';
@@ -812,7 +816,6 @@ export const useResumeOptimizationFlow = ({
   persistedEvaluation,
   isJDAnalysisOutdated,
   isEvaluationOutdated,
-  jdText,
   hasResumeVersionConflict,
   isEvaluationRunning,
   isPolishing,
@@ -859,7 +862,6 @@ export const useResumeOptimizationFlow = ({
   const applyAnalyticsAttemptRef = useRef<{
     runId: string;
     resumeId: string;
-    beforeScore: number | null;
     acceptedChangeCount: number;
     blockedChangeCount: number;
     bankSuggestionCount: number;
@@ -890,9 +892,6 @@ export const useResumeOptimizationFlow = ({
       resumeId: completedRun.resumeId,
       runId: completedRun.id,
       action: 'success',
-      beforeScore: postEvaluation.beforeScore,
-      afterScore: postEvaluation.afterScore,
-      scoreDelta: postEvaluation.scoreDelta,
       acceptedChangeCount: completedRun.acceptedChangeIds.length,
       blockedChangeCount: planMetrics.blockedChangeCount,
       bankSuggestionCount: planMetrics.bankSuggestionCount,
@@ -984,7 +983,7 @@ export const useResumeOptimizationFlow = ({
       startAttemptRef.current = null;
       applyAttemptRef.current = null;
       clearPostApplyCheckpoint();
-      setError('简历或六维报告已变化，请重新生成优化方案。');
+      setError('简历或六维指导报告已变化，请重新生成优化方案。');
       setUiState('stale');
     } else if (markStale) {
       startAttemptRef.current = null;
@@ -1185,7 +1184,7 @@ export const useResumeOptimizationFlow = ({
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         if (evaluationWaiterRef.current?.generation === generation) evaluationWaiterRef.current = null;
-        reject(new Error('等待六维报告写入本地配置超时。'));
+        reject(new Error('等待六维指导报告写入本地配置超时。'));
       }, 8000);
       evaluationWaiterRef.current = {
         generation,
@@ -1690,7 +1689,6 @@ export const useResumeOptimizationFlow = ({
       planRequestStarted = true;
       trackResumeOptimizationPlanStart({
         resumeId: attempt.resumeId,
-        beforeScore: evaluation?.overallScore,
       });
       const nextRun = await resumeOptimizationService.start({
         resumeId: attempt.resumeId,
@@ -1723,7 +1721,6 @@ export const useResumeOptimizationFlow = ({
         runId: nextRun.id,
         action: 'success',
         ...planMetrics,
-        beforeScore: planMetrics.beforeScore ?? evaluation?.overallScore,
         durationMs: Date.now() - planStartedAt,
       });
       startAttemptRef.current = null;
@@ -1738,7 +1735,6 @@ export const useResumeOptimizationFlow = ({
           trackResumeOptimizationPlanResult({
             resumeId: startAttemptRef.current?.resumeId ?? resumeId,
             action: 'failure',
-            beforeScore: evaluation?.overallScore,
             durationMs: Date.now() - planStartedAt,
             failureCode: toResumeOptimizationAnalyticsFailureCode(cause),
           });
@@ -1759,7 +1755,7 @@ export const useResumeOptimizationFlow = ({
     }
   }, [
     applyRunToState, assertCurrent, authUserKey, beginHandledOperation, evaluationSignature,
-    evaluation?.overallScore, handleOperationError, markSelfOwnedResumeTimestamp, resumeId,
+    handleOperationError, markSelfOwnedResumeTimestamp, resumeId,
     shouldHandleOperationError, startAvailability,
   ]);
 
@@ -1809,7 +1805,7 @@ export const useResumeOptimizationFlow = ({
       latestInputsRef.current.sourceResumeUpdatedAt,
       latestInputsRef.current.evaluationSignature,
     )) {
-      setError('简历或六维报告已变化，请重新生成优化方案。');
+      setError('简历或六维指导报告已变化，请重新生成优化方案。');
       setUiState('stale');
       return null;
     }
@@ -1940,7 +1936,6 @@ export const useResumeOptimizationFlow = ({
         resumeId: appliedRun.resumeId,
         runId: appliedRun.id,
         action: 'failure',
-        beforeScore: appliedRun.sourceBeforeScore,
         acceptedChangeCount: appliedRun.acceptedChangeIds.length,
         blockedChangeCount: planMetrics.blockedChangeCount,
         bankSuggestionCount: planMetrics.bankSuggestionCount,
@@ -1950,7 +1945,7 @@ export const useResumeOptimizationFlow = ({
     };
     try {
     setUiState('rescoring');
-    setProgressText('正在生成应用后的六维报告…');
+    setProgressText('正在生成应用后的六维指导报告…');
     let rescoreClaimId = rescoreClaimIdsRef.current.get(appliedRun.id)
       ?? readResumeOptimizationRescoreClaimId(authUserKey, resumeId, appliedRun.id);
     if (!rescoreClaimId) {
@@ -1959,7 +1954,7 @@ export const useResumeOptimizationFlow = ({
     rescoreClaimIdsRef.current.set(appliedRun.id, rescoreClaimId);
     saveResumeOptimizationRescoreClaimId(authUserKey, resumeId, appliedRun.id, rescoreClaimId);
     const claimTimestamp = latestInputsRef.current.sourceResumeUpdatedAt;
-    if (!claimTimestamp) throw new Error('无法确认复评所基于的简历版本。');
+    if (!claimTimestamp) throw new Error('无法确认审核所基于的简历版本。');
     const claimedRun = await resumeOptimizationService.claimRescore(appliedRun.id, {
       claimId: rescoreClaimId,
       expectedResumeUpdatedAt: claimTimestamp,
@@ -1996,14 +1991,14 @@ export const useResumeOptimizationFlow = ({
     if (checkpoint.phase === 'needs_evaluation') {
       const outcome = await latestGenerateEvaluationRef.current();
       await assertCurrent(generation, operation, appliedRun.id);
-      if (outcome.status !== 'success') {
+      if (outcome.status !== 'success' || !isGuidanceAuditEvaluation(outcome.evaluation)) {
         if (outcome.status === 'error') {
           trackRescoreFailure(undefined, 'resume_evaluation_failed');
         }
         setRun(appliedRun);
         latestRunRef.current = appliedRun;
         setUiState('error');
-        setError('应用已完成，但六维复评失败；可重试复评。');
+        setError('应用已完成，但六维指导审核失败；可重试审核。');
         return null;
       }
       checkpoint = {
@@ -2023,7 +2018,7 @@ export const useResumeOptimizationFlow = ({
       await assertCurrent(generation, operation, appliedRun.id);
       const flushedUpdatedAt = await latestFlushResumeConfigRef.current();
       const finalizedUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(flushedUpdatedAt);
-      if (!finalizedUpdatedAt) throw new Error('六维报告尚未保存。');
+      if (!finalizedUpdatedAt) throw new Error('六维指导报告尚未保存。');
       markSelfOwnedResumeTimestamp(finalizedUpdatedAt);
       checkpoint = {
         runId: appliedRun.id,
@@ -2037,7 +2032,7 @@ export const useResumeOptimizationFlow = ({
     }
     const reportIsCommitted = checkpoint.phase === 'report_committed';
     if (!reportIsCommitted) {
-      throw new Error('应用后复评状态无效。');
+      throw new Error('应用后审核状态无效。');
     }
     try {
       await resumeOptimizationService.claimRescore(appliedRun.id, {
@@ -2062,7 +2057,7 @@ export const useResumeOptimizationFlow = ({
       applyRunToState(finalized.run);
       setProgressText('');
       setProgressNode(null);
-      latestToastRef.current.success('简历优化与复评已完成。');
+      latestToastRef.current.success('简历优化与指导审核已完成。');
       return finalized.run;
     } catch (cause) {
       if (
@@ -2088,7 +2083,7 @@ export const useResumeOptimizationFlow = ({
           applyRunToState(authoritativeRun);
           setProgressText('');
           setProgressNode(null);
-          latestToastRef.current.success('简历优化与复评已完成。');
+          latestToastRef.current.success('简历优化与指导审核已完成。');
           return authoritativeRun;
         }
         applyRunToState(authoritativeRun, false, true);
@@ -2138,7 +2133,6 @@ export const useResumeOptimizationFlow = ({
         resumeId: analyticsAttempt.resumeId,
         runId: analyticsAttempt.runId,
         action,
-        beforeScore: analyticsAttempt.beforeScore,
         acceptedChangeCount: analyticsAttempt.acceptedChangeCount,
         blockedChangeCount: analyticsAttempt.blockedChangeCount,
         bankSuggestionCount: analyticsAttempt.bankSuggestionCount,
@@ -2195,7 +2189,7 @@ export const useResumeOptimizationFlow = ({
         applyRunToState(authoritativeRun);
         setProgressText('');
         setProgressNode(null);
-        latestToastRef.current.success('简历优化与复评已完成。');
+        latestToastRef.current.success('简历优化与指导审核已完成。');
         return authoritativeRun;
       }
       if (authoritativeRun.status === 'applied') {
@@ -2309,12 +2303,15 @@ export const useResumeOptimizationFlow = ({
     const attempt = freezeResumeOptimizationApplyAttempt(currentRun, acceptedChangeIds);
     if (!attempt) return null;
     const applyPlanMetrics = summarizeResumeOptimizationPlan(currentRun);
-    if (!isResumeOptimizationRunContextCurrent(
+    if (
+      !latestInputsRef.current.hasTrustedEvaluation
+      || !isResumeOptimizationRunContextCurrent(
       currentRun,
       latestInputsRef.current.sourceResumeUpdatedAt,
       latestInputsRef.current.evaluationSignature,
-    )) {
-      setError('简历或六维报告已变化，请重新生成优化方案。');
+      )
+    ) {
+      setError('简历或六维指导报告已变化，请重新生成优化方案。');
       setUiState('stale');
       return null;
     }
@@ -2346,7 +2343,6 @@ export const useResumeOptimizationFlow = ({
       applyAnalyticsAttemptRef.current = {
         runId: attempt.runId,
         resumeId: currentRun.resumeId,
-        beforeScore: currentRun.sourceBeforeScore,
         acceptedChangeCount: attempt.acceptedChangeIds.length,
         blockedChangeCount: applyPlanMetrics.blockedChangeCount,
         bankSuggestionCount: applyPlanMetrics.bankSuggestionCount,
@@ -2356,7 +2352,6 @@ export const useResumeOptimizationFlow = ({
       trackResumeOptimizationApplyStart({
         resumeId: currentRun.resumeId,
         runId: currentRun.id,
-        beforeScore: currentRun.sourceBeforeScore,
         acceptedChangeCount: attempt.acceptedChangeIds.length,
         blockedChangeCount: applyPlanMetrics.blockedChangeCount,
         bankSuggestionCount: applyPlanMetrics.bankSuggestionCount,
@@ -2374,7 +2369,6 @@ export const useResumeOptimizationFlow = ({
         resumeId: currentRun.resumeId,
         runId: currentRun.id,
         action: 'success',
-        beforeScore: currentRun.sourceBeforeScore,
         acceptedChangeCount: attempt.acceptedChangeIds.length,
         blockedChangeCount: applyPlanMetrics.blockedChangeCount,
         bankSuggestionCount: applyPlanMetrics.bankSuggestionCount,
@@ -2427,7 +2421,6 @@ export const useResumeOptimizationFlow = ({
               resumeId: analyticsAttempt.resumeId,
               runId: analyticsAttempt.runId,
               action: 'failure',
-              beforeScore: analyticsAttempt.beforeScore,
               acceptedChangeCount: analyticsAttempt.acceptedChangeCount,
               blockedChangeCount: analyticsAttempt.blockedChangeCount,
               bankSuggestionCount: analyticsAttempt.bankSuggestionCount,
@@ -2466,7 +2459,7 @@ export const useResumeOptimizationFlow = ({
     if (!currentRun || currentRun.status !== 'applied' || controllerRef.current) return null;
     setUiState('rescoring');
     setError(null);
-    const started = await beginHandledOperation('六维复评失败，可稍后重试。');
+    const started = await beginHandledOperation('六维指导审核失败，可稍后重试。');
     if (!started) return null;
     const { generation, controller, operation } = started;
     const rescoreRetryStartedAt = Date.now();
@@ -2532,7 +2525,7 @@ export const useResumeOptimizationFlow = ({
       );
     } catch (cause) {
       if (await shouldHandleOperationError(cause, generation, operation, currentRun.id)) {
-        handleOperationError(cause, '六维复评失败，可稍后重试。');
+        handleOperationError(cause, '六维指导审核失败，可稍后重试。');
       }
       return null;
     } finally {
@@ -2728,7 +2721,7 @@ export const useResumeOptimizationFlow = ({
           )
         )
       ) {
-        setError('简历或六维报告已变化，请重新生成优化方案。');
+        setError('简历或六维指导报告已变化，请重新生成优化方案。');
         setUiState('stale');
         return cachedRun;
       }
@@ -2770,7 +2763,7 @@ export const useResumeOptimizationFlow = ({
         )
       ) {
         latestRunRef.current = null;
-        setError('六维报告不可用，请重新生成优化方案。');
+        setError('六维指导报告不可用，请重新生成优化方案。');
         setUiState('stale');
         return latest;
       }

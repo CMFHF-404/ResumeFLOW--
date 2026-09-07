@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sample": "H4Q1",
+  "seconds": 3.36,
+  "value": {
+    "accurate": true,
+    "actionable": true,
+    "safe": true,
+    "requiresAdvancedResponsibilities": false,
+    "introducesFacts": false,
+    "contradictoryAdvice": false,
+    "reason": "指导建议准确指出了当前简历中缺少电话信息的问题，提出的补充真实电话的建议安全可行，未引入未经证实的事实，且各变体版本间无冲突。",
+    "publishedVariantCount": 3
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"accurate\": true, \"actionable\": true, \"safe\": true, \"requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导建议准确指出了当前简历中缺少电话信息的问题，提出的补充真实电话的建议安全可行，未引入未经证实的事实，且各变体版本间无冲突。\"}",
+        "证实的事实，且各变体版本间无冲突。\"}",
+        "requiresAdvancedResponsibilities\": false, \"introducesFacts\": false, \"contradictoryAdvice\": false, \"reason\": \"指导"
+      ]
+    }
+  ]
+}

@@ -46,6 +46,7 @@ def qa_algorithm_hashes(entrypoint):
     paths = [p for folder in ("ai", "resume_optimization")
              for p in (root / "app/domain" / folder).glob("*.py")]
     paths.extend((Path(__file__).resolve(), Path(entrypoint).resolve()))
+    paths.extend(root.glob('qa_resume*.py'))
     return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in paths}
 
@@ -64,8 +65,43 @@ def qa_runtime_fingerprint():
         # complete endpoint by digest rather than writing any of those strings.
         "endpoint_sha256": hashlib.sha256(route.base_url.encode("utf-8")).hexdigest(),
         "provider_timeout_seconds": llm_transport.settings.ai_timeout_seconds,
+        "external_notifications_enabled": bool(getattr(llm_transport.settings, 'feishu_webhook_url', None)),
         "runtime_budget": asdict(runtime_budget.get_ai_runtime_budget()),
     }
+
+
+def require_passed_rubric_gate(folder, current_hashes):
+    """Recompute the fixed gate verdicts; a green summary alone is not authority."""
+    from app.domain.ai.resume_evaluation_audit import audit_binding
+    try:
+        def read(name):
+            return json.loads((folder / name).read_text(encoding='utf-8'))
+        manifest = read('run-manifest.json')['contract']['artifacts']
+        for name, expected in manifest.items():
+            value = read(name)
+            actual = hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
+                separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+            if actual != expected:
+                raise ValueError('gate artifact changed')
+        if read('algorithm-hashes.json') != current_hashes or read('runtime-config.json') != qa_runtime_fingerprint():
+            raise ValueError('gate code/config changed')
+        fixture, protocol = read('fixtures.json'), read('protocol.json')
+        if (read('gate-result.json')['passed'] is not True or protocol['rounds'] != 2
+                or len(protocol['seeds']) != 2 or len(set(protocol['seeds'])) != 2):
+            raise ValueError('gate not passed')
+        for index, seed in enumerate(protocol['seeds'], 1):
+            cases = list(fixture['cases'])
+            random.Random(seed).shuffle(cases)
+            result = read(f'audit-gate-{index}.json')
+            if not result['ok'] or len(result['value']) != len(cases):
+                raise ValueError('gate incomplete')
+            for case, receipt in zip(cases, result['value']):
+                target = case.get('target_dimension', protocol['target_dimension'])
+                actual = [d['verdict'] for d in receipt['dimensions'] if d['dimension'] == target]
+                if (actual != [case['expected']] or receipt['input_hash'] != audit_binding(case['report'], fixture['input'])):
+                    raise ValueError('gate judgment mismatch')
+    except (OSError, ValueError, KeyError, TypeError):
+        raise SystemExit('Rubric audit gate failed, is incomplete, or changed; full benchmark is blocked') from None
 
 
 def prepare_frozen_wave_output(algorithm_hashes, artifacts):
@@ -227,6 +263,9 @@ async def call_record(name, operation, user_id):
     from app.database import AsyncSessionFactory
     from app.domain.billing.billing_service import ai_billing_context
     start=time.monotonic()
+    from app.domain.ai.resume_evaluation_consensus import diagnostic_sink
+    diagnostics = []
+    diagnostic_token = diagnostic_sink.set(diagnostics)
     try:
         async with AsyncSessionFactory() as session:
             async with ai_billing_context(session,user_id,entrypoint="resume_blind_benchmark",metadata={"benchmark":"2026-09-06","case":name}):
@@ -235,11 +274,43 @@ async def call_record(name, operation, user_id):
     except Exception as exc:
         # Persist public type/detail only: upstream credentials and payloads are excluded.
         result={"ok":False,"seconds":round(time.monotonic()-start,2),"error_type":type(exc).__name__,"message":getattr(exc,"public_message",None) or getattr(exc,"detail",None) or "Service call failed; inspect local diagnostic log","frames":[{"file":Path(f.filename).name,"line":f.lineno,"function":f.name} for f in traceback.extract_tb(exc.__traceback__)],"cause_type":type(exc.__cause__).__name__ if exc.__cause__ else None}
+        cause = exc
+        for _ in range(4):
+            status = getattr(getattr(cause, 'response', None), 'status_code', None)
+            if type(status) is int and 400 <= status <= 599:
+                result['provider_status'] = status
+                break
+            cause = getattr(cause, '__cause__', None)
+            if cause is None:
+                break
+        if getattr(exc, 'failure_category', None) in {'source', 'structure'}:
+            result['failure_category'] = exc.failure_category
+            if type(exc).__name__ == 'OptimizationPlanNormalizationError':
+                result['field_path'] = getattr(exc, 'field_path', 'tasks')
+                result['missing_fields'] = getattr(exc, 'missing_fields', [])
+                result['unexpected_field_count'] = getattr(exc, 'unexpected_field_count', 0)
+    finally:
+        diagnostic_sink.reset(diagnostic_token)
+    result['diagnostics'] = diagnostics
     save(name+".json",result)
     print(name, "OK" if result["ok"] else result["error_type"],result["seconds"],flush=True)
     return result
 
+def reject_retired_numeric_run():
+    """Numeric live protocols cannot consume the current score-free service.
+
+    Historical preparation/summary helpers remain available for archived data.
+    This gate deliberately has no CLI bypass; mocked legacy tests can exercise
+    their old cache/account contracts independently of live service routing.
+    """
+    raise SystemExit(
+        'Numeric evaluation runs are retired: the service returns guidance_audit_v1. '
+        'Use qa_guidance_audit.py with a NEW run tag; historical numeric results remain readable.'
+    )
+
+
 async def evaluate(r):
+    reject_retired_numeric_run()
     from app.domain.ai.resume_evaluation_service import analyze_resume_evaluation
     return await analyze_resume_evaluation(JD,json.dumps({"evaluation_scope":"full_resume","target_role":ROLE,"resume":r},ensure_ascii=False))
 
@@ -254,7 +325,7 @@ async def optimize(sample, evaluation):
     current=copy.deepcopy(r); current["experiences"]={e["id"]:e for e in r["experiences"]}
     ctx=FrozenOptimizationContext(resume_id=uid(sample["id"]),resume_updated_at="2026-09-06T00:00:00+00:00",evaluation_signature=hashlib.sha256(json.dumps(r).encode()).hexdigest(),jd_signature=hashlib.sha256(JD.encode()).hexdigest(),target_role=ROLE,evaluation=evaluation,current_resume=current,selected_source_experiences=sample["sources"],selected_master_experience_ids=list(current["experiences"]),selected_experience_links={},bank_suggestion_candidates=[],fact_metadata=_build_legacy_fact_metadata(r))
     plan=await plan_resume_optimization(ctx)
-    initial=plan.model_dump(mode="json")
+    initial=plan.storage_dump()
     answers=[OptimizationAnswer(question_id=q.question_id,state="no_data",value="没有额外可确认的数据，请仅使用已提供的经历来源。") for q in plan.questions]
     docs=ctx.source_documents
     if answers:
@@ -278,7 +349,10 @@ async def optimize(sample, evaluation):
             skills={s["id"]:s for s in r["skills"]}; r["skills"]=[skills[x] for x in value]
         else: continue
         accepted.append(c.change_id)
-    return {"initial_plan":initial,"changes":[c.model_dump(mode="json") for c in changes],"safety":safety.model_dump(mode="json"),"answers":[a.model_dump(mode="json") for a in answers],"accepted":accepted,"resume":r}
+    from app.domain.resume_optimization.coverage import refresh_coverage
+    plan.changes = changes
+    refresh_coverage(plan)
+    return {"initial_plan":initial,"coverage":plan.coverage,"changes":[c.model_dump(mode="json") for c in changes],"safety":safety.model_dump(mode="json"),"answers":[a.model_dump(mode="json") for a in answers],"accepted":accepted,"resume":r}
 
 async def blind_judge(documents):
     from app.domain.ai.llm_transport import _call_llm
@@ -295,7 +369,11 @@ def summarize():
             results=[json.loads(p.read_text(encoding="utf-8")) for p in sorted(OUT.glob(f"{phase}-{bid}-*.json"))]
             evals=[r["value"]["resumeEvaluation"] for r in results if r["ok"]]
             scores=[e["overallScore"] for e in evals]
-            row[phase]={"attempts":len(results),"successes":len(scores),"scores":scores,"mean":statistics.mean(scores) if scores else None,"range":max(scores)-min(scores) if scores else None,"sd":statistics.pstdev(scores) if scores else None,"dimension_ranges":{d["dimension"]:max(e["dimensions"][i]["score"] for e in evals)-min(e["dimensions"][i]["score"] for e in evals) for i,d in enumerate(evals[0]["dimensions"])} if evals else {}}
+            row[phase]={"attempts":len(results),"successes":len(scores),"scores":scores,"mean":statistics.mean(scores) if scores else None,"range":max(scores)-min(scores) if len(scores)>=3 else None,"sd":statistics.pstdev(scores) if len(scores)>=3 else None,"dimension_ranges":{d["dimension"]:max(e["dimensions"][i]["score"] for e in evals)-min(e["dimensions"][i]["score"] for e in evals) for i,d in enumerate(evals[0]["dimensions"])} if len(evals)>=3 else {}}
+            row[phase]["stability_status"] = (
+                "insufficient_samples" if len(scores) < 3 else
+                "stable" if row[phase]["range"] <= 5 and max(row[phase]["dimension_ranges"].values(), default=0) <= 10 else "unstable"
+            )
         before=row["baseline"]["mean"]; after=row["post"]["mean"]
         row["mean_delta"]=after-before if before is not None and after is not None else None
         rows.append(row)
@@ -391,6 +469,7 @@ async def seed_samples(user_id, samples, *, session=None):
     return [{"sample":s["id"],"resume_id":seed_id(user_id,"resume",s["id"])} for s in samples]
 
 async def run(user_id):
+    reject_retired_numeric_run()
     fixture = validate_frozen_run()
     from app.config import load_settings
     from app.database import AsyncSessionFactory,engine

@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "seconds": 5.14,
+  "value": {
+    "documents": [
+      {
+        "id": "c1d3e4d3",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "defects": [
+          "项目经历Action部分缺失句末句号"
+        ],
+        "unsupportedClaims": [],
+        "reason": "内容真实严谨，完全符合source。相较于另一份，在工作经历的Action末尾补齐了句号，标点规范性略好。"
+      },
+      {
+        "id": "73f277c8",
+        "clarity": 4,
+        "specificity": 3,
+        "groundedness": 5,
+        "defects": [
+          "工作经历和项目经历Action部分均缺失句末句号"
+        ],
+        "unsupportedClaims": [],
+        "reason": "内容完全忠于source，但多处STAR描述结尾缺少句末标点。"
+      }
+    ],
+    "preferredId": "c1d3e4d3"
+  }
+}

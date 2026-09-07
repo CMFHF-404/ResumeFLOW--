@@ -1,0 +1,158 @@
+{
+  "ok": false,
+  "seconds": 19.03,
+  "sample": "R7K2",
+  "repeat": 3,
+  "error_type": "ConnectError",
+  "message": "Guidance evaluation failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 306,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 401,
+      "function": "generate_guidance"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 359,
+      "function": "_stage"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1805,
+      "function": "_stream_gemini_json_response_once"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 214,
+      "function": "__aenter__"
+    },
+    {
+      "file": "_client.py",
+      "line": 1583,
+      "function": "stream"
+    },
+    {
+      "file": "_client.py",
+      "line": 1629,
+      "function": "send"
+    },
+    {
+      "file": "_client.py",
+      "line": 1657,
+      "function": "_send_handling_auth"
+    },
+    {
+      "file": "_client.py",
+      "line": 1694,
+      "function": "_send_handling_redirects"
+    },
+    {
+      "file": "_client.py",
+      "line": 1730,
+      "function": "_send_single_request"
+    },
+    {
+      "file": "default.py",
+      "line": 393,
+      "function": "handle_async_request"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 162,
+      "function": "__exit__"
+    },
+    {
+      "file": "default.py",
+      "line": 118,
+      "function": "map_httpcore_exceptions"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 13.58
+    },
+    {
+      "stage": "generation",
+      "category": "generated"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "transport_failure",
+      "cause_type": "ConnectError"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "duration",
+      "seconds": 5.441
+    }
+  ],
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\n  \"GLOBAL_LOGIC_ORDER\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_005\",\n      \"SRC_006\",\n      \"SRC_007\",\n      \"SRC_008\",\n      \"SRC_009\",\n      \"SRC_016\",\n      \"SRC_017\",\n      \"SRC_021\",\n      \"SRC_022\",\n      \"SRC_027\",\n      \"SRC_028\"\n    ],\n    \"reason\": \"各模块划分清晰，时间倒序排列合理\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_CAUSALITY\": {\n    \"assessment\": \"needs_revision\",\n    \"sourceRefs\": [\n      \"SRC_023\",\n      \"SRC_029\"\n    ],\n    \"reason\": \"经历中缺乏背景、行动与结果的因果链条\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充具体业务场景、采取的行动及带来的实际产出\"\n    }\n  },\n  \"GLOBAL_LOGIC_HIERARCHY\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_005\",\n      \"SRC_006\",\n      \"SRC_007\",\n      \"SRC_008\",\n      \"SRC_009\",\n      \"SRC_019\",\n      \"SRC_020\",\n      \"SRC_025\",\n      \"SRC_026\"\n    ],\n    \"reason\": \"个人总结、工作、项目及教育等层级分明\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_LOGIC_FOCUS\": {\n    \"assessment\": \"minor_issues\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_012\",\n      \"SRC_019\",\n      \"SRC_023\",\n      \"SRC_025\",\n      \"SRC_029\"\n    ],\n    \"reason\": \"整体聚焦产品方向，但个人总结主观空泛削弱了专业聚焦点\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"精简自我评价中空泛主观的夸大词汇，突出产品核心技能\"\n    }\n  },\n  \"EXP_001_STAR_SITUATION\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"未提供任何业务背景或项目情境信息\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充该段经历所处的产品业务背景与面临的挑战\"\n    }\n  },\n  \"EXP_001_STAR_TASK\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"未明确具体负责的任务或目标\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充工作中的具体目标或需要解决的核心问题\"\n    }\n  },\n  \"EXP_001_STAR_ACTION\": {\n    \"assessment\": \"generic_role_only\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"仅有“负责/参与相关工作”等泛化套话，无实质动作\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充具体负责的产品功能模块、需求分析或上线动作\"\n    }\n  },\n  \"EXP_001_STAR_RESULT\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"未提及任何交付成果、上线表现或业务影响\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充功能交付上线、流程优化或用户反馈等结果\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_ACTION_VERBS\": {\n    \"assessment\": \"predominantly_vague:vague_action\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"“参与/负责相关工作”均为泛化表述，缺乏具体动词\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"使用如“梳理”、“设计”、“撰写”、“推动”等具体动词\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_TERMINOLOGY\": {\n    \"assessment\": \"predominantly_vague:no_identifiable_work_terms\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"描述中仅有“产品工作”，无具体产品管理专业术语\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充PRD编写、原型设计、版本迭代等业务术语\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_PRECISION\": {\n    \"assessment\": \"predominantly_vague:ambiguous_action_or_object\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"动作和对象均为“相关工作”，内容完全模糊\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"明确具体处理的需求、功能或系统对象\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_RESPONSIBILITY\": {\n    \"assessment\": \"predominantly_vague:ambiguous_responsibility\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"职责边界不明确，未体现个人独立或协作的分工范围\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"明确个人在产品团队中具体承担的工作模块与角色\"\n    }\n  },\n  \"EXP_001_PROFESSIONAL_OBJECTIVITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_023\"\n    ],\n    \"reason\": \"表述虽简略但未见自相矛盾或夸大事实\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"EXP_002_STAR_SITUATION\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"未描述项目背景及周报自动化的触发原因\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充项目启动背景，如人工周报耗时较长等痛点\"\n    }\n  },\n  \"EXP_002_STAR_TASK\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"未说明项目所承担的具体任务目标\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充该项目需达成的自动化目标或具体需求\"\n    }\n  },\n  \"EXP_002_STAR_ACTION\": {\n    \"assessment\": \"generic_role_only\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"仅包含泛化套话，未说明周报自动化中的具体操作\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充数据清洗、SQL编写、看板搭建等具体行动\"\n    }\n  },\n  \"EXP_002_STAR_RESULT\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"未体现项目交付、上线使用或效率提升等结果\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充周报自动化上线后的实际使用或提效情况\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_ACTION_VERBS\": {\n    \"assessment\": \"predominantly_vague:vague_action\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"使用“负责/参与相关工作”等泛化词汇，无明确行动动词\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"使用“提取”、“构建”、“对接”、“交付”等具体动词\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_TERMINOLOGY\": {\n    \"assessment\": \"predominantly_vague:no_identifiable_work_terms\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"经历正文中完全缺乏自动化或数据分析相关专业词汇\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"补充数据指标、报表模板、自动推送等专业术语\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_PRECISION\": {\n    \"assessment\": \"predominantly_vague:ambiguous_action_or_object\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"工作对象与动作均为“相关工作”，缺乏细节指代\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"明确具体处理的数据源、报表类型与业务对接方\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_RESPONSIBILITY\": {\n    \"assessment\": \"predominantly_vague:ambiguous_responsibility\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"未明确个人在自动化项目中的具体职责分配\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"说明个人负责的核心模块或协同配合的分工\"\n    }\n  },\n  \"EXP_002_PROFESSIONAL_OBJECTIVITY\": {\n    \"assessment\": \"met\",\n    \"sourceRefs\": [\n      \"SRC_029\"\n    ],\n    \"reason\": \"描述中没有违背客观事实或夸大因果的内容\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_SCAN\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_005\",\n      \"SRC_006\",\n      \"SRC_007\",\n      \"SRC_008\",\n      \"SRC_009\",\n      \"SRC_019\",\n      \"SRC_020\",\n      \"SRC_023\",\n      \"SRC_025\",\n      \"SRC_026\",\n      \"SRC_029\"\n    ],\n    \"reason\": \"简历结构规整，能迅速定位岗位、经历与教育信息\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_SENTENCES\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_029\"\n    ],\n    \"reason\": \"语句简短，句式结构通顺，无长难句阻碍阅读\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_DENSITY\": {\n    \"assessment\": \"minor_issues\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_029\"\n    ],\n    \"reason\": \"正文充斥大量空泛占位词，有效事实信息密度较低\",\n    \"guidance\": {\n      \"type\": \"needs_information\",\n      \"prompt\": \"替换泛化表述，增加具体行动与成果信息以提高信息密度\"\n    }\n  },\n  \"GLOBAL_READABILITY_GRAMMAR\": {\n    \"assessment\": \"clear\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_029\"\n    ],\n    \"reason\": \"语言表达自然，没有语病或明显的语法错误\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"GLOBAL_READABILITY_REDUNDANCY\": {\n    \"assessment\": \"needs_revision\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_023\",\n      \"SRC_029\"\n    ],\n    \"reason\": \"经历内与自我评价中存在多处相同句式的机械重复与套话\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"删去重复的“参与相关工作”和叠词排比，精简语句\"\n    }\n  },\n  \"GLOBAL_COMPLETENESS_DIRECTION\": {\n    \"assessment\": \"function\",\n    \"sourceRefs\": [\n      \"SRC_004\",\n      \"SRC_019\",\n      \"SRC_025\"\n    ],\n    \"reason\": \"目标岗位明确为产品经理，具备明确的职能方向\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  },\n  \"RISK_EXAGGERATED_CLAIM\": {\n    \"assessment\": \"present\",\n    \"sourceRefs\": [\n      \"SRC_004\"\n    ],\n    \"reason\": \"自我评价中“精通一切产品工作”、“极强”等表述过于绝对夸大\",\n    \"guidance\": {\n      \"type\": \"safe_cleanup\",\n      \"prompt\": \"修改为客观陈述掌握的技能和工作经验，去除绝对化词汇\"\n    }\n  },\n  \"RISK_CONFLICTING_DATE\": {\n    \"assessment\": \"absent\",\n    \"sourceRefs\": [\n      \"SRC_016\",\n      \"SRC_017\",\n      \"SRC_021\",\n      \"SRC_022\",\n      \"SRC_027\",\n      \"SRC_028\"\n    ],\n    \"reason\": \"教育经历与工作/项目经历时间先后顺序合理，无冲突\",\n    \"guidance\": {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  }\n}",
+        " {\n      \"type\": \"none\",\n      \"prompt\": \"\"\n    }\n  }\n}",
+        " [\n      \"SRC_005\",\n      \"SRC_006\",\n      \"SRC_007\",\n      \"SRC_008\",\n      \"SRC_009\",\n      \"SRC_016\",\n      \"SRC_017\",\n      \"SRC_021\",\n      \"SRC_022\",\n      \"SRC_027\",\n      \"SRC_028\"\n    ],\n    \"reason\": \"各模块划分清晰，时间倒序排列合理\",\n    \"guidance\": {"
+      ]
+    }
+  ]
+}

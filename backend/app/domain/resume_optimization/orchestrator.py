@@ -671,6 +671,8 @@ async def create_optimization_plan(
             changes=verified_changes,
             safety_summary=safety_summary,
         )
+        from .coverage import refresh_coverage
+        refresh_coverage(result_plan)
         analysis_result, bank_metadata = _bank_suggestion_inputs(frozen)
         bank_suggestions = build_bank_suggestions(
             analysis_result=analysis_result,
@@ -717,8 +719,8 @@ async def create_optimization_plan(
             user_id,
             str(run.id),
             claim_id=resolved_request_id,
-            plan_json=model_plan.model_dump(mode="json"),
-            result_json=result_plan.model_dump(mode="json"),
+            plan_json=model_plan.storage_dump(),
+            result_json=result_plan.storage_dump(),
             target_status=target,
         )
         await _commit(session)
@@ -1069,10 +1071,25 @@ async def answer_optimization_questions(
                 title=_ANSWER_PROGRESS_TITLES["verify_changes"],
                 request_id=resolved_request_id,
             )
-            # Recheck only newly replaced changes.  Untouched blocked changes
-            # retain their original blocked status and explanatory findings.
+        # Reuse the existing verification round for terminal safe cleanups, too.
+        terminal_cleanup_ids = terminal_only_ids & set(existing_plan.cleanup_fallbacks)
+        terminal_cleanups = []
+        if terminal_cleanup_ids:
+            terminal_questions = [q.model_copy(deep=True, update={
+                "affects_change_ids": [x for x in q.affects_change_ids if x in terminal_cleanup_ids]
+            }) for q in existing_plan.questions if set(q.affects_change_ids) & terminal_cleanup_ids]
+            question_ids = {q.question_id for q in terminal_questions}
+            terminal_cleanups = await rewrite_answered_modules(
+                context=frozen,
+                existing_plan=existing_plan.model_copy(deep=True, update={"questions": terminal_questions}),
+                answers=[a for a in merged_answers if a.question_id in question_ids],
+            )
+        combined_rewrites = (rewrites if answered_affected_ids else []) + terminal_cleanups
+        if combined_rewrites:
             reviewed_rewrites = await review_plan_semantics(
-                plan=OptimizationPlan(changes=rewrites, questions=existing_plan.questions),
+                plan=OptimizationPlan(changes=combined_rewrites, questions=existing_plan.questions,
+                    coverage=[deepcopy(c) for c in existing_plan.coverage if any(
+                        (r.module_id, r.field_path) == (c['module_id'], c['field_path']) for r in combined_rewrites)]),
                 source_documents=_answer_documents(frozen, merged_answers),
             )
             verified_rewrites, _ = verify_plan_changes(
@@ -1096,9 +1113,19 @@ async def answer_optimization_questions(
             update={
                 "changes": final_changes,
                 "safety_summary": _summary_from_changes(final_changes),
+                "coverage": [next((deepcopy(updated) for updated in (reviewed_rewrites.coverage if combined_rewrites else [])
+                                   if (updated['issue_id'], updated['module_id'], updated['field_path']) ==
+                                      (c['issue_id'], c['module_id'], c['field_path'])), deepcopy(c))
+                             for c in existing_plan.coverage],
             },
             deep=True,
         )
+
+        from .coverage import refresh_coverage
+        # Answered or declined fallbacks cannot be replayed on later submissions.
+        consumed = answered_affected_ids | terminal_only_ids
+        result_plan.cleanup_fallbacks = {k: v for k, v in result_plan.cleanup_fallbacks.items() if k not in consumed}
+        refresh_coverage(result_plan)
 
         # Recheck immediately before persistence, including no-LLM terminal
         # answer paths.  Hold the short Run->Resume lock through commit; the
@@ -1131,7 +1158,7 @@ async def answer_optimization_questions(
             run_id,
             claim_id=resolved_request_id,
             answers_json=answers_json,
-            result_json=result_plan.model_dump(mode="json"),
+            result_json=result_plan.storage_dump(),
         )
         await _commit(session)
         return run

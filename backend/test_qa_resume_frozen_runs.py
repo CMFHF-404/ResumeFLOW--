@@ -45,14 +45,82 @@ class FrozenRunTests(unittest.TestCase):
                 "value": {"initial_plan": {"changes": [], "questions": []}},
             })
 
-    def load(self, script, tag):
+    def load(self, script, tag, *options):
         with (patch.object(benchmark, "OUT", self.original),
+              patch.object(evaluation_service, "SCORING_VERSION", "coverage_consensus_v3"),
               patch.object(benchmark, "IDS", benchmark.IDS.copy()),
               patch.object(evaluation_service, "_analyze_resume_evaluation_once",
                            evaluation_service._analyze_resume_evaluation_once),
-              patch("sys.argv", [script, tag]),
+              patch("sys.argv", [script, tag, *options]),
               patch.object(asyncio, "run", side_effect=lambda coro: coro.close())):
             return runpy.run_path(str(Path(__file__).with_name(script)), run_name="__main__")
+
+    def test_batch_resumes_failures_without_replacing_them_or_marking_partial_complete(self):
+        output=self.original.with_name('benchmark-batched')
+        async def failed(name, operation, user):
+            value={'ok':False,'error_type':'FixtureFailure'}
+            write_json(output/(name+'.json'),value)
+            return value
+        for batch in range(3):
+            namespace=self.load('qa_resume_blind_final.py','batched','--service-batch-size','1')
+            namespace['main'].__globals__['engine']=SimpleNamespace(dispose=AsyncMock())
+            prior={p.name:p.read_bytes() for p in output.glob('baseline-*.json')}
+            with (patch.object(benchmark,'OUT',output),patch.object(benchmark,'summarize'),
+                  patch.object(benchmark,'call_record',AsyncMock(side_effect=failed)) as calls):
+                asyncio.run(namespace['main']())
+            self.assertEqual(calls.await_count,1)
+            self.assertEqual(len(list(output.glob('baseline-*.json'))),batch+1)
+            self.assertEqual((output/'finished.json').exists(),batch==2)
+            self.assertTrue(all((output/name).read_bytes()==value for name,value in prior.items()))
+        self.assertEqual(len(list(output.glob('batch-*.json'))),3)
+
+    def test_batch_size_is_bound_to_frozen_protocol(self):
+        self.load('qa_resume_blind_final.py','batchprotocol','--service-batch-size','1')
+        with self.assertRaisesRegex(SystemExit,'NEW run tag'):
+            self.load('qa_resume_blind_final.py','batchprotocol','--service-batch-size','2')
+
+    def test_batched_optimization_and_post_preserve_first_success_selection(self):
+        output=self.original.with_name('benchmark-batchsuccess')
+        self.load('qa_resume_blind_final.py','batchsuccess','--service-batch-size','2')
+        for index in (1,2,3):
+            write_json(output/f'baseline-R3V6-{index}.json',{'ok':True,'value':{'resumeEvaluation':{'baseline':index}}})
+        resumed_texts=[]
+        async def evaluate(resume):
+            resumed_texts.append(resume)
+            return {'resumeEvaluation':{}}
+        async def call(name, operation, user):
+            if name.startswith('optimization-'):
+                value={'resume':{'chosen':int(name.rsplit('-',1)[1])}}
+            else:value=await operation()
+            result={'ok':True,'value':value};write_json(output/(name+'.json'),result)
+            return result
+        blind=AsyncMock(return_value={'preferredId':'tie'})
+        for batch in range(3):
+            namespace=self.load('qa_resume_blind_final.py','batchsuccess','--service-batch-size','2')
+            namespace['main'].__globals__['engine']=SimpleNamespace(dispose=AsyncMock())
+            namespace['main'].__globals__['blind_pair']=blind
+            with (patch.object(benchmark,'OUT',output),patch.object(benchmark,'summarize'),
+                  patch.object(benchmark,'evaluate',side_effect=evaluate),
+                  patch.object(benchmark,'call_record',AsyncMock(side_effect=call)) as calls):
+                asyncio.run(namespace['main']())
+            self.assertEqual(calls.await_count,2)
+            self.assertEqual((output/'finished.json').exists(),batch==2)
+        self.assertEqual(resumed_texts,[{'chosen':1}]*3)
+        self.assertEqual(blind.await_count,1)
+        self.assertEqual(blind.call_args.args[1],{'chosen':1})
+
+    def test_fatal_provider_stops_new_services_before_batch_budget_is_spent(self):
+        namespace=self.load('qa_resume_blind_final.py','batchfatal','--service-batch-size','30')
+        output=self.original.with_name('benchmark-batchfatal')
+        async def run():
+            first=await namespace['run_case']('first',AsyncMock())
+            second=await namespace['run_case']('second',AsyncMock())
+            return first,second
+        with (patch.object(benchmark,'OUT',output),
+              patch.object(benchmark,'call_record',AsyncMock(return_value={'ok':False,'provider_status':403})) as calls):
+            first,second=asyncio.run(run())
+        self.assertFalse(first['ok']);self.assertTrue(second['deferred'])
+        self.assertEqual(calls.await_count,1)
 
     def test_interrupted_member_attempts_append_without_replacing_prior_evidence(self):
         self.load("qa_resume_blind_final.py", "interrupted")
@@ -299,3 +367,11 @@ class FrozenRunTests(unittest.TestCase):
                         asyncio.run(namespace["main"]())
                 optimize.assert_not_called()
                 self.assertFalse((output / "finished.json").exists())
+
+
+def setUpModule():
+    # Exercise historical cache/account contracts with a mocked numeric service.
+    # Current CLI rejection is covered without this mock in test_qa_numeric_contract_guard.
+    gate = patch("qa_resume_blind_benchmark.reject_retired_numeric_run")
+    gate.start()
+    unittest.addModuleCleanup(gate.stop)

@@ -31,6 +31,7 @@ async def direct(sample,evaluation):
     return {'changes':[c.model_dump(mode='json') for c in changes],'questions':[q.model_dump(mode='json') for q in plan.questions],'safety':safety.model_dump(mode='json'),'accepted':accepted,'resume':r}
 
 async def main():
+    b.reject_retired_numeric_run()
     from app.database import engine
     if len(sys.argv) != 2 or not sys.argv[1].isalnum():
         raise SystemExit('Usage: python qa_resume_blind_direct.py NEW_RUN_TAG')
@@ -56,6 +57,7 @@ async def main():
 
 
 async def run_samples(samples):
+    b.reject_retired_numeric_run()
     from app.domain.ai.resume_evaluation import SCORING_VERSION
     async def cached(name,fn):
         p=b.OUT/(name+'.json')

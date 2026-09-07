@@ -1,0 +1,68 @@
+{
+  "status": "not_passed",
+  "planned": {
+    "samples": 8,
+    "baseline": 24,
+    "optimization": 16,
+    "post": 24,
+    "blind": 8
+  },
+  "upstream_blocked": {
+    "samples": [
+      "R2M9",
+      "N4T8"
+    ],
+    "post": 6,
+    "blind": 2
+  },
+  "gates": {
+    "candidate_allow_rate": {
+      "passed": true,
+      "allowed": 21,
+      "candidates": 21,
+      "text_candidates": 20,
+      "order_candidates": 1
+    },
+    "plan_success_rate": {
+      "passed": false,
+      "successes": 12,
+      "attempts": 16,
+      "required_rate": 0.95
+    },
+    "known_defect_coverage": {
+      "passed": false,
+      "verified": [
+        "R7K2 both attempts",
+        "R3V6 both attempts",
+        "H9S2 both attempts",
+        "N6D2 both attempts"
+      ],
+      "unavailable": [
+        "R2M9",
+        "N4T8"
+      ]
+    },
+    "high_quality_controls": {
+      "passed": true,
+      "unchanged_plans": 4
+    },
+    "blind_preference": {
+      "passed": false,
+      "after_wins": 4,
+      "ties": 2,
+      "missing_original_defect_pair": "R2M9"
+    },
+    "score_stability": {
+      "passed": false,
+      "required_total_range": 5,
+      "required_dimension_range": 10,
+      "H9S2_post_total_range": 9,
+      "H9S2_post_professional_range": 50
+    }
+  },
+  "warnings": [
+    "Existing local billing flow sent one daily Feishu usage alert; recording delivery status failed due to date parameter type. No billing/admin changes performed."
+  ],
+  "started_at": "2026-09-07T02:47:05.779050+00:00",
+  "finished_at": "2026-09-07T03:14:42.768799+00:00"
+}

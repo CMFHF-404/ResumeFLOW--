@@ -33,7 +33,6 @@ const change = (changeId = 'CHG_1', overrides = {}) => ({
   source_refs: ['/currentResume/personal_summary'],
   introduced_terms: [],
   rationale: '补全现有事实',
-  expected_score_gain: 4,
   default_selected: true,
   safety_status: 'allowed',
   safety_findings: [],
@@ -117,6 +116,31 @@ const postEvaluation = (overrides = {}) => ({
     remaining: 2,
     introduced: 1,
   },
+  unresolvedFactGapCount: 1,
+  acceptedChangeCount: 1,
+  blockedChangeCount: 1,
+  bankSuggestionCount: 1,
+  safetySummary: {
+    allowed_change_ids: ['CHG_1'],
+    blocked_change_ids: ['CHG_BLOCKED'],
+    pending_change_ids: [],
+    findings: ['已执行薄安全检查'],
+  },
+  ...overrides,
+});
+
+const guidancePostEvaluation = (overrides = {}) => ({
+  version: 'guidance_optimization_post_v1',
+  evaluationSignature: 'post-guidance-signature',
+  resumeUpdatedAt: '2026-09-01T03:10:00Z',
+  overallBandBefore: 'needs_attention',
+  overallBandAfter: 'adequate',
+  dimensionStatusChanges: DIMENSIONS.map((dimension) => ({
+    dimension,
+    beforeStatus: 'needs_attention',
+    afterStatus: 'adequate',
+  })),
+  issueSummary: { resolved: 1, remaining: 1 },
   unresolvedFactGapCount: 1,
   acceptedChangeCount: 1,
   blockedChangeCount: 1,
@@ -378,6 +402,44 @@ test('normalizes fixed six-dimension post evaluation and verifies all arithmetic
   assert.equal(normalized.postEvaluation.issueCounts.introduced, 1);
 });
 
+test('normalizes guidance post evaluation without exposing quality scores or expected gains', async () => {
+  const { normalizeResumeOptimizationRun } = await importNormalizer();
+  const normalized = normalizeResumeOptimizationRun(completedRun({
+    source_before_score: null,
+    post_evaluation: guidancePostEvaluation(),
+  }));
+
+  assert.equal(normalized.postEvaluation.version, 'guidance_optimization_post_v1');
+  assert.equal(normalized.postEvaluation.overallBandBefore, 'needs_attention');
+  assert.equal(normalized.postEvaluation.overallBandAfter, 'adequate');
+  assert.deepEqual(
+    normalized.postEvaluation.dimensionStatusChanges.map((item) => item.dimension),
+    DIMENSIONS,
+  );
+  assert.deepEqual(normalized.postEvaluation.issueSummary, { resolved: 1, remaining: 1 });
+  assert.equal('beforeScore' in normalized.postEvaluation, false);
+  assert.equal('afterScore' in normalized.postEvaluation, false);
+  assert.equal('scoreDelta' in normalized.postEvaluation, false);
+  assert.equal('expectedScoreGain' in normalized.plan.changes[0], false);
+});
+
+test('rejects malformed guidance status comparisons and summary counts', async () => {
+  const { normalizeResumeOptimizationRun } = await importNormalizer();
+  const badDimensionOrder = guidancePostEvaluation();
+  badDimensionOrder.dimensionStatusChanges.reverse();
+  const badStatus = guidancePostEvaluation();
+  badStatus.dimensionStatusChanges[0].afterStatus = 'excellent';
+  const badSummary = guidancePostEvaluation({ issueSummary: { resolved: -1, remaining: 1 } });
+  const leakedScore = guidancePostEvaluation({ afterScore: 92 });
+
+  for (const post_evaluation of [badDimensionOrder, badStatus, badSummary, leakedScore]) {
+    assert.throws(() => normalizeResumeOptimizationRun(completedRun({
+      source_before_score: null,
+      post_evaluation,
+    })));
+  }
+});
+
 test('rejects missing or inconsistent post evaluation summaries', async () => {
   const { normalizeResumeOptimizationRun } = await importNormalizer();
   const invalidPayloads = [];
@@ -487,4 +549,12 @@ test('accepts the semantic review policy while retaining historical policy ident
     assert.equal(normalizeResumeOptimizationRun(run({ policy_version: policy })).policyVersion, policy);
   }
   assert.throws(() => normalizeResumeOptimizationRun(run({ policy_version: 'unknown' })));
+});
+
+
+test('retains both historical and server-task planning protocol versions', async () => {
+  const { normalizeResumeOptimizationRun } = await importNormalizer();
+  for (const prompt_version of ['resume_optimization_prompt_v1', 'resume_optimization_tasks_v2']) {
+    assert.equal(normalizeResumeOptimizationRun(run({ prompt_version })).promptVersion, prompt_version);
+  }
 });

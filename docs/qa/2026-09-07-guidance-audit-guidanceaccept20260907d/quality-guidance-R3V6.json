@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "sample": "R3V6",
+  "seconds": 5.03,
+  "error_type": "ValueError",
+  "message": "Anonymous quality judge failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 567,
+      "function": "_quality_call"
+    },
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 640,
+      "function": "_judge_guidance"
+    },
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 608,
+      "function": "_validate_guidance_judge"
+    }
+  ]
+}

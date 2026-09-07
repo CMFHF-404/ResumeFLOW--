@@ -593,7 +593,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         selectJdFile,
         clearJdFile,
         analysisResult,
-        persistedJDAnalysis,
         isAnalyzing,
         isJDCollapsed,
         setIsJDCollapsed,

@@ -33,6 +33,11 @@ class ConsensusServiceTests(unittest.IsolatedAsyncioTestCase):
         from app.domain.ai.resume_evaluation import SCORING_VERSION, normalize_resume_evaluation
         from test_resume_evaluation import make_evaluation, TEST_FACT_METADATA
         raw = make_evaluation()
+        for dimension in raw['dimensions']:
+            for sub in dimension['subscores']:
+                sub['deductionIssueId'] = dimension['issues'][0] if sub['score'] < sub['maxScore'] else ''
+        for issue in raw['issues']:
+            issue['evidenceIds'] = ['E001']
         historical = normalize_resume_evaluation(raw, jd_available=True, fact_metadata=TEST_FACT_METADATA)
         self.assertNotIn("scoringVersion", historical)
         raw["scoringVersion"] = "model_claimed_version"
@@ -48,7 +53,7 @@ class ConsensusServiceTests(unittest.IsolatedAsyncioTestCase):
         low=report([70]*6,"low");high=report([71]*6,"high")
         operation=AsyncMock(side_effect=[AiRuntimeTimeoutError("connect timeout"),low,high,low])
         with patch.object(service,"_analyze_resume_evaluation_once",operation):
-            self.assertIs(await service._analyze_resume_evaluation_consensus("JD","resume"),low)
+            self.assertIs(await service._analyze_resume_evaluation_consensus_v3("JD","resume"),low)
         self.assertEqual(operation.await_count,4)
 
     async def test_repair_timeout_does_not_discard_two_valid_reports(self):
@@ -56,14 +61,14 @@ class ConsensusServiceTests(unittest.IsolatedAsyncioTestCase):
         from fastapi import HTTPException
         low=report([70]*6,"low");high=report([71]*6,"high")
         with patch.object(service,"_analyze_resume_evaluation_once",AsyncMock(side_effect=[low,HTTPException(status_code=504),high,HTTPException(status_code=504),HTTPException(status_code=504)])):
-            self.assertIs(await service._analyze_resume_evaluation_consensus("JD","resume"),low)
+            self.assertIs(await service._analyze_resume_evaluation_consensus_v3("JD","resume"),low)
 
     async def test_three_independent_generations_select_one_whole_report(self):
         from app.domain.ai import resume_evaluation_service as service
-        samples=[report([80]*6,"high"),report([60]*6,"low"),report([70]*6,"center")]
+        samples=[report([71]*6,"high"),report([69]*6,"low"),report([70]*6,"center")]
         transport=AsyncMock(side_effect=samples)
         with patch.object(service,"_analyze_resume_evaluation_once",transport):
-            chosen=await service._analyze_resume_evaluation_consensus("JD","resume")
+            chosen=await service._analyze_resume_evaluation_consensus_v3("JD","resume")
         self.assertIs(chosen,samples[2])
         self.assertEqual(transport.await_count,3)
 
@@ -73,12 +78,12 @@ class ConsensusServiceTests(unittest.IsolatedAsyncioTestCase):
         error=ResumeEvaluationIntegrityError("invalid evidence")
         with patch.object(service,"_analyze_resume_evaluation_once",AsyncMock(side_effect=[error,report([70]*6,"valid"),error,error,error])):
             with self.assertRaises(ResumeEvaluationIntegrityError):
-                await service._analyze_resume_evaluation_consensus("JD","resume")
+                await service._analyze_resume_evaluation_consensus_v3("JD","resume")
 
     async def test_cancellation_does_not_start_another_generation(self):
         from app.domain.ai import resume_evaluation_service as service
         operation=AsyncMock(side_effect=asyncio.CancelledError())
         with patch.object(service,"_analyze_resume_evaluation_once",operation):
             with self.assertRaises(asyncio.CancelledError):
-                await service._analyze_resume_evaluation_consensus("JD","resume")
+                await service._analyze_resume_evaluation_consensus_v3("JD","resume")
         self.assertEqual(operation.await_count,1)

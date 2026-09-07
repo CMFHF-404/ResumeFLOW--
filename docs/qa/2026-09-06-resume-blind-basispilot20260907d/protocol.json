@@ -1,0 +1,7 @@
+{
+  "purpose": "limited diagnostic pilot, not full blind acceptance",
+  "score_requests": 1,
+  "max_provider_attempts_per_score": 5,
+  "no_external_retry": true,
+  "external_notifications": false
+}

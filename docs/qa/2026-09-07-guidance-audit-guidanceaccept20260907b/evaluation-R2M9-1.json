@@ -1,0 +1,158 @@
+{
+  "ok": false,
+  "seconds": 24.52,
+  "sample": "R2M9",
+  "repeat": 1,
+  "error_type": "ConnectError",
+  "message": "Guidance evaluation failed",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 306,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 401,
+      "function": "generate_guidance"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 359,
+      "function": "_stage"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1805,
+      "function": "_stream_gemini_json_response_once"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 214,
+      "function": "__aenter__"
+    },
+    {
+      "file": "_client.py",
+      "line": 1583,
+      "function": "stream"
+    },
+    {
+      "file": "_client.py",
+      "line": 1629,
+      "function": "send"
+    },
+    {
+      "file": "_client.py",
+      "line": 1657,
+      "function": "_send_handling_auth"
+    },
+    {
+      "file": "_client.py",
+      "line": 1694,
+      "function": "_send_handling_redirects"
+    },
+    {
+      "file": "_client.py",
+      "line": 1730,
+      "function": "_send_single_request"
+    },
+    {
+      "file": "default.py",
+      "line": 393,
+      "function": "handle_async_request"
+    },
+    {
+      "file": "contextlib.py",
+      "line": 162,
+      "function": "__exit__"
+    },
+    {
+      "file": "default.py",
+      "line": 118,
+      "function": "map_httpcore_exceptions"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 18.033
+    },
+    {
+      "stage": "generation",
+      "category": "generated"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "transport_failure",
+      "cause_type": "ConnectError"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "duration",
+      "seconds": 6.056
+    }
+  ],
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"GLOBAL_LOGIC_ORDER\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_013\", \"SRC_014\", \"SRC_015\", \"SRC_016\", \"SRC_017\", \"SRC_019\", \"SRC_020\", \"SRC_021\", \"SRC_022\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_028\", \"SRC_029\", \"SRC_030\", \"SRC_031\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"各模块及时间线排列清晰合理。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_LOGIC_CAUSALITY\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"背景、行动与产出结果之间的因果关联明确。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_LOGIC_HIERARCHY\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_013\", \"SRC_014\", \"SRC_015\", \"SRC_019\", \"SRC_020\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_028\", \"SRC_029\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"经历、项目与技能信息层级清晰分明。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_LOGIC_FOCUS\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_019\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_028\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"围绕产品经理及数据分析相关技能展开，重点突出。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_STAR_SITUATION\": {\"assessment\": \"clear_context\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"明确说明了企业入驻配置存在障碍的业务背景。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_STAR_TASK\": {\"assessment\": \"clear_task\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"明确交代了负责入驻需求和验收的目标任务。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_STAR_ACTION\": {\"assessment\": \"concrete_action\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"清晰陈述了访谈客户、分析漏斗、撰写PRD及协调交付的具体行动。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_STAR_RESULT\": {\"assessment\": \"clear_result\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"定性交付结果明确，改版已上线并通过验收。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_PROFESSIONAL_ACTION_VERBS\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"动词选用具体恰当，准确表达产品工作行为。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_PROFESSIONAL_TERMINOLOGY\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"PRD、漏斗分析等产品术语使用准确。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_PROFESSIONAL_PRECISION\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"工作内容与交付对象表达清晰明确。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_PROFESSIONAL_RESPONSIBILITY\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"责任边界清楚，客观描述个人负责部分与协同工作。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_001_PROFESSIONAL_OBJECTIVITY\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\"], \"reason\": \"表述客观克制，无夸大或前后矛盾。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_STAR_SITUATION\": {\"assessment\": \"clear_context\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"明确说明了运营需要每周汇总数据的背景情况。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_STAR_TASK\": {\"assessment\": \"clear_task\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"明确指出了减少周报重复劳动的任务目标。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_STAR_ACTION\": {\"assessment\": \"concrete_action\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"清晰写出整理指标并使用SQL和Excel输出周报的动作。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_STAR_RESULT\": {\"assessment\": \"clear_result\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"交付周报模板供运营使用，定性产出清晰。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_PROFESSIONAL_ACTION_VERBS\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"使用了整理、输出、交付等具体动作动词。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_PROFESSIONAL_TERMINOLOGY\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"SQL、Excel及指标等术语使用规范得当。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_PROFESSIONAL_PRECISION\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"行动与对象表述明确具体。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_PROFESSIONAL_RESPONSIBILITY\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"清楚界定了支持运营及制作模板的职责边界。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"EXP_002_PROFESSIONAL_OBJECTIVITY\": {\"assessment\": \"met\", \"sourceRefs\": [\"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"表述客观实在，符合实际工作情况。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_READABILITY_SCAN\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\", \"SRC_019\", \"SRC_020\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_028\", \"SRC_029\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"整体结构紧凑，层次清晰，易于扫读。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_READABILITY_SENTENCES\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"语句简练通顺，语义表达清晰。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_READABILITY_DENSITY\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"信息密度适中，内容充实无低价值填充。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_READABILITY_GRAMMAR\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"语句语法规范自然，无明显语病。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_READABILITY_REDUNDANCY\": {\"assessment\": \"clear\", \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"无多余重复或啰嗦表达。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"GLOBAL_COMPLETENESS_DIRECTION\": {\"assessment\": \"function\", \"sourceRefs\": [\"SRC_004\", \"SRC_019\", \"SRC_028\"], \"reason\": \"岗位职能明确为产品经理。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"RISK_EXAGGERATED_CLAIM\": {\"assessment\": \"absent\", \"sourceRefs\": [\"SRC_004\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_032\", \"SRC_033\", \"SRC_034\", \"SRC_035\"], \"reason\": \"未发现不切实际或过度夸大的表述。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}, \"RISK_CONFLICTING_DATE\": {\"assessment\": \"absent\", \"sourceRefs\": [\"SRC_013\", \"SRC_016\", \"SRC_017\", \"SRC_019\", \"SRC_020\", \"SRC_021\", \"SRC_022\", \"SRC_028\", \"SRC_029\", \"SRC_030\", \"SRC_031\"], \"reason\": \"教育背景与工作经历时间线先后承接，无冲突。\", \"guidance\": {\"type\": \"none\", \"prompt\": \"\"}}}",
+        " \"\"}}}",
+        " [\"SRC_004\", \"SRC_005\", \"SRC_006\", \"SRC_007\", \"SRC_008\", \"SRC_009\", \"SRC_010\", \"SRC_011\", \"SRC_012\", \"SRC_013\", \"SRC_014\", \"SRC_015\", \"SRC_019\", \"SRC_020\", \"SRC_023\", \"SRC_024\", \"SRC_025\", \"SRC_026\", \"SRC_028\", \"SRC_029"
+      ]
+    }
+  ]
+}

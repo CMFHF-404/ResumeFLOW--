@@ -1,0 +1,1189 @@
+{
+  "ok": true,
+  "seconds": 12.26,
+  "value": {
+    "initial_plan": {
+      "changes": [
+        {
+          "change_id": "CHANGE_TASK_001",
+          "issue_ids": [
+            "ISSUE_QUANT_METRIC_01",
+            "ISSUE_QUANT_BASELINE_01",
+            "ISSUE_QUANT_SCALE_01",
+            "ISSUE_QUANT_WINDOW_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "action_kind": "ask_user",
+          "scope": "general",
+          "before_value": "新说明通过业务验收，并用于客服试用。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "当前结果缺少量化数据及影响规模，向用户提问以获取具体试用范围和业务成效数据。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_001_RELATED_0",
+          "issue_ids": [
+            "ISSUE_READABILITY_REDUNDANCY_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "新说明通过业务验收，并用于客服试用。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_002",
+          "issue_ids": [
+            "ISSUE_QUANT_BASELINE_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.s",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "客户服务人员反馈工单转交说明不清晰。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "背景描述清晰且无事实矛盾，无需更改。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003",
+          "issue_ids": [
+            "ISSUE_QUANT_SCALE_01",
+            "ISSUE_QUANT_PROCESS_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "experience_star",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.a",
+          "action_kind": "rewrite_now",
+          "scope": "general",
+          "before_value": "访谈客服同事，梳理转交场景并编写需求说明",
+          "general_value": "访谈客服同事，梳理转交场景并编写需求说明。",
+          "targeted_value": "访谈客服同事，梳理转交场景并编写需求说明。",
+          "source_refs": [
+            "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a"
+          ],
+          "introduced_terms": [],
+          "rationale": "补齐句末标点符号，保持与简历其他条目格式统一。",
+          "expected_score_gain": 0,
+          "default_selected": true,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_003_RELATED_0",
+          "issue_ids": [
+            "ISSUE_READABILITY_PUNCTUATION_01",
+            "ISSUE_READABILITY_REDUNDANCY_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.a",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "访谈客服同事，梳理转交场景并编写需求说明",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "该问题保留在同一字段的覆盖检查中。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_004",
+          "issue_ids": [
+            "ISSUE_READABILITY_REDUNDANCY_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "experience_star",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.t",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "负责整理工单转交需求和验收规则。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "任务描述准确无误，无需更改。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "CHANGE_TASK_005",
+          "issue_ids": [
+            "ISSUE_READABILITY_REDUNDANCY_01"
+          ],
+          "dimension": "内容可读",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": "具备企业软件产品需求梳理和验收经验。",
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "个人总结如实反映了经历内容，无需更改。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_0",
+          "issue_ids": [
+            "ISSUE_QUANT_CREDIBILITY_01"
+          ],
+          "dimension": "成果量化",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_1",
+          "issue_ids": [
+            "RUBRIC_内容完整_0"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_2",
+          "issue_ids": [
+            "RUBRIC_内容完整_1"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        },
+        {
+          "change_id": "RETAINED_3",
+          "issue_ids": [
+            "RUBRIC_内容完整_2"
+          ],
+          "dimension": "内容完整",
+          "module_type": "personal_summary",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "action_kind": "leave_unchanged",
+          "scope": "general",
+          "before_value": null,
+          "general_value": null,
+          "targeted_value": null,
+          "source_refs": [],
+          "introduced_terms": [],
+          "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+          "expected_score_gain": 0,
+          "default_selected": false,
+          "safety_status": "pending",
+          "safety_findings": [],
+          "semantic_review": null
+        }
+      ],
+      "questions": [
+        {
+          "question_id": "QUESTION_TASK_001",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "text": "在新说明通过业务验收并用于客服试用后，试用的具体规模（如覆盖客服人数或工单量）以及带来的量化效果（如流转耗时或满意度变化）是什么？",
+          "reason": "当前结果缺少量化数据及影响规模，向用户提问以获取具体试用范围和业务成效数据。",
+          "answer_type": "single_choice_with_text",
+          "choices": [
+            {
+              "value": "no_data",
+              "label": "暂无可确认的信息"
+            }
+          ],
+          "affects_change_ids": [
+            "CHANGE_TASK_001"
+          ],
+          "priority": 1
+        }
+      ],
+      "bank_suggestions": [],
+      "safety_summary": {
+        "allowed_change_ids": [],
+        "blocked_change_ids": [],
+        "pending_change_ids": [],
+        "findings": []
+      },
+      "coverage": [
+        {
+          "issue_id": "ISSUE_READABILITY_PUNCTUATION_01",
+          "dimension": "内容可读",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "工作经历行动条目“访谈客服同事，梳理转交场景并编写需求说明”缺少句末句号，与其它完整句子的标点格式不一致。"
+        },
+        {
+          "issue_id": "ISSUE_READABILITY_REDUNDANCY_01",
+          "dimension": "内容可读",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+        },
+        {
+          "issue_id": "ISSUE_READABILITY_REDUNDANCY_01",
+          "dimension": "内容可读",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+        },
+        {
+          "issue_id": "ISSUE_READABILITY_REDUNDANCY_01",
+          "dimension": "内容可读",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.t",
+          "status": "uncovered",
+          "description": "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+        },
+        {
+          "issue_id": "ISSUE_READABILITY_REDUNDANCY_01",
+          "dimension": "内容可读",
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "status": "uncovered",
+          "description": "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_METRIC_01",
+          "dimension": "成果量化",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "经历结果描述为纯定性表达（通过业务验收并试用），未包含任何业务结果量化数值（如工单流转效率、满意度提升等）。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_BASELINE_01",
+          "dimension": "成果量化",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "未提供优化前后的数据基线对比（如修改前 vs 修改后的错误率或咨询耗时）。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_BASELINE_01",
+          "dimension": "成果量化",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.s",
+          "status": "uncovered",
+          "description": "未提供优化前后的数据基线对比（如修改前 vs 修改后的错误率或咨询耗时）。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_SCALE_01",
+          "dimension": "成果量化",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "未说明试用范围或影响规模（如覆盖客服人数、工单处理总量、涉及业务线规模等）。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_SCALE_01",
+          "dimension": "成果量化",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "未说明试用范围或影响规模（如覆盖客服人数、工单处理总量、涉及业务线规模等）。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_WINDOW_01",
+          "dimension": "成果量化",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "status": "needs_facts",
+          "description": "未包含效果评估的明确时间窗口或观测周期（如试用2周后、上线首月等）。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_PROCESS_01",
+          "dimension": "成果量化",
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.a",
+          "status": "pending_review",
+          "description": "行动过程中缺少过程数量统计（如访谈了多少位客服、输出了多少个转交场景/用例）。"
+        },
+        {
+          "issue_id": "ISSUE_QUANT_CREDIBILITY_01",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "成果量化",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_0",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_1",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        },
+        {
+          "issue_id": "RUBRIC_内容完整_2",
+          "module_id": "current_resume",
+          "field_path": "unsupported",
+          "dimension": "内容完整",
+          "reason": "无法安全定位或不支持修改",
+          "status": "preserved"
+        }
+      ],
+      "planning_tasks": {
+        "TASK_001": {
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.r",
+          "before": "新说明通过业务验收，并用于客服试用。",
+          "issue_ids": [
+            "ISSUE_QUANT_METRIC_01",
+            "ISSUE_QUANT_BASELINE_01",
+            "ISSUE_QUANT_SCALE_01",
+            "ISSUE_READABILITY_REDUNDANCY_01",
+            "ISSUE_QUANT_WINDOW_01"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "经历结果描述为纯定性表达（通过业务验收并试用），未包含任何业务结果量化数值（如工单流转效率、满意度提升等）。",
+            "未提供优化前后的数据基线对比（如修改前 vs 修改后的错误率或咨询耗时）。",
+            "未说明试用范围或影响规模（如覆盖客服人数、工单处理总量、涉及业务线规模等）。",
+            "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。",
+            "未包含效果评估的明确时间窗口或观测周期（如试用2周后、上线首月等）。"
+          ]
+        },
+        "TASK_002": {
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.s",
+          "before": "客户服务人员反馈工单转交说明不清晰。",
+          "issue_ids": [
+            "ISSUE_QUANT_BASELINE_01"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "未提供优化前后的数据基线对比（如修改前 vs 修改后的错误率或咨询耗时）。"
+          ]
+        },
+        "TASK_003": {
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.a",
+          "before": "访谈客服同事，梳理转交场景并编写需求说明",
+          "issue_ids": [
+            "ISSUE_QUANT_SCALE_01",
+            "ISSUE_READABILITY_PUNCTUATION_01",
+            "ISSUE_READABILITY_REDUNDANCY_01",
+            "ISSUE_QUANT_PROCESS_01"
+          ],
+          "dimension": "成果量化",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "未说明试用范围或影响规模（如覆盖客服人数、工单处理总量、涉及业务线规模等）。",
+            "工作经历行动条目“访谈客服同事，梳理转交场景并编写需求说明”缺少句末句号，与其它完整句子的标点格式不一致。",
+            "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。",
+            "行动过程中缺少过程数量统计（如访谈了多少位客服、输出了多少个转交场景/用例）。"
+          ]
+        },
+        "TASK_004": {
+          "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+          "field_path": "star.t",
+          "before": "负责整理工单转交需求和验收规则。",
+          "issue_ids": [
+            "ISSUE_READABILITY_REDUNDANCY_01"
+          ],
+          "dimension": "内容可读",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+          ]
+        },
+        "TASK_005": {
+          "module_id": "current_resume",
+          "field_path": "personal_summary",
+          "before": "具备企业软件产品需求梳理和验收经验。",
+          "issue_ids": [
+            "ISSUE_READABILITY_REDUNDANCY_01"
+          ],
+          "dimension": "内容可读",
+          "sources": {
+            "SOURCE_001": {
+              "pointer": "/currentResume/personal_summary",
+              "text": "具备企业软件产品需求梳理和验收经验。"
+            },
+            "SOURCE_002": {
+              "pointer": "/currentResume/skills/0/name",
+              "text": "SQL"
+            },
+            "SOURCE_003": {
+              "pointer": "/currentResume/skills/1/name",
+              "text": "Excel"
+            },
+            "SOURCE_004": {
+              "pointer": "/currentResume/skills/2/name",
+              "text": "需求分析与PRD"
+            },
+            "SOURCE_005": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/s",
+              "text": "客户服务人员反馈工单转交说明不清晰。"
+            },
+            "SOURCE_006": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/t",
+              "text": "负责整理工单转交需求和验收规则。"
+            },
+            "SOURCE_007": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a",
+              "text": "访谈客服同事，梳理转交场景并编写需求说明"
+            },
+            "SOURCE_008": {
+              "pointer": "/selectedSourceExperiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/r",
+              "text": "新说明通过业务验收，并用于客服试用。"
+            }
+          },
+          "allow_question": true,
+          "problems": [
+            "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+          ]
+        }
+      },
+      "cleanup_fallbacks": {}
+    },
+    "coverage": [
+      {
+        "issue_id": "ISSUE_READABILITY_PUNCTUATION_01",
+        "dimension": "内容可读",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.a",
+        "status": "repaired",
+        "description": "工作经历行动条目“访谈客服同事，梳理转交场景并编写需求说明”缺少句末句号，与其它完整句子的标点格式不一致。",
+        "repair_verdict": "repaired",
+        "repair_reason": "改写在行动条目句末补充了句号，解决了标点不一致的问题。",
+        "reviewed_candidates": [
+          "a1d71aa88fb9e5adb92e1259b6a527b4c078a2c5d028cd58d0438bc4dc13e58e"
+        ],
+        "coverage_input_hash": "1d099d290c26b730f3ec8dfb7c27386b99fe1a4710c3c78340048a0da80363ff"
+      },
+      {
+        "issue_id": "ISSUE_READABILITY_REDUNDANCY_01",
+        "dimension": "内容可读",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改写仅为行动条目添加句号，未涉及个人总结与重叠内容的优化。",
+        "reviewed_candidates": [
+          "a1d71aa88fb9e5adb92e1259b6a527b4c078a2c5d028cd58d0438bc4dc13e58e"
+        ],
+        "coverage_input_hash": "a235b38f31a7b188d2371f530f7f5fef01628ae68999c0225efd5c4b4bee9dda"
+      },
+      {
+        "issue_id": "ISSUE_READABILITY_REDUNDANCY_01",
+        "dimension": "内容可读",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+      },
+      {
+        "issue_id": "ISSUE_READABILITY_REDUNDANCY_01",
+        "dimension": "内容可读",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.t",
+        "status": "uncovered",
+        "description": "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+      },
+      {
+        "issue_id": "ISSUE_READABILITY_REDUNDANCY_01",
+        "dimension": "内容可读",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "status": "uncovered",
+        "description": "个人总结“具备企业软件产品需求梳理和验收经验”与单段经历中的任务/行动/结果词句高度重叠，信息增量较少。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_METRIC_01",
+        "dimension": "成果量化",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "经历结果描述为纯定性表达（通过业务验收并试用），未包含任何业务结果量化数值（如工单流转效率、满意度提升等）。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_BASELINE_01",
+        "dimension": "成果量化",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "未提供优化前后的数据基线对比（如修改前 vs 修改后的错误率或咨询耗时）。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_BASELINE_01",
+        "dimension": "成果量化",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.s",
+        "status": "uncovered",
+        "description": "未提供优化前后的数据基线对比（如修改前 vs 修改后的错误率或咨询耗时）。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_SCALE_01",
+        "dimension": "成果量化",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "未说明试用范围或影响规模（如覆盖客服人数、工单处理总量、涉及业务线规模等）。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改写未补充试用范围或影响规模等量化数据。",
+        "reviewed_candidates": [
+          "a1d71aa88fb9e5adb92e1259b6a527b4c078a2c5d028cd58d0438bc4dc13e58e"
+        ],
+        "coverage_input_hash": "c3680a6fc03ef5f28f0358ed3eafbc46682c42fbe2a840dc06a4787cc6d6bfcd"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_SCALE_01",
+        "dimension": "成果量化",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "未说明试用范围或影响规模（如覆盖客服人数、工单处理总量、涉及业务线规模等）。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_WINDOW_01",
+        "dimension": "成果量化",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.r",
+        "status": "uncovered",
+        "description": "未包含效果评估的明确时间窗口或观测周期（如试用2周后、上线首月等）。"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_PROCESS_01",
+        "dimension": "成果量化",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.a",
+        "status": "unrepaired",
+        "description": "行动过程中缺少过程数量统计（如访谈了多少位客服、输出了多少个转交场景/用例）。",
+        "repair_verdict": "unresolved",
+        "repair_reason": "改写未补充访谈人数、场景数量等过程量化指标。",
+        "reviewed_candidates": [
+          "a1d71aa88fb9e5adb92e1259b6a527b4c078a2c5d028cd58d0438bc4dc13e58e"
+        ],
+        "coverage_input_hash": "5149c5502ed901b8ec73fa1e7c06b4497797088d93c3668bb2c223949db7e2aa"
+      },
+      {
+        "issue_id": "ISSUE_QUANT_CREDIBILITY_01",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "成果量化",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_0",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_1",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      },
+      {
+        "issue_id": "RUBRIC_内容完整_2",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "dimension": "内容完整",
+        "reason": "无法安全定位或不支持修改",
+        "status": "preserved"
+      }
+    ],
+    "changes": [
+      {
+        "change_id": "CHANGE_TASK_001",
+        "issue_ids": [
+          "ISSUE_QUANT_METRIC_01",
+          "ISSUE_QUANT_BASELINE_01",
+          "ISSUE_QUANT_SCALE_01",
+          "ISSUE_QUANT_WINDOW_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "新说明通过业务验收，并用于客服试用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "未补充可确认的事实，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_001_RELATED_0",
+        "issue_ids": [
+          "ISSUE_READABILITY_REDUNDANCY_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.r",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "新说明通过业务验收，并用于客服试用。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_002",
+        "issue_ids": [
+          "ISSUE_QUANT_BASELINE_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.s",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "客户服务人员反馈工单转交说明不清晰。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "背景描述清晰且无事实矛盾，无需更改。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_003",
+        "issue_ids": [
+          "ISSUE_QUANT_SCALE_01",
+          "ISSUE_QUANT_PROCESS_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "experience_star",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.a",
+        "action_kind": "rewrite_now",
+        "scope": "general",
+        "before_value": "访谈客服同事，梳理转交场景并编写需求说明",
+        "general_value": "访谈客服同事，梳理转交场景并编写需求说明。",
+        "targeted_value": "访谈客服同事，梳理转交场景并编写需求说明。",
+        "source_refs": [
+          "/currentResume/experiences/64c63a3e-1f04-5714-84b2-5e0780a4546f/star/a"
+        ],
+        "introduced_terms": [],
+        "rationale": "补齐句末标点符号，保持与简历其他条目格式统一。",
+        "expected_score_gain": 0,
+        "default_selected": true,
+        "safety_status": "allowed",
+        "safety_findings": [],
+        "semantic_review": {
+          "input_hash": "a1d71aa88fb9e5adb92e1259b6a527b4c078a2c5d028cd58d0438bc4dc13e58e",
+          "policy_version": "evidence_semantic_v2",
+          "verdict": "supported",
+          "reason": "改写仅在句末补充句号，表述与原内容一致且完全由来源支持。"
+        }
+      },
+      {
+        "change_id": "CHANGE_TASK_003_RELATED_0",
+        "issue_ids": [
+          "ISSUE_READABILITY_PUNCTUATION_01",
+          "ISSUE_READABILITY_REDUNDANCY_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.a",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "访谈客服同事，梳理转交场景并编写需求说明",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "该问题保留在同一字段的覆盖检查中。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_004",
+        "issue_ids": [
+          "ISSUE_READABILITY_REDUNDANCY_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "experience_star",
+        "module_id": "64c63a3e-1f04-5714-84b2-5e0780a4546f",
+        "field_path": "star.t",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "负责整理工单转交需求和验收规则。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "任务描述准确无误，无需更改。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "CHANGE_TASK_005",
+        "issue_ids": [
+          "ISSUE_READABILITY_REDUNDANCY_01"
+        ],
+        "dimension": "内容可读",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "personal_summary",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": "具备企业软件产品需求梳理和验收经验。",
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "个人总结如实反映了经历内容，无需更改。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_0",
+        "issue_ids": [
+          "ISSUE_QUANT_CREDIBILITY_01"
+        ],
+        "dimension": "成果量化",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_1",
+        "issue_ids": [
+          "RUBRIC_内容完整_0"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_2",
+        "issue_ids": [
+          "RUBRIC_内容完整_1"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      },
+      {
+        "change_id": "RETAINED_3",
+        "issue_ids": [
+          "RUBRIC_内容完整_2"
+        ],
+        "dimension": "内容完整",
+        "module_type": "personal_summary",
+        "module_id": "current_resume",
+        "field_path": "unsupported",
+        "action_kind": "leave_unchanged",
+        "scope": "general",
+        "before_value": null,
+        "general_value": null,
+        "targeted_value": null,
+        "source_refs": [],
+        "introduced_terms": [],
+        "rationale": "无法安全定位到可编辑字段，或字段受隐私保护，保留原文。",
+        "expected_score_gain": 0,
+        "default_selected": false,
+        "safety_status": "pending",
+        "safety_findings": [],
+        "semantic_review": null
+      }
+    ],
+    "safety": {
+      "allowed_change_ids": [
+        "CHANGE_TASK_003"
+      ],
+      "blocked_change_ids": [],
+      "pending_change_ids": [
+        "CHANGE_TASK_001",
+        "CHANGE_TASK_001_RELATED_0",
+        "CHANGE_TASK_002",
+        "CHANGE_TASK_003_RELATED_0",
+        "CHANGE_TASK_004",
+        "CHANGE_TASK_005",
+        "RETAINED_0",
+        "RETAINED_1",
+        "RETAINED_2",
+        "RETAINED_3"
+      ],
+      "findings": []
+    },
+    "answers": [
+      {
+        "question_id": "QUESTION_TASK_001",
+        "state": "no_data",
+        "value": "没有额外可确认的数据，请仅使用已提供的经历来源。"
+      }
+    ],
+    "accepted": [
+      "CHANGE_TASK_003"
+    ],
+    "resume": {
+      "profile": {
+        "name": "林澈",
+        "email": "linche@example.invalid",
+        "phone": "",
+        "location": "深圳",
+        "linkedin": ""
+      },
+      "personal_summary": "具备企业软件产品需求梳理和验收经验。",
+      "section_order": [
+        "summary",
+        "work",
+        "project",
+        "education",
+        "skills"
+      ],
+      "skills": [
+        {
+          "id": "0122f4f0-a5da-546d-a2b0-5d50db7e9324",
+          "name": "SQL"
+        },
+        {
+          "id": "8ce35a9a-e721-510f-8b15-9fc39b38d284",
+          "name": "Excel"
+        },
+        {
+          "id": "febb4316-e4d0-51a8-95db-e81230be7c27",
+          "name": "需求分析与PRD"
+        }
+      ],
+      "educations": [
+        {
+          "id": "4d091413-1124-5fc2-83ac-c3d738e3c8a9",
+          "school": "星城大学（虚构）",
+          "major": "信息管理",
+          "degree": "本科",
+          "start_date": "2017-09-01",
+          "end_date": "2021-06-30"
+        }
+      ],
+      "certifications": [],
+      "experiences": [
+        {
+          "category": "work",
+          "title": "产品经理",
+          "org": "青屿企业软件（虚构）",
+          "start_date": "2022-07-01",
+          "end_date": "2025-06-30",
+          "is_current": false,
+          "star": {
+            "s": "客户服务人员反馈工单转交说明不清晰。",
+            "t": "负责整理工单转交需求和验收规则。",
+            "a": "访谈客服同事，梳理转交场景并编写需求说明。",
+            "r": "新说明通过业务验收，并用于客服试用。"
+          },
+          "id": "64c63a3e-1f04-5714-84b2-5e0780a4546f"
+        }
+      ]
+    }
+  },
+  "diagnostics": []
+}

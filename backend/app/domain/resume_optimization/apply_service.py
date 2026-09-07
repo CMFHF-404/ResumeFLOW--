@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
@@ -22,6 +23,8 @@ from ...constants import ALLOWED_OVERRIDE_KEYS
 from ...database import AsyncSessionFactory
 from ...models import ExperienceCategory, ExperienceVersion, MasterExperience
 from ...utils.time_utils import utc_now_aware
+from ..ai.guidance_receipts import GuidanceReceiptError
+from ..ai.public_errors import ResumeEvaluationAuditError
 from ..ai.resume_evaluation import DIMENSION_NAMES, SCORING_VERSION, normalize_resume_evaluation
 from ..resume.models import Resume, ResumeExperienceLink
 from ..resume.resume_service import _mark_resume_analysis_outdated
@@ -48,6 +51,7 @@ from .schemas import (
     OptimizationSafetySummary,
     ResumeOptimizationApplyRequest,
     ResumeOptimizationFinalizeRequest,
+    ResumeOptimizationGuidancePostEvaluation,
     ResumeOptimizationPostEvaluation,
     ResumeOptimizationRescoreClaimRequest,
     ResumeOptimizationRevertRequest,
@@ -57,9 +61,6 @@ from .safety import preserves_rich_text_structure, verify_plan_changes
 from .state_machine import InvalidOptimizationTransitionError, require_status_transition
 
 
-_RESULT_ROOT_KEYS = frozenset(
-    {"changes", "questions", "bank_suggestions", "safety_summary"}
-)
 _FROZEN_SNAPSHOT_KEYS = frozenset(
     {
         "resume_id",
@@ -86,6 +87,8 @@ _SECTION_PATHS = frozenset({"section_order", "sectionOrder"})
 _APPLY_SNAPSHOT_VERSION = "resume_optimization_apply_v1"
 _ROLLBACK_BEFORE_VERSION = "resume_optimization_rollback_before_v1"
 _POST_EVALUATION_VERSION = "resume_optimization_post_evaluation_v1"
+_GUIDANCE_POST_EVALUATION_VERSION = "guidance_optimization_post_v1"
+_GUIDANCE_SCORING_VERSION = "guidance_audit_v1"
 _STALE_PUBLIC_MESSAGE = "简历内容或六维评估已更新，请重新生成优化方案。"
 _ACTIVE_RESCORE_CLAIM_KEY = "_activeRescoreClaim"
 _DEFAULT_RESCORE_CLAIM_TTL_SECONDS = 900
@@ -369,12 +372,8 @@ def _as_uuid(value: Any, *, field_name: str) -> uuid.UUID:
 
 def _strict_final_plan(run: ResumeOptimizationRun) -> OptimizationPlan:
     raw = run.result_json
-    if not isinstance(raw, Mapping) or not raw or set(raw) != _RESULT_ROOT_KEYS:
-        raise OptimizationApplyValidationError(
-            "Persisted final optimization result has an invalid root shape"
-        )
     try:
-        plan = OptimizationPlan.model_validate(raw)
+        plan = OptimizationPlan.from_storage(raw)
     except (TypeError, ValidationError, ValueError) as exc:
         raise OptimizationApplyValidationError(
             "Persisted final optimization result is invalid"
@@ -1088,6 +1087,58 @@ def _validate_current_report(
         ) from exc
 
 
+async def _validate_current_guidance_receipt(
+    *,
+    user_id: str,
+    resume: Resume,
+    snapshot: Mapping[str, Any],
+) -> None:
+    config = resume.config
+    analysis = config.get("jdAnalysis") if isinstance(config, Mapping) else None
+    result = analysis.get("result") if isinstance(analysis, Mapping) else None
+    public = result.get("resumeEvaluation") if isinstance(result, Mapping) else None
+    frozen = snapshot.get("evaluation")
+    if (
+        not isinstance(public, Mapping)
+        or public.get("evaluationVersion") != _GUIDANCE_SCORING_VERSION
+        or not isinstance(frozen, Mapping)
+        or frozen.get("scoringVersion") != _GUIDANCE_SCORING_VERSION
+    ):
+        raise OptimizationApplyStaleError()
+    binding = public.get("auditReceipt")
+    if (
+        not isinstance(binding, Mapping)
+        or frozen.get("_guidanceReceiptBinding") != binding
+    ):
+        raise OptimizationApplyStaleError()
+    try:
+        from ..ai.guidance_evaluation import rebuild_guidance_receipt
+        from ..ai.guidance_receipts import load_guidance_receipt
+
+        receipt_id = binding.get("receiptId")
+        if not isinstance(receipt_id, str) or not receipt_id:
+            raise ValueError("missing guidance receipt ID")
+        receipt = await load_guidance_receipt(
+            receipt_id=receipt_id,
+            user_id=user_id,
+        )
+        rebuilt = rebuild_guidance_receipt(public, receipt)
+        rebuilt["_guidanceReceiptBinding"] = deepcopy(dict(binding))
+        rebuilt["_guidanceTasks"] = deepcopy(receipt["tasks"])
+        rebuilt["_guidanceSources"] = deepcopy(receipt["sources"])
+        if hash_canonical_json(rebuilt) != hash_canonical_json(frozen):
+            raise ValueError("frozen guidance receipt changed")
+    except (
+        GuidanceReceiptError,
+        ResumeEvaluationAuditError,
+        ValidationError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise OptimizationApplyStaleError() from exc
+
+
 def source_snapshot_uses_v2_signature_contract(snapshot: Any) -> bool:
     """Return whether a frozen source was server-marked for current apply."""
 
@@ -1482,7 +1533,10 @@ async def apply_resume_optimization(
 
         try:
             snapshot = _validated_snapshot(run)
-            if snapshot.get("evaluation", {}).get("scoringVersion") != SCORING_VERSION:
+            if (
+                snapshot.get("evaluation", {}).get("scoringVersion")
+                != _GUIDANCE_SCORING_VERSION
+            ):
                 raise OptimizationApplyStaleError()
         except OptimizationApplyStaleError:
             await persist_stale()
@@ -1508,6 +1562,11 @@ async def apply_resume_optimization(
             raise OptimizationApplyStaleError()
         try:
             _validate_current_report(run, resume, snapshot)
+            await _validate_current_guidance_receipt(
+                user_id=user_id,
+                resume=resume,
+                snapshot=snapshot,
+            )
         except OptimizationApplyStaleError:
             await persist_stale()
             raise
@@ -3286,6 +3345,158 @@ def _post_evaluation_summary(
     )
 
 
+def _guidance_issue_identity(issue: Any) -> tuple[str, str, str]:
+    if not isinstance(issue, Mapping):
+        raise ValueError("guidance issue must be an object")
+    task_id, field_path, dimension = (
+        issue.get(key) for key in ("taskId", "fieldPath", "primaryDimension")
+    )
+    if any(not isinstance(value, str) or not value.strip()
+           for value in (task_id, field_path, dimension)):
+        raise ValueError("guidance issue must identify its task and field")
+    # Punctuation IDs enumerate remaining marks across the resume, so fixing
+    # one field renumbers later tasks. Count occurrences within each field.
+    if re.fullmatch(r"GLOBAL_READABILITY_PUNCTUATION_\d+", task_id):
+        task_id = "GLOBAL_READABILITY_PUNCTUATION"
+    return dimension, field_path, task_id
+
+
+def _post_guidance_summary(
+    *,
+    run: ResumeOptimizationRun,
+    resume: Resume,
+    evaluation_signature: str,
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> dict[str, Any]:
+    if (
+        before.get("scoringVersion") != _GUIDANCE_SCORING_VERSION
+        or after.get("scoringVersion") != _GUIDANCE_SCORING_VERSION
+    ):
+        raise OptimizationScoringVersionMismatchError()
+    before_dimensions = {
+        item["dimension"]: item
+        for item in before.get("dimensions", [])
+        if isinstance(item, Mapping)
+    }
+    after_dimensions = {
+        item["dimension"]: item
+        for item in after.get("dimensions", [])
+        if isinstance(item, Mapping)
+    }
+    if set(before_dimensions) != set(DIMENSION_NAMES) or set(after_dimensions) != set(
+        DIMENSION_NAMES
+    ):
+        raise ValueError("guidance evaluations do not contain six dimensions")
+    changes = [
+        {
+            "dimension": name,
+            "beforeStatus": before_dimensions[name]["level"],
+            "afterStatus": after_dimensions[name]["level"],
+        }
+        for name in DIMENSION_NAMES
+    ]
+    before_issues = Counter(
+        _guidance_issue_identity(issue) for issue in before.get("issues", [])
+    )
+    after_issues = Counter(
+        _guidance_issue_identity(issue) for issue in after.get("issues", [])
+    )
+    plan = _strict_final_plan(run)
+    payload = {
+        "version": _GUIDANCE_POST_EVALUATION_VERSION,
+        "evaluationSignature": evaluation_signature,
+        "resumeUpdatedAt": _normalize_current_timestamp(resume.updated_at),
+        "overallBandBefore": before["overallLevel"],
+        "overallBandAfter": after["overallLevel"],
+        "dimensionStatusChanges": changes,
+        "issueSummary": {
+            "resolved": (before_issues - after_issues).total(),
+            "remaining": after_issues.total(),
+        },
+        "unresolvedFactGapCount": len(after.get("missingInformation", [])),
+        "acceptedChangeCount": len(run.accepted_change_ids),
+        "blockedChangeCount": len(plan.safety_summary.blocked_change_ids),
+        "bankSuggestionCount": len(plan.bank_suggestions),
+        "safetySummary": plan.safety_summary.model_dump(mode="json"),
+    }
+    return ResumeOptimizationGuidancePostEvaluation.model_validate(payload).model_dump(
+        mode="json"
+    )
+
+
+async def _load_private_guidance_evaluation(
+    *,
+    user_id: str,
+    public_report: Mapping[str, Any],
+    current_snapshot: Mapping[str, Any],
+    expected_target_role: str,
+) -> dict[str, Any]:
+    binding = public_report.get("auditReceipt")
+    receipt_id = binding.get("receiptId") if isinstance(binding, Mapping) else None
+    if not isinstance(receipt_id, str) or not receipt_id:
+        raise ValueError("guidance evaluation receipt is missing")
+    from ..ai.guidance_evaluation import rebuild_guidance_receipt
+    from ..ai.guidance_receipts import canonical_json_hash, load_guidance_receipt
+
+    receipt = await load_guidance_receipt(receipt_id=receipt_id, user_id=user_id)
+    current_input_hash = canonical_json_hash(
+        {
+            "resume": current_snapshot.get("resume"),
+            "fact_metadata": current_snapshot.get("fact_metadata"),
+        }
+    )
+    if (
+        receipt.get("input_hash") != current_input_hash
+        or public_report.get("targetRole") != expected_target_role
+    ):
+        raise ValueError("post guidance receipt does not match current snapshot")
+    return rebuild_guidance_receipt(public_report, receipt)
+
+
+async def _reload_frozen_guidance_evaluation(
+    *,
+    user_id: str,
+    frozen_evaluation: Mapping[str, Any],
+) -> dict[str, Any]:
+    binding = frozen_evaluation.get("_guidanceReceiptBinding")
+    receipt_id = binding.get("receiptId") if isinstance(binding, Mapping) else None
+    if not isinstance(receipt_id, str) or not receipt_id:
+        raise ValueError("frozen guidance receipt is missing")
+    from ..ai.guidance_evaluation import assemble_guidance, rebuild_guidance_receipt
+    from ..ai.guidance_receipts import (
+        guidance_public_hash,
+        load_guidance_receipt,
+        validate_guidance_receipt,
+    )
+
+    receipt = validate_guidance_receipt(
+        await load_guidance_receipt(receipt_id=receipt_id, user_id=user_id)
+    )
+    historical_contract = {
+        "tasks": receipt["tasks"],
+        "sources": receipt["sources"],
+    }
+    public, _historical_internal = assemble_guidance(
+        historical_contract,
+        receipt["judgments"],
+        audit=receipt["audit"],
+        target_role=receipt["internal_report"].get("targetRole", ""),
+        jd_match=receipt["internal_report"].get("jdMatch"),
+    )
+    if guidance_public_hash(public) != receipt["public_hash"]:
+        raise ValueError("frozen guidance public report cannot be reconstructed")
+    public["auditReceipt"] = deepcopy(dict(binding))
+    rebuilt = rebuild_guidance_receipt(public, receipt)
+    enriched = deepcopy(rebuilt)
+    enriched["_guidanceReceiptBinding"] = deepcopy(dict(binding))
+    enriched["_guidanceTasks"] = deepcopy(receipt["tasks"])
+    enriched["_guidanceSources"] = deepcopy(receipt["sources"])
+    if hash_canonical_json(enriched) != hash_canonical_json(frozen_evaluation):
+        raise ValueError("frozen guidance receipt changed")
+    return rebuilt
+
+
 def _safe_finalize_error() -> dict[str, Any]:
     return {
         "code": OptimizationFinalizePendingError.code,
@@ -4040,8 +4251,17 @@ async def finalize_run_from_persisted_evaluation(
             raise OptimizationContentConflictError()
         if run.status == ResumeOptimizationStatus.COMPLETED.value:
             try:
-                completed_summary = ResumeOptimizationPostEvaluation.model_validate(
-                    run.post_evaluation_json
+                raw_completed_summary = run.post_evaluation_json
+                completed_summary = (
+                    ResumeOptimizationGuidancePostEvaluation.model_validate(
+                        raw_completed_summary
+                    )
+                    if isinstance(raw_completed_summary, Mapping)
+                    and raw_completed_summary.get("version")
+                    == _GUIDANCE_POST_EVALUATION_VERSION
+                    else ResumeOptimizationPostEvaluation.model_validate(
+                        raw_completed_summary
+                    )
                 )
             except (TypeError, ValidationError, ValueError) as exc:
                 raise OptimizationRunDataInvalidError() from exc
@@ -4124,26 +4344,29 @@ async def finalize_run_from_persisted_evaluation(
             ):
                 raise _PersistedEvaluationPending()
             raw_before = snapshot.get("evaluation")
+            if (
+                not isinstance(raw_before, Mapping)
+                or raw_before.get("scoringVersion")
+                != _GUIDANCE_SCORING_VERSION
+                or raw_after.get("evaluationVersion")
+                != _GUIDANCE_SCORING_VERSION
+            ):
+                raise OptimizationScoringVersionMismatchError()
             before_jd_available = _raw_evaluation_jd_available(raw_before)
             after_jd_available = _raw_evaluation_jd_available(raw_after)
             if before_jd_available != after_jd_available:
                 raise _PersistedEvaluationPending()
-            before = _normalized_evaluation(
-                raw_before,
-                jd_available=before_jd_available,
-                fact_metadata=_source_frontend_evaluation_snapshot(
-                    run,
-                    allow_legacy=True,
-                ).get(
-                    "fact_metadata"
-                ),
+            before = await _reload_frozen_guidance_evaluation(
+                user_id=user_id,
+                frozen_evaluation=raw_before,
             )
-            after = _normalized_evaluation(
-                raw_after,
-                jd_available=before_jd_available,
-                fact_metadata=current_snapshot.get("fact_metadata"),
+            after = await _load_private_guidance_evaluation(
+                user_id=user_id,
+                public_report=raw_after,
+                current_snapshot=current_snapshot,
+                expected_target_role=str(snapshot.get("target_role") or ""),
             )
-            post_evaluation = _post_evaluation_summary(
+            post_evaluation = _post_guidance_summary(
                 run=run,
                 resume=resume,
                 evaluation_signature=expected_signature,
@@ -4154,6 +4377,7 @@ async def finalize_run_from_persisted_evaluation(
             _PersistedEvaluationPending,
             OptimizationScoringVersionMismatchError,
             OptimizationApplyValidationError,
+            GuidanceReceiptError,
             ValidationError,
             TypeError,
             ValueError,

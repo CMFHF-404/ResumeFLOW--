@@ -4,6 +4,7 @@ import copy
 import json
 import sys
 import qa_resume_blind_benchmark as b
+b.reject_retired_numeric_run()
 from app.database import engine
 from app.domain.resume_optimization.schemas import OptimizationPlan
 from app.domain.resume_optimization.semantic_review import review_plan_semantics

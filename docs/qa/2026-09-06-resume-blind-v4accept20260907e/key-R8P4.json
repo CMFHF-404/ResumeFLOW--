@@ -1,0 +1,5 @@
+{
+  "tier": "高质量对照",
+  "defects": [],
+  "expected_answer_policy": "no_data for missing facts; supplied sources only"
+}

@@ -99,8 +99,19 @@ const buildMountedHookHarness = async () => {
           useResumeOptimizationFlow,
         } from './views/ResumeEditor/hooks/useResumeOptimizationFlow';
 
-        const sourceEvaluation = { overallScore: 70, dimensions: [], scoringVersion: 'coverage_consensus_v2' };
-        const postEvaluation = { overallScore: 88, dimensions: [], scoringVersion: 'coverage_consensus_v2' };
+        const auditReceipt = {
+          receiptId: 'receipt-1', inputHash: 'input-hash', tasksHash: 'tasks-hash',
+          judgmentsHash: 'judgments-hash', rubricHash: 'rubric-hash', schemaHash: 'schema-hash',
+          auditVersion: 'guidance_task_audit_v1',
+        };
+        const sourceEvaluation = {
+          evaluationVersion: 'guidance_audit_v1', overallBand: 'needs_attention',
+          auditReceipt,
+        };
+        const postEvaluation = {
+          evaluationVersion: 'guidance_audit_v1', overallBand: 'adequate',
+          auditReceipt: { ...auditReceipt, receiptId: 'receipt-2', inputHash: 'post-input-hash' },
+        };
         const plan = {
           changes: [{
             changeId: 'change-a',
@@ -116,11 +127,12 @@ const buildMountedHookHarness = async () => {
           }],
           questions: [],
           bankSuggestions: [],
+          safetySummary: { allowedChangeIds: ['change-a'], blockedChangeIds: [], pendingChangeIds: [], findings: [] },
         };
         const previewRun = {
           id: 'run-a', resumeId: 'resume-a', status: 'preview_ready',
           sourceResumeUpdatedAt: '2026-09-01T00:00:00Z',
-          sourceEvaluationSignature: 'S1', sourceBeforeScore: 70,
+          sourceEvaluationSignature: 'S1', sourceBeforeScore: null,
           plan, result: null, answers: [], acceptedChangeIds: [],
         };
         const appliedRun = {
@@ -130,7 +142,13 @@ const buildMountedHookHarness = async () => {
         };
         const completedRun = {
           ...appliedRun, status: 'completed',
-          postEvaluation: { beforeScore: 70, afterScore: 88, scoreDelta: 18 },
+          postEvaluation: {
+            version: 'guidance_optimization_post_v1',
+            overallBandBefore: 'needs_attention', overallBandAfter: 'adequate',
+            dimensionStatusChanges: [], issueSummary: { resolved: 1, remaining: 0 },
+            unresolvedFactGapCount: 0, acceptedChangeCount: 1,
+            blockedChangeCount: 0, bankSuggestionCount: 0,
+          },
         };
         const rescoringRun = {
           ...appliedRun, status: 'rescoring',
@@ -780,7 +798,14 @@ test('post-apply checkpoint survives a hook remount and restores the exact evalu
     readResumeOptimizationPostApplyCheckpoint,
     saveResumeOptimizationPostApplyCheckpoint,
   } = await importFlow();
-  const evaluationReceipt = { overallScore: 88, dimensions: [] };
+  const evaluationReceipt = {
+    evaluationVersion: 'guidance_audit_v1', overallBand: 'adequate',
+    auditReceipt: {
+      receiptId: 'receipt-2', inputHash: 'post-input-hash', tasksHash: 'tasks-hash',
+      judgmentsHash: 'judgments-hash', rubricHash: 'rubric-hash', schemaHash: 'schema-hash',
+      auditVersion: 'guidance_task_audit_v1',
+    },
+  };
   const checkpoint = {
     runId: 'run-a',
     phase: 'evaluation_ready',
@@ -806,7 +831,7 @@ test('post-apply checkpoint survives a hook remount and restores the exact evalu
   assert.equal(
     doesResumeOptimizationEvaluationReceiptMatch(
       'S2',
-      { ...deserializedReceipt, overallScore: 89 },
+      { ...deserializedReceipt, confidence: 'low' },
       'S2',
       evaluationReceipt,
     ),

@@ -22,13 +22,22 @@ class AiProviderPayloadError(ValueError):
     """The upstream provider returned a syntactically or structurally invalid payload."""
 
 
+class ResumeEvaluationInputError(ValueError):
+    """Guidance requires parsed resume fields, not an opaque text document."""
+
+    code = "resume_evaluation_structured_input_required"
+    status_code = 422
+    retryable = False
+    public_message = "请先完成简历解析，再使用结构化简历生成改进指导。"
+
+
 class ResumeEvaluationIntegrityError(AiProviderPayloadError):
     """A six-dimension result could not be repaired without changing its meaning."""
 
     code = "resume_evaluation_integrity_failed"
     status_code = HTTP_502_BAD_GATEWAY
     retryable = True
-    public_message = "本次六维报告未通过完整性校验，未保存本次结果，请重试。"
+    public_message = "评估生成失败，未保存本次结果，可手动重试。"
 
     def __init__(self, reason: str = "") -> None:
         suffix = f": {reason}" if reason else ""
@@ -39,12 +48,17 @@ class AiProviderUnavailableError(ValueError):
     """The upstream provider rejected or could not complete the request."""
 
 
+class ResumeEvaluationAuditError(ResumeEvaluationIntegrityError):
+    code = "resume_evaluation_rubric_unconfirmed"
+    public_message = "评估依据未获确认，未保存本次结果，可手动重试。"
+
+
 def translate_ai_public_exception(exc: Exception) -> HTTPException | None:
     if isinstance(exc, TERMINAL_AI_RUNTIME_ERRORS):
         return ai_runtime_http_exception(exc)
     if isinstance(exc, HTTPException):
         return exc
-    if isinstance(exc, ResumeEvaluationIntegrityError):
+    if isinstance(exc, (ResumeEvaluationIntegrityError, ResumeEvaluationInputError)):
         return HTTPException(
             status_code=exc.status_code,
             detail={

@@ -1,0 +1,99 @@
+{
+  "ok": false,
+  "seconds": 25.25,
+  "sample": "R2M9",
+  "repeat": 1,
+  "error_type": "AiRuntimeTimeoutError",
+  "message": "AI 请求处理超时，请稍后重试。",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 293,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 383,
+      "function": "generate_guidance"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 341,
+      "function": "_stage"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1906,
+      "function": "_stream_gemini_json_response_once"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 13.693
+    },
+    {
+      "stage": "generation",
+      "category": "generated"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "attempt"
+    },
+    {
+      "stage": "rubric_audit",
+      "category": "duration",
+      "seconds": 10.628
+    }
+  ]
+}

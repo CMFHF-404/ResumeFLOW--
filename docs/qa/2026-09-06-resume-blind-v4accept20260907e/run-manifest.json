@@ -1,0 +1,22 @@
+{
+  "created_at": "2026-09-07T05:33:05.945601+00:00",
+  "contract": {
+    "version": 1,
+    "artifacts": {
+      "fixtures.json": "85194886a7a9f98636751729297b00c254f2db9356ed542068498ab1f36f802a",
+      "key-R7K2.json": "8fc33c16292f1d71c76b90c2cf82e1e51037158bb337fd66cc0473c926c8ff93",
+      "key-R2M9.json": "8fe2cf02ce22a73ebaa463559120a376dd507fc73b2fdc792f683ac72bf61fc0",
+      "key-R8P4.json": "8072c6cf8c2611536e6dc07c00971b148abaaf2a029fa8ac585d6eb70a4a2255",
+      "key-R3V6.json": "a15491102142377b3fe6e37625218917d48cd244b71a047af8d5fde0635c94de",
+      "key-H4Q1.json": "5063fba640307a9a1434331ef4efb89e476c78695c113211a6d80af0331104c5",
+      "key-H9S2.json": "e2afa594d0364f5d6db9462c660703b7b31fa379b87fbe2ba7ec76be8ab63409",
+      "key-N6D2.json": "12334669bdeef940d6e6a24b82a3a7f6d91d944b942181d5a9ae9c09149b8d9c",
+      "key-N4T8.json": "157e468bcf8c302ea3c2cb58cd33b05310c24f0bde7fcf2ebbefa1c4ed54c144",
+      "key-P5L2.json": "7afdb33244f6ab185ec4abb28ad403f9401f3e4bcb5a875cffb120efce11ae0b",
+      "key-P8C6.json": "fe19bdcb04de6776844bed7825eaf97393170e3501361a96e5465fcffb1cf878",
+      "protocol.json": "0ec8d2cbdadbadb1ddb63e5e1817c59fecfad7c28c82b11781dbe9e8bc127f2f",
+      "algorithm-hashes.json": "9ffd967a8bec99cb2fb86be53a2c325d317f0ef58af4537315114cba650afddb",
+      "runtime-config.json": "6230eec9a349eb4290cdc93e3dc5646c10bbe33f0925f202b3ed7ef4033dfb6a"
+    }
+  }
+}

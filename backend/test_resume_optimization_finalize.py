@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from app.domain.ai.guidance_evaluation import GuidanceReport
 from app.domain.ai.resume_evaluation import DIMENSION_NAMES, DIMENSION_SUBSCORES
 from app.domain.resume_optimization import apply_service, router as router_module
 from app.domain.resume_optimization.run_service import canonical_json, hash_canonical_json
@@ -271,7 +272,7 @@ def _evaluation(
         )
     return {
         "evaluationVersion": "resume_flow_v1",
-        "scoringVersion": "coverage_consensus_v2",
+        "scoringVersion": "coverage_consensus_v4",
         "evaluationScope": "full_resume",
         "overallScore": round(sum(scores) / len(scores)),
         "targetRole": "产品经理",
@@ -311,6 +312,114 @@ def _post_evaluation(*, jd_match: int | None = 80) -> dict:
     )
 
 
+def _band_from_legacy_score(score: int) -> str:
+    if score >= 85:
+        return "strong"
+    if score >= 65:
+        return "adequate"
+    if score >= 35:
+        return "needs_attention"
+    return "insufficient_evidence"
+
+
+def _private_guidance_from_legacy(evaluation: dict) -> dict:
+    """Project legacy score evidence into the score-free internal fixture.
+
+    The old score fixture remains useful to describe deliberately different
+    source/post quality.  This helper keeps that semantic evidence out of the
+    public GuidanceReport while supplying only the internal levels consumed by
+    the guidance post-summary contract.
+    """
+    dimensions = []
+    for item in evaluation["dimensions"]:
+        score = sum(part["score"] for part in item["subscores"])
+        dimensions.append({"dimension": item["dimension"], "level": _band_from_legacy_score(score)})
+    return {
+        "scoringVersion": "guidance_audit_v1",
+        "overallLevel": _band_from_legacy_score(evaluation["overallScore"]),
+        "dimensions": dimensions,
+        "issues": [
+            {
+                "taskId": issue["primaryDimension"] + ":" + issue["description"],
+                "fieldPath": "resume",
+                "description": issue["description"],
+                "primaryDimension": issue["primaryDimension"],
+                "relatedDimensions": issue["relatedDimensions"],
+            }
+            for issue in evaluation["issues"]
+        ],
+        "missingInformation": deepcopy(evaluation["missingInformation"]),
+        "jdMatch": evaluation["jdMatch"],
+    }
+
+
+def _guidance_report_from_legacy(evaluation: dict, *, validate: bool = True) -> dict:
+    """Return a real public GuidanceReport fixture, never a numeric report."""
+    private = _private_guidance_from_legacy(evaluation)
+    issues_by_dimension = {
+        name: [issue["description"] for issue in private["issues"] if issue["primaryDimension"] == name]
+        for name in DIMENSION_NAMES
+    }
+    payload = {
+        "evaluationVersion": "guidance_audit_v1",
+        "evaluationScope": "full_resume",
+        "targetRole": "产品经理",
+        "overallBand": private["overallLevel"],
+        "confidence": "medium",
+        "dimensionGuidance": [
+            {
+                "dimension": item["dimension"],
+                "status": item["level"],
+                "strengths": [],
+                "issues": issues_by_dimension[item["dimension"]],
+                "actions": [],
+            }
+            for item in private["dimensions"]
+        ],
+        "topPriorities": [],
+        "safeCleanup": [],
+        "informationNeeded": [],
+        "riskFlags": [],
+        "auditReceipt": {
+            "receiptId": "a" * 32,
+            "inputHash": "b" * 64,
+            "tasksHash": "c" * 64,
+            "judgmentsHash": "d" * 64,
+            "rubricHash": "e" * 64,
+            "schemaHash": "f" * 64,
+            "auditVersion": "guidance_task_audit_v1",
+        },
+        "jdMatch": evaluation["jdMatch"],
+    }
+    return GuidanceReport.model_validate(payload).model_dump() if validate else payload
+
+
+def _private_guidance_from_report(public_report: dict) -> dict:
+    """Mirror the receipt loader for deterministic low-level finalize tests."""
+    dimensions = public_report["dimensionGuidance"]
+    return {
+        "scoringVersion": "guidance_audit_v1",
+        "overallLevel": public_report["overallBand"],
+        "dimensions": [
+            {"dimension": item["dimension"], "level": item["status"]}
+            for item in dimensions
+        ],
+        "issues": [
+            {
+                "taskId": item["dimension"] + ":" + issue,
+                "fieldPath": "resume",
+                "description": issue,
+                "primaryDimension": item["dimension"],
+                "relatedDimensions": [],
+            }
+            for item in dimensions
+            for issue in item["issues"]
+        ],
+        "missingInformation": [],
+        "jdMatch": public_report.get("jdMatch"),
+    }
+
+
 def _prepare_source_evaluation(
     run,
     *,
@@ -326,7 +435,8 @@ def _prepare_source_evaluation(
     )
     analysis = resume_config["jdAnalysis"]
     analysis_result = analysis["result"]
-    analysis_result["resumeEvaluation"] = _source_evaluation(jd_match=jd_match)
+    legacy_evaluation = _source_evaluation(jd_match=jd_match)
+    analysis_result["resumeEvaluation"] = _guidance_report_from_legacy(legacy_evaluation)
     if jd_match is None:
         analysis_result.pop("matchPercentage", None)
     else:
@@ -345,7 +455,7 @@ def _prepare_source_evaluation(
     snapshot["current_resume"]["experiences"][str(MASTER_ID)]["star"]["r"] = (
         "转化率提升 30%"
     )
-    snapshot["evaluation"] = deepcopy(analysis_result["resumeEvaluation"])
+    snapshot["evaluation"] = _private_guidance_from_legacy(legacy_evaluation)
     snapshot["evaluation_signature"] = run.source_evaluation_signature
     snapshot["fact_metadata"] = deepcopy(frontend_snapshot["fact_metadata"])
     run.before_snapshot = snapshot
@@ -387,12 +497,20 @@ async def _applied_fixture(
     from semantic_review_test_support import review_run_fixture
     review_run_fixture(run)
     session = _transaction_session(run, resume, link)
-    result = await apply_service.apply_resume_optimization(
-        session=session,
-        user_id=USER_ID,
-        run_id=str(RUN_ID),
-        payload=_apply_request(*accepted_ids),
-    )
+    # This shared fixture exercises apply/finalize/revert mechanics.  Its
+    # compact report is deliberately not a persisted user receipt, so only the
+    # receipt authority boundary is isolated here.
+    with patch.object(
+        apply_service,
+        "_validate_current_guidance_receipt",
+        new_callable=AsyncMock,
+    ):
+        result = await apply_service.apply_resume_optimization(
+            session=session,
+            user_id=USER_ID,
+            run_id=str(RUN_ID),
+            payload=_apply_request(*accepted_ids),
+        )
     result.run.error_json = {
         "_activeRescoreClaim": {
             "claimId": RESCORE_CLAIM_ID,
@@ -417,7 +535,19 @@ def _install_persisted_post_evaluation(
     if evaluation is None:
         analysis["result"].pop("resumeEvaluation", None)
     else:
-        analysis["result"]["resumeEvaluation"] = deepcopy(evaluation)
+        if evaluation.get("scoringVersion") == "coverage_consensus_v4":
+            try:
+                persisted_evaluation = _guidance_report_from_legacy(evaluation)
+            except ValidationError:
+                # Keep an intentionally malformed public payload available to
+                # the finalize error-path test; production must reject it.
+                persisted_evaluation = _guidance_report_from_legacy(
+                    evaluation,
+                    validate=False,
+                )
+        else:
+            persisted_evaluation = evaluation
+        analysis["result"]["resumeEvaluation"] = deepcopy(persisted_evaluation)
     analysis["evaluationSignature"] = signature or _frontend_evaluation_signature(
         jd_input_signature=run.source_jd_signature,
         resume_snapshot=post_snapshot,
@@ -464,6 +594,37 @@ def _revert_request(expected) -> ResumeOptimizationRevertRequest:
 
 
 class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        # Apply/revert mechanics use compact fixtures.  The receipt store is
+        # intentionally isolated here; receipt validation has dedicated tests.
+        self._receipt_gate = patch.object(
+            apply_service,
+            "_validate_current_guidance_receipt",
+            new_callable=AsyncMock,
+        )
+        self.validate_guidance_receipt = self._receipt_gate.start()
+        self.addCleanup(self._receipt_gate.stop)
+        self._private_guidance_loader = patch.object(
+            apply_service,
+            "_load_private_guidance_evaluation",
+            new_callable=AsyncMock,
+            side_effect=lambda *, user_id, public_report, current_snapshot, expected_target_role: _private_guidance_from_report(
+                dict(public_report)
+            ),
+        )
+        self.load_private_guidance = self._private_guidance_loader.start()
+        self.addCleanup(self._private_guidance_loader.stop)
+        self._frozen_guidance_loader = patch.object(
+            apply_service,
+            "_reload_frozen_guidance_evaluation",
+            new_callable=AsyncMock,
+            side_effect=lambda *, user_id, frozen_evaluation: deepcopy(
+                dict(frozen_evaluation)
+            ),
+        )
+        self.reload_frozen_guidance = self._frozen_guidance_loader.start()
+        self.addCleanup(self._frozen_guidance_loader.stop)
+
     async def test_already_applied_legacy_baseline_requires_revert_instead_of_retrying_scores(self):
         run, resume, link = await _applied_fixture()
         run.before_snapshot["evaluation"].pop("scoringVersion")
@@ -779,6 +940,12 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
             return run, resume, link
 
         tampered_run, _tampered_resume, _tampered_link = await _applied_fixture()
+        # Historical numeric reports remain readable only through their legacy
+        # projection.  A current guidance run cannot silently inherit its
+        # unmarked signature contract.
+        tampered_run.before_snapshot["evaluation"]["scoringVersion"] = (
+            "coverage_consensus_v4"
+        )
         tampered_source = json.loads(tampered_run.source_evaluation_signature)
         tampered_run.source_evaluation_signature = canonical_json(
             {
@@ -895,6 +1062,11 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
     async def test_huge_signature_numbers_fail_with_read_domain_and_finalize_pending_errors(self) -> None:
         huge = 10**400
         read_run, _read_resume, _read_link = await _applied_fixture()
+        # This is the legacy numeric read path; guidance reads deliberately do
+        # not expose a source score and therefore do not parse score fields.
+        read_run.before_snapshot["evaluation"]["scoringVersion"] = (
+            "coverage_consensus_v4"
+        )
         read_signature = json.loads(read_run.source_evaluation_signature)
         read_signature["jdMatchPercentage"] = huge
         read_run.source_evaluation_signature = canonical_json(read_signature)
@@ -1334,8 +1506,8 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(
-            result.post_evaluation_json["afterScore"],
-            persisted["overallScore"],
+            result.post_evaluation_json["overallBandAfter"],
+            "strong",
         )
 
     async def test_finalize_schema_requires_a_rescore_claim(self) -> None:
@@ -1359,10 +1531,9 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
                 payload=_finalize_request(),
             )
 
-    async def test_finalize_normalizes_forged_score_and_rejects_incomplete_dimensions(self) -> None:
+    async def test_finalize_uses_guidance_bands_and_rejects_incomplete_dimensions(self) -> None:
         run, resume, link = await _applied_fixture()
         forged = _post_evaluation()
-        forged["overallScore"] = 1
         _install_persisted_post_evaluation(run, resume, evaluation=forged)
         result = await apply_service.finalize_run_from_persisted_evaluation(
             session=_finalize_session(run, resume, link),
@@ -1370,7 +1541,7 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
             run_id=str(RUN_ID),
             payload=_finalize_request(),
         )
-        self.assertEqual(result.post_evaluation_json["afterScore"], 89)
+        self.assertEqual(result.post_evaluation_json["overallBandAfter"], "strong")
 
         run, resume, link = await _applied_fixture()
         incomplete = _post_evaluation()
@@ -1384,7 +1555,7 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
                 payload=_finalize_request(),
             )
 
-    async def test_finalize_records_scores_dimension_deltas_issues_and_safety(self) -> None:
+    async def test_finalize_records_guidance_bands_issue_summary_and_safety(self) -> None:
         run, resume, link = await _applied_fixture()
         before = _source_evaluation()
         after = _post_evaluation()
@@ -1399,37 +1570,72 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
         )
         payload = result.post_evaluation_json
 
-        self.assertEqual(payload["beforeScore"], before["overallScore"])
-        self.assertEqual(payload["afterScore"], after["overallScore"])
-        self.assertEqual(
-            payload["scoreDelta"],
-            after["overallScore"] - before["overallScore"],
-        )
-        self.assertEqual(len(payload["dimensionDeltas"]), 6)
-        before_scores = [60, 62, 64, 66, 68, 70]
-        after_scores = [100, 100, 100, 76, 78, 80]
-        for index, item in enumerate(payload["dimensionDeltas"]):
+        self.assertEqual(payload["overallBandBefore"], "adequate")
+        self.assertEqual(payload["overallBandAfter"], "strong")
+        self.assertEqual(len(payload["dimensionStatusChanges"]), 6)
+        before_statuses = [
+            "needs_attention", "needs_attention", "needs_attention",
+            "adequate", "adequate", "adequate",
+        ]
+        after_statuses = [
+            "strong", "strong", "strong", "adequate", "adequate", "adequate",
+        ]
+        for index, item in enumerate(payload["dimensionStatusChanges"]):
             self.assertEqual(item["dimension"], DIMENSION_NAMES[index])
-            self.assertEqual(item["beforeScore"], before_scores[index])
-            self.assertEqual(item["afterScore"], after_scores[index])
-            self.assertEqual(
-                item["delta"],
-                after_scores[index] - before_scores[index],
-            )
+            self.assertEqual(item["beforeStatus"], before_statuses[index])
+            self.assertEqual(item["afterStatus"], after_statuses[index])
         self.assertEqual(
-            payload["issueCounts"],
+            payload["issueSummary"],
             {
-                "before": 6,
-                "after": 3,
                 "resolved": 3,
                 "remaining": 3,
-                "introduced": 0,
             },
         )
         self.assertEqual(
             payload["safetySummary"],
             run.result_json["safety_summary"],
         )
+
+    async def test_guidance_summary_tracks_tasks_instead_of_shared_descriptions(self) -> None:
+        run, resume, _ = await _applied_fixture()
+        before = _private_guidance_from_legacy(_source_evaluation())
+        before["issues"] = [
+            dict(taskId=f"EXP_{index + 1:03d}_STAR_ACTION",
+                 fieldPath=f"experiences[{index}].star.a",
+                 primaryDimension="STAR应用", relatedDimensions=[],
+                 description="行动描述停留在泛化职责。")
+            for index in range(2)
+        ]
+        for remaining, expected in ((before["issues"], (0, 2)),
+                                    (before["issues"][1:], (1, 1)), ([], (2, 0))):
+            with self.subTest(expected=expected):
+                after = deepcopy(before)
+                after["issues"] = deepcopy(remaining)
+                if after["issues"]:
+                    after["issues"][0]["description"] = "行动或处理对象描述不完整。"
+                summary = apply_service._post_guidance_summary(
+                    run=run, resume=resume, evaluation_signature="test-signature",
+                    before=before, after=after,
+                )
+                self.assertEqual(summary["issueSummary"],
+                                 {"resolved": expected[0], "remaining": expected[1]})
+
+    async def test_guidance_summary_preserves_punctuation_counts_after_renumbering(self) -> None:
+        run, resume, _ = await _applied_fixture()
+        before = _private_guidance_from_legacy(_source_evaluation())
+        before["issues"] = [
+            dict(taskId=f"GLOBAL_READABILITY_PUNCTUATION_{index + 1:03d}",
+                 fieldPath=f"experiences[{field}].star.a",
+                 primaryDimension="内容可读", relatedDimensions=[], description="正文缺少句末标点。")
+            for index, field in enumerate((0, 1, 1))
+        ]
+        after = deepcopy(before)
+        after["issues"] = [dict(before["issues"][2], taskId="GLOBAL_READABILITY_PUNCTUATION_001")]
+        summary = apply_service._post_guidance_summary(
+            run=run, resume=resume, evaluation_signature="test-signature",
+            before=before, after=after,
+        )
+        self.assertEqual(summary["issueSummary"], {"resolved": 2, "remaining": 1})
 
     async def test_missing_stale_or_invalid_evaluation_returns_to_applied_for_retry(self) -> None:
         cases = (
@@ -1594,7 +1800,7 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(run.source_jd_signature)
         self.assertEqual(result.status, ResumeOptimizationStatus.COMPLETED.value)
-        self.assertEqual(router_module._run_to_read(run).source_before_score, 65)
+        self.assertIsNone(router_module._run_to_read(run).source_before_score)
 
     async def test_naive_database_timestamp_accepts_aware_expected_and_stores_aware_time(self) -> None:
         run, resume, link = await _applied_fixture()
@@ -2152,8 +2358,8 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(public["status"], ResumeOptimizationStatus.COMPLETED.value)
         self.assertEqual(public["result"]["changes"][0]["change_id"], "CHG_A")
-        self.assertEqual(public["post_evaluation"]["afterScore"], 89)
-        self.assertEqual(public["source_before_score"], 65)
+        self.assertEqual(public["post_evaluation"]["overallBandAfter"], "strong")
+        self.assertIsNone(public["source_before_score"])
         self.assertEqual(public["plan"]["changes"][0]["change_id"], "CHG_A")
         for private_key in (
             "before_snapshot",
@@ -2164,17 +2370,17 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
         ):
             self.assertNotIn(private_key, public)
 
-    async def test_applied_reload_exposes_only_normalized_source_before_score(self) -> None:
+    async def test_applied_guidance_reload_exposes_no_source_score(self) -> None:
         run, _, _ = await _applied_fixture()
 
         public = router_module._run_to_read(run).model_dump(mode="json")
 
         self.assertEqual(public["status"], ResumeOptimizationStatus.APPLIED.value)
-        self.assertEqual(public["source_before_score"], 65)
+        self.assertIsNone(public["source_before_score"])
         self.assertIsNone(public["post_evaluation"])
         self.assertNotIn("before_snapshot", public)
 
-    async def test_reload_rejects_corrupt_post_evaluation_arithmetic(self) -> None:
+    async def test_reload_rejects_incomplete_guidance_post_evaluation(self) -> None:
         run, resume, link = await _applied_fixture()
         _install_persisted_post_evaluation(run, resume, evaluation=_post_evaluation())
         await apply_service.finalize_run_from_persisted_evaluation(
@@ -2183,7 +2389,7 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
             run_id=str(RUN_ID),
             payload=_finalize_request(),
         )
-        run.post_evaluation_json["issueCounts"]["resolved"] = 99
+        run.post_evaluation_json["dimensionStatusChanges"].pop()
 
         with self.assertRaises(router_module.OptimizationPersistedRunInvalidError):
             router_module._run_to_read(run)

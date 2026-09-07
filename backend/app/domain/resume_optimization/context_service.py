@@ -20,6 +20,12 @@ from ..experience.experience_service import (
     NotFoundError as ExperienceNotFoundError,
     get_version_for_user,
 )
+from ..ai.guidance_receipts import (
+    GuidanceReceiptError,
+    canonical_json_hash as guidance_binding_hash,
+    load_guidance_receipt,
+    validate_public_receipt_binding,
+)
 from ..ai.resume_evaluation import SCORING_VERSION, normalize_resume_evaluation
 from ..resume.resume_service import (
     NotFoundError as ResumeNotFoundError,
@@ -43,6 +49,7 @@ _FRONTEND_EVALUATION_SECTION_ORDER = (
 )
 FRONTEND_EVALUATION_SIGNATURE_SCHEMA = "frontend_evaluation_v2"
 _JD_ATTACHMENT_SUPPLEMENT_PREFIX = "\n\n补充 JD 说明：\n"
+GUIDANCE_VERSION = "guidance_audit_v1"
 
 
 class OptimizationContextError(ValueError):
@@ -192,6 +199,13 @@ class FrozenOptimizationContext:
 
     def model_payload(self) -> dict[str, Any]:
         """Return only the context that may be sent to the optimization planner."""
+        public_planner_evaluation = self.evaluation
+        for private_key in (
+            "_guidanceReceiptBinding",
+            "_guidanceTasks",
+            "_guidanceSources",
+        ):
+            public_planner_evaluation.pop(private_key, None)
         return deepcopy(
             {
                 "resumeId": self.resume_id,
@@ -203,7 +217,7 @@ class FrozenOptimizationContext:
                 ),
                 "jdSignature": f"sha256:{hash_canonical_json(self.jd_signature)}",
                 "targetRole": self.target_role,
-                "evaluation": self.evaluation,
+                "evaluation": public_planner_evaluation,
                 "currentResume": self.current_resume,
                 "selectedSourceExperiences": self.selected_source_experiences,
                 "selectedMasterExperienceIds": self.selected_master_experience_ids,
@@ -781,23 +795,26 @@ def _validate_report(
         outer_jd_match = result.get("matchPercentage")
         if (
             isinstance(outer_jd_match, bool)
-            or not isinstance(outer_jd_match, (int, float))
-            or not math.isfinite(float(outer_jd_match))
-            or not 0 <= float(outer_jd_match) <= 100
+            or not isinstance(outer_jd_match, int)
+            or not 0 <= outer_jd_match <= 100
         ):
             raise OptimizationEvaluationInvalidError(
                 "The persisted JD match is invalid"
             )
         evaluation_jd_match = evaluation.get("jdMatch")
         if (
-            not isinstance(evaluation_jd_match, bool)
-            and isinstance(evaluation_jd_match, (int, float))
-            and math.isfinite(float(evaluation_jd_match))
-            and float(outer_jd_match) != float(evaluation_jd_match)
+            isinstance(evaluation_jd_match, bool)
+            or not isinstance(evaluation_jd_match, int)
+            or not 0 <= evaluation_jd_match <= 100
+            or outer_jd_match != evaluation_jd_match
         ):
             raise OptimizationEvaluationInvalidError(
                 "The persisted JD match does not match the six-dimensional evaluation"
             )
+    elif evaluation.get("jdMatch") is not None:
+        raise OptimizationEvaluationInvalidError(
+            "The persisted guidance JD match must be null without a JD"
+        )
     signed_resume_snapshot = _parse_persisted_frontend_evaluation_signature(
         persisted_signature,
         jd_signature=jd_signature,
@@ -812,12 +829,77 @@ def _validate_report(
     )
 
 
+async def _resolve_guidance_evaluation(
+    evaluation: Mapping[str, Any],
+    *,
+    user_id: str,
+    evaluation_input: Mapping[str, Any],
+    jd_available: bool,
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], Any]:
+    raw_binding = evaluation.get("auditReceipt")
+    receipt_id = raw_binding.get("receiptId") if isinstance(raw_binding, Mapping) else None
+    if not isinstance(receipt_id, str) or not receipt_id.strip():
+        raise OptimizationEvaluationInvalidError(
+            "The persisted guidance audit receipt is missing"
+        )
+    try:
+        receipt = await load_guidance_receipt(receipt_id=receipt_id, user_id=user_id)
+        receipt = validate_public_receipt_binding(evaluation, receipt)
+    except GuidanceReceiptError as exc:
+        raise OptimizationEvaluationInvalidError(
+            "The persisted guidance audit receipt failed integrity checks"
+        ) from exc
+
+    current_input = {
+        "resume": evaluation_input.get("resume"),
+        "fact_metadata": evaluation_input.get("fact_metadata"),
+    }
+    if guidance_binding_hash(current_input) != receipt["input_hash"]:
+        raise OptimizationContextStaleError(
+            "The guidance receipt no longer matches the current resume"
+        )
+    receipt_input = receipt["input"]
+    if evaluation.get("targetRole", "") != evaluation_input.get("target_role", ""):
+        raise OptimizationContextStaleError(
+            "The guidance receipt no longer matches the current target role"
+        )
+    try:
+        from ..ai.guidance_evaluation import rebuild_guidance_receipt
+
+        internal = rebuild_guidance_receipt(evaluation, receipt)
+    except (GuidanceReceiptError, KeyError, TypeError, ValueError) as exc:
+        raise OptimizationEvaluationInvalidError(
+            "The private guidance report failed integrity checks"
+        ) from exc
+    if internal.get("scoringVersion") != GUIDANCE_VERSION:
+        raise OptimizationEvaluationInvalidError(
+            "The private guidance report has an invalid scoring version"
+        )
+    if (
+        internal.get("targetRole") != evaluation.get("targetRole")
+        or internal.get("jdMatch") != evaluation.get("jdMatch")
+    ):
+        raise OptimizationEvaluationInvalidError(
+            "The public and private guidance reports disagree"
+        )
+    return (
+        internal,
+        deepcopy(dict(raw_binding)),
+        deepcopy(receipt["tasks"]),
+        deepcopy(receipt["sources"]),
+    )
+
+
 def _normalize_persisted_evaluation(
     evaluation: Mapping[str, Any],
     *,
     jd_available: bool,
     fact_metadata: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    if evaluation.get("evaluationVersion") == GUIDANCE_VERSION:
+        raise OptimizationEvaluationInvalidError(
+            "Guidance evaluation requires its private audit receipt"
+        )
     try:
         normalized = normalize_resume_evaluation(
             dict(evaluation),
@@ -835,9 +917,9 @@ def _normalize_persisted_evaluation(
         raise OptimizationEvaluationInvalidError(
             "The persisted six-dimensional evaluation failed integrity checks"
         ) from exc
-    if normalized.get("scoringVersion") != SCORING_VERSION:
-        raise OptimizationContextStaleError("评分规则已更新，请重新生成六维报告后再优化。")
-    return normalized
+    # Numeric coverage reports remain readable elsewhere, but no longer have
+    # authority to start a new optimization or comparison.
+    raise OptimizationContextStaleError("评估规则已更新，请重新生成指导报告后再优化。")
 
 
 def _parse_analysis_text(value: str) -> Mapping[str, Any]:
@@ -1906,11 +1988,31 @@ async def build_frozen_optimization_context(
     if set(source_documents) != _SOURCE_DOCUMENT_ROOTS:
         raise AssertionError("Unexpected optimization source document root")
     _validate_fact_metadata_sources(fact_metadata, source_documents)
-    evaluation = _normalize_persisted_evaluation(
-        evaluation,
-        jd_available=jd_available,
-        fact_metadata=fact_metadata,
-    )
+    if evaluation.get("evaluationVersion") == GUIDANCE_VERSION:
+        evaluation, receipt_binding, guidance_tasks, guidance_sources = (
+            await _resolve_guidance_evaluation(
+                evaluation,
+                user_id=user_id,
+                evaluation_input={
+                    "resume": deepcopy(parsed.get("resume")),
+                    "fact_metadata": deepcopy(parsed.get("fact_metadata")),
+                    "target_role": parsed.get("target_role", ""),
+                },
+                jd_available=jd_available,
+            )
+        )
+        # This material is private optimization authority.  Keeping it inside
+        # the already private frozen evaluation binds plan/apply freshness
+        # without exposing it through the public guidance report.
+        evaluation["_guidanceReceiptBinding"] = receipt_binding
+        evaluation["_guidanceTasks"] = guidance_tasks
+        evaluation["_guidanceSources"] = guidance_sources
+    else:
+        evaluation = _normalize_persisted_evaluation(
+            evaluation,
+            jd_available=jd_available,
+            fact_metadata=fact_metadata,
+        )
     _parse_persisted_frontend_evaluation_signature(
         evaluation_signature,
         jd_signature=jd_signature,

@@ -91,7 +91,7 @@ def _context(
         target_role=f"Product Manager {marker}",
         evaluation={
             "evaluationVersion": "resume_flow_v1",
-            "scoringVersion": "coverage_consensus_v2",
+            "scoringVersion": "coverage_consensus_v4",
             "overallScore": 72,
             "issues": [{"issueId": "I1"}, {"issueId": "I2"}, {"issueId": "I3"}],
         },
@@ -1026,6 +1026,41 @@ class ResumeOptimizationOrchestratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(unresolved.action_kind.value, "ask_user")
         self.assertEqual(unresolved.safety_status, "pending")
         self.assertNotIn("Q2", {item["question_id"] for item in result.answers_json["answers"]})
+
+    async def test_no_data_cleanup_survives_storage_and_verifies_candidate(self) -> None:
+        from app.domain.resume_optimization.semantic_review import review_plan_semantics
+        context = _context()
+        pending = _ask_change("CHG_1", issue_id="I1", module_id="exp-a")
+        cleanup = _change("CHG_1", issue_id="I1", module_id="exp-a",
+                          general="参与支付页面改版。", targeted="参与支付页面改版。")
+        question = _question("Q1", module_id="exp-a", affects=["CHG_1"]).model_copy(
+            update={"field_path": "star.a"}
+        )
+        plan = OptimizationPlan(changes=[pending], cleanup_fallbacks={"CHG_1": cleanup},
+                                questions=[question])
+        run = _run(status=ResumeOptimizationStatus.AWAITING_ANSWERS, context=context, plan=plan)
+        run.plan_json = plan.storage_dump()
+        run.result_json = plan.storage_dump()
+        store = _RunStore(run)
+        with (
+            self._patch_store(store),
+            patch.object(orchestrator, "build_frozen_optimization_context", AsyncMock(side_effect=[context, context])),
+            patch.object(orchestrator, "review_plan_semantics", review_plan_semantics),
+            patch("app.domain.resume_optimization.planner_service._call_llm", AsyncMock()) as generate,
+            patch("app.domain.resume_optimization.semantic_review._call_llm", AsyncMock(return_value={
+                'reviews': [{'id': 'CHANGE_1', 'verdict': 'supported', 'reason': '只补齐句号，保持事实。'}]
+            })) as review,
+        ):
+            result = await orchestrator.answer_optimization_questions(session=_FakeSession(), user_id=USER_ID, run_id=str(RUN_ID),
+                payload=ResumeOptimizationAnswersRequest(answers=[OptimizationAnswer(question_id="Q1", state="no_data")]))
+        restored = OptimizationPlan.model_validate(result.result_json)
+        self.assertEqual([change.change_id for change in restored.changes], ["CHG_1"])
+        self.assertEqual(restored.changes[0].general_value, "参与支付页面改版。")
+        self.assertEqual(restored.changes[0].safety_status, "allowed")
+        self.assertEqual(restored.cleanup_fallbacks, {})
+        self.assertEqual(restored.safety_summary.allowed_change_ids, ["CHG_1"])
+        generate.assert_not_awaited()
+        review.assert_awaited_once()
 
     async def test_no_data_and_not_my_work_never_rewrite_unrelated_modules(self) -> None:
         context = _context()

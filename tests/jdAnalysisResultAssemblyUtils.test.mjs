@@ -141,7 +141,7 @@ test('full result keeps trend base when JD input signature is unchanged', async 
   assert.equal(finalResult.matchTrend, 'up');
 });
 
-test('legacy JD fit is never used as the trend base for the current resume-quality score', async () => {
+test('guidance report arrival is isolated from the independent JD trend', async () => {
   const { assembleJDAnalysisResult } = await importJDAnalysisResultAssemblyUtils();
 
   const { finalResult, resetTrendBase } = assembleJDAnalysisResult({
@@ -156,8 +156,7 @@ test('legacy JD fit is never used as the trend base for the current resume-quali
     incomingResult: result({
       matchPercentage: 70,
       resumeEvaluation: {
-        evaluationVersion: 'resume_flow_v1',
-        overallScore: 70,
+        evaluationVersion: 'guidance_audit_v1',
         jdMatch: 88,
       },
       experienceMatches: [{ id: 'exp-1', score: 75, reason: 'new exp' }],

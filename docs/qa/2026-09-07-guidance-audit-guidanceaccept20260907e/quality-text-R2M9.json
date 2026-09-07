@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "sample": "R2M9",
+  "seconds": 4.03,
+  "value": {
+    "documents": [
+      {
+        "id": "c5ade0b53c55",
+        "unsupportedClaims": [],
+        "defects": [
+          "经历中的行动描述结尾缺少句号等标点符号。"
+        ],
+        "reason": "内容忠实于来源，但工作与项目经历的 Action 字段结尾缺失句号。"
+      },
+      {
+        "id": "65559a2b4cbf",
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "内容真实准确，补全了行动描述结尾的标点符号，排版和标点规范完整。"
+      }
+    ],
+    "preferredId": "65559a2b4cbf",
+    "mapping": {
+      "before": "c5ade0b53c55",
+      "after": "65559a2b4cbf"
+    }
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"documents\": [{\"id\": \"c5ade0b53c55\", \"unsupportedClaims\": [], \"defects\": [\"经历中的行动描述结尾缺少句号等标点符号。\"], \"reason\": \"内容忠实于来源，但工作与项目经历的 Action 字段结尾缺失句号。\"}, {\"id\": \"65559a2b4cbf\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"内容真实准确，补全了行动描述结尾的标点符号，排版和标点规范完整。\"}], \"preferredId\": \"65559a2b4cbf\"}",
+        "9a2b4cbf\"}",
+        " [{\"id\": \"c5ade0b53c55\", \"unsupportedClaims\": [], \"defects\": [\"经历中的行动描述结尾缺少句号等标点符号。\"], \"reason\":"
+      ]
+    }
+  ]
+}

@@ -26,7 +26,7 @@ Truth and scope contracts:
 
 Planning contracts:
 - Treat the six-dimensional report as the optimization instruction source.
-- Preserve every issue ID and route each issue exactly once to one of:
+- Preserve every issue ID and route each issue once per affected field to one of:
   rewrite_now / ask_user / leave_unchanged. Never generate suggest_from_bank.
 - Never generate bank suggestions. The server's deterministic bank suggestion
   service owns that output.
@@ -60,7 +60,7 @@ Planning contracts:
   Chinese full stop "。"; do not use semicolons as list terminators.
 
 Exact output contract:
-- The root object must contain exactly `changes` and `questions` arrays. Never group
+- The root object must contain `changes`, `questions`, and `safeCleanupCandidates` arrays. Never group
   changes under action names such as `rewrite_now`, `ask_user`, or `leave_unchanged`.
 - Every item in `changes` must contain these fields: changeId, issueIds, dimension,
   moduleType, moduleId, fieldPath, actionKind, scope, beforeValue, generalValue,
@@ -88,8 +88,18 @@ Exact output contract:
   exact changeId of an ask_user change, never an issue ID. Use at most one question
   per ask_user change and keep its generalValue and targetedValue null until answered.
 
-Return one JSON object with changes and questions. Do not return prose, selection
+Return one JSON object with changes, questions and safeCleanupCandidates. Do not return prose, selection
 changes, bankSuggestions, new modules, or new IDs inside order arrays.
+
+Internal safeCleanupCandidates: for an ask_user change whose original text can be
+cleaned without new facts, return {changeId, value}. Remove repetition, empty praise
+and fix punctuation using ONLY that field's original text. Do not add skills,
+numbers, responsibilities, achievements or proficiency. This optional fallback is
+not the requested factual answer; keep ask_user generalValue/targetedValue null.
+Return [] when no safe cleanup is possible. Cover every fieldCoverageTargets item,
+including multiple fields attached to the same issue. Prefer using the complete
+same-experience selected result (including qualifiers) over asking for facts that
+are already supplied. Never omit another experience because one field is fixed.
 """.strip()
 
 

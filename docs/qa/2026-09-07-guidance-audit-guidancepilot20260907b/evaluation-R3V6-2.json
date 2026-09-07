@@ -1,0 +1,35 @@
+{
+  "ok": false,
+  "seconds": 20.93,
+  "sample": "R3V6",
+  "repeat": 2,
+  "error_type": "ResumeEvaluationIntegrityError",
+  "message": "评估生成失败，未保存本次结果，可手动重试。",
+  "frames": [
+    {
+      "file": "qa_guidance_audit.py",
+      "line": 293,
+      "function": "_run_once"
+    },
+    {
+      "file": "guidance_evaluation.py",
+      "line": 379,
+      "function": "generate_guidance"
+    }
+  ],
+  "diagnostics": [
+    {
+      "stage": "generation",
+      "category": "attempt"
+    },
+    {
+      "stage": "generation",
+      "category": "duration",
+      "seconds": 20.915
+    },
+    {
+      "stage": "generation",
+      "category": "invalid"
+    }
+  ]
+}

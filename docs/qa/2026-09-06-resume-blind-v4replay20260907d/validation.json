@@ -1,0 +1,51 @@
+{
+  "passed": false,
+  "requests": 8,
+  "successes": 6,
+  "failures": {
+    "AiRuntimeTimeoutError": 1,
+    "OptimizationSemanticReviewNormalizationError": 1
+  },
+  "candidates": 18,
+  "allowed": 17,
+  "checks": [
+    {
+      "sample": "R2M9",
+      "repeat": 1,
+      "two_actions_punctuated_and_idempotent": true
+    },
+    {
+      "sample": "R3V6",
+      "repeat": 1,
+      "two_complete_source_results_exactly_preserved": true
+    },
+    {
+      "sample": "N6D2",
+      "repeat": 1,
+      "qualitative_result_unchanged": true
+    },
+    {
+      "sample": "R2M9",
+      "repeat": 2,
+      "two_actions_punctuated_and_idempotent": true
+    },
+    {
+      "sample": "R3V6",
+      "repeat": 2,
+      "two_complete_source_results_exactly_preserved": true
+    },
+    {
+      "sample": "N6D2",
+      "repeat": 2,
+      "qualitative_result_unchanged": true
+    }
+  ],
+  "full_blind_test": "not_run_due_to_failed_audit_gate",
+  "frozen_code_artifacts": "verified_unchanged",
+  "backend_tests": {
+    "total": 1061,
+    "passed": 1056,
+    "skipped": 5
+  },
+  "affected_frontend_tests": 31
+}

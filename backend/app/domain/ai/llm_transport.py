@@ -4,6 +4,8 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -72,6 +74,28 @@ LANE_DEFAULT = "default"
 LANE_TOOL_CALL = "tool_call"
 LANE_THINKING = "thinking"
 LANE_RESUME_PARSE = "resume_parse"
+_guidance_http_client: ContextVar[Any] = ContextVar('guidance_http_client', default=None)
+
+
+@asynccontextmanager
+async def guidance_connection_session():
+    """One operation owns its pool; independent model calls share no prompt state."""
+    async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+        token = _guidance_http_client.set(client)
+        try:
+            yield
+        finally:
+            _guidance_http_client.reset(token)
+
+
+@asynccontextmanager
+async def _gemini_http_session():
+    scoped_client = _guidance_http_client.get()
+    if scoped_client is not None:
+        yield scoped_client
+    else:
+        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+            yield client
 _GEMINI_THINKING_LEVELS = {"minimal", "low", "medium", "high"}
 _PROVIDER_ACCESS_UNAVAILABLE_CODES = {
     "accessdenied",
@@ -1605,7 +1629,7 @@ async def _call_gemini_generate_content(
         transport=route.transport,
     )
     try:
-        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+        async with _gemini_http_session() as client:
             async with client.stream(
                 "POST",
                 url,
@@ -1801,7 +1825,7 @@ async def _stream_gemini_json_response_once(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=_build_gemini_timeout()) as client:
+        async with _gemini_http_session() as client:
             async with client.stream(
                 "POST",
                 url,
@@ -1996,7 +2020,8 @@ async def _stream_gemini_json_response_legacy(
     usage_callback: UsageCallback = None,
     response_json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    for attempt in range(1, GEMINI_STREAM_MAX_ATTEMPTS + 1):
+    max_attempts = 1 if runtime_budget.provider_retries_managed.get() else GEMINI_STREAM_MAX_ATTEMPTS
+    for attempt in range(1, max_attempts + 1):
         try:
             return await _stream_gemini_json_response_once(
                 system_prompt=system_prompt,
@@ -2010,7 +2035,7 @@ async def _stream_gemini_json_response_legacy(
                 usage_callback=usage_callback,
                 response_json_schema=response_json_schema,
                 defer_retryable_http_failure=(
-                    attempt < GEMINI_STREAM_MAX_ATTEMPTS
+                    attempt < max_attempts
                 ),
             )
         except AiProviderUnavailableError as exc:
@@ -2021,7 +2046,7 @@ async def _stream_gemini_json_response_legacy(
                 else None
             )
             if (
-                attempt >= GEMINI_STREAM_MAX_ATTEMPTS
+                attempt >= max_attempts
                 or status_code not in GEMINI_STREAM_RETRYABLE_STATUS_CODES
             ):
                 raise

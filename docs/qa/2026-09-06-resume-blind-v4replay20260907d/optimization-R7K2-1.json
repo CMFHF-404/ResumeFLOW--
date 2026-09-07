@@ -1,0 +1,85 @@
+{
+  "ok": false,
+  "seconds": 17.4,
+  "error_type": "AiRuntimeTimeoutError",
+  "message": "AI 请求处理超时，请稍后重试。",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 272,
+      "function": "call_record"
+    },
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 313,
+      "function": "optimize"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "semantic_review.py",
+      "line": 172,
+      "function": "review_plan_semantics"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1906,
+      "function": "_stream_gemini_json_response_once"
+    }
+  ],
+  "cause_type": "ConnectTimeout",
+  "diagnostics": []
+}

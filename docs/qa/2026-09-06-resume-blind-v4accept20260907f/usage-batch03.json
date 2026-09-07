@@ -1,0 +1,446 @@
+[
+  {
+    "id": "77731f78-70e8-4a3d-8c2b-3ac572c063c9",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 21884,
+    "case": "baseline-P5L2-1",
+    "receipts": []
+  },
+  {
+    "id": "e18dc5eb-9c0f-4b11-b9f8-a8a16212172e",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 23489,
+    "case": "baseline-R8P4-1",
+    "receipts": []
+  },
+  {
+    "id": "08907b4b-415b-453e-9838-738a9e0b0696",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 21110,
+    "case": "baseline-H9S2-2",
+    "receipts": []
+  },
+  {
+    "id": "3b1ce541-765a-44bb-9b35-c05258115735",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 25266,
+    "case": "baseline-P5L2-1",
+    "receipts": []
+  },
+  {
+    "id": "65db80e8-ee31-46ff-be48-3974a2054dd7",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 23881,
+    "case": "baseline-R8P4-1",
+    "receipts": []
+  },
+  {
+    "id": "1375d478-2829-4820-a3bf-1162577c2ed0",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 20852,
+    "case": "baseline-H9S2-2",
+    "receipts": []
+  },
+  {
+    "id": "3719145b-c57a-462e-a651-66e7cd9bb412",
+    "label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "tokens": 15304,
+    "case": "baseline-R8P4-1",
+    "receipts": [
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "模块排布顺序规范，经历内部因果逻辑清晰连贯，岗位聚焦与层级分明，各项打分均符合标准。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "两段经历情境、任务、行动与结果均达到明确标准（clear_context、clear_task、concrete_action、clear_result），各项满分评定符合标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "结构层次清晰，语句通顺流畅，标点与语法规范，无冗余套话，各项打分均符合标准。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "基础信息缺少电话扣3分（得7分），教育经历、核心经历、必要字段、技能清单、求职方向与补充项目均完整完备，打分符合标准。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "动词选用精准，SaaS及产品术语使用规范，表达具体明确，职责边界清晰且归因客观严谨，各项满分评定符合标准。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "经历中具备明确的结果指标、前后基线对比、覆盖规模、时间窗口、过程数量及高可信度数据，两段经历均充分支持对应量化子项，得分符合标准。"
+          }
+        ]
+      },
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "信息顺序合理，因果衔接自然，信息层级分明，内容紧扣求职岗位，各项打分符合标准。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "工作与项目经历均完整具备STAR四要素，背景明确、目标清晰、行动具体且具备可验证交付结果，得分符合标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "扫读结构良好，句子表意清晰，信息密度适中，语法标点规范无冗余，打分符合标准。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "基础信息因缺少联系电话扣除3分，核心工作经历、学历背景、技能、求职方向及补充项目字段均完整呈现，各项得分符合标准。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "专业动词精准，岗位专业术语使用规范，责任边界与外部归因表述客观可信，打分符合标准。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [],
+            "evidenceIds": [],
+            "reason": "两段经历均具备清晰的量化指标、基线对比、覆盖规模、统计周期与过程数据，量化要素完备，打分符合标准。"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "adf68089-5ab6-497a-8fba-422e546d2e46",
+    "label": "resume_evaluation_rubric_audit",
+    "status": "success",
+    "tokens": 14377,
+    "case": "baseline-H9S2-2",
+    "receipts": [
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [
+              "信息顺序",
+              "因果关系",
+              "信息层级",
+              "一致性与聚焦"
+            ],
+            "evidenceIds": [
+              "E004",
+              "E005",
+              "E006",
+              "E008",
+              "E009",
+              "E010",
+              "E012",
+              "E018",
+              "E019",
+              "E020",
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "简历模块顺序合理，工作经历STAR因果逻辑完整闭环，总结、经历与技能高度聚焦于B2B协作产品经理方向，层级清晰，各子项评分符合标准。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [
+              "Situation情境",
+              "Task任务",
+              "Action行动",
+              "Result结果"
+            ],
+            "evidenceIds": [
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "经历中S提供了明确的管理流程痛点情境（15分），T明确了需求与验收规则梳理目标（15分），A包含具体的访谈与需求整理执行动作（35分），R包含了明确的验收与内部试用环境部署定性交付结果（35分），均满足满分标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [
+              "扫读结构",
+              "句子清晰度",
+              "信息密度",
+              "语法与自然度",
+              "重复与冗余"
+            ],
+            "evidenceIds": [
+              "E004",
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "表达清晰流畅，扫读结构与信息密度良好，语法与自然度仅因Action项缺少末尾句号扣除1分（符合扣分上限规则），其余子项满分，判定符合。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [
+              "基础信息",
+              "教育经历",
+              "核心经历模块",
+              "经历必要字段",
+              "技能与资格",
+              "求职方向",
+              "补充信息"
+            ],
+            "evidenceIds": [
+              "E001",
+              "E002",
+              "E004",
+              "E010",
+              "E011",
+              "E012",
+              "E013",
+              "E014",
+              "E015",
+              "E019",
+              "E020",
+              "E021",
+              "E022",
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "基础信息缺少电话得7分；教育、核心经历、必要字段、技能清单完整；总结与经历职位明确指向产品经理方向（求职方向得10分）；无项目或认证等补充信息得0分，各项评分与依据完全符合标准。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [
+              "行动动词",
+              "岗位术语",
+              "表达精确度",
+              "贡献与责任边界",
+              "客观与可信"
+            ],
+            "evidenceIds": [
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "使用了访谈、整理、交付、部署等明确动词，术语准确规范，责任边界清晰，陈述客观克制，各项均达到20分标准。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [
+              "结果指标",
+              "基线与前后对比",
+              "覆盖规模",
+              "时间窗口",
+              "过程数量",
+              "数据可信度"
+            ],
+            "evidenceIds": [
+              "E025"
+            ],
+            "reason": "经历中明确量化了过程执行数量（15名管理员、20条反馈需求）且具备可信度，过程数量与数据可信度各得10分；未提供业务结果指标、基线对比、覆盖规模及时间窗口，对应项得0分，评分完全符合量化计算规则。"
+          }
+        ]
+      },
+      {
+        "approved": true,
+        "dimensions": [
+          {
+            "dimension": "逻辑清晰",
+            "verdict": "符合",
+            "subscores": [
+              "信息顺序",
+              "因果关系",
+              "信息层级",
+              "一致性与聚焦"
+            ],
+            "evidenceIds": [
+              "E004",
+              "E005",
+              "E006",
+              "E008",
+              "E009",
+              "E018",
+              "E019",
+              "E020",
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "模块顺序递进合理，STAR因果承接完整，信息层级清晰，求职定位聚焦一致，评分符合标准。"
+          },
+          {
+            "dimension": "STAR应用",
+            "verdict": "符合",
+            "subscores": [
+              "Situation情境",
+              "Task任务",
+              "Action行动",
+              "Result结果"
+            ],
+            "evidenceIds": [
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "STAR四要素完备，S情境明确（15分），T任务清晰（15分），A动作具体（35分），R定性验收与部署交付结果明确（35分），符合评分标准。"
+          },
+          {
+            "dimension": "内容可读",
+            "verdict": "符合",
+            "subscores": [
+              "扫读结构",
+              "句子清晰度",
+              "信息密度",
+              "语法与自然度",
+              "重复与冗余"
+            ],
+            "evidenceIds": [
+              "E004",
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "结构易扫读，句子表达流畅无冗余，仅针对Action末尾缺失标点扣除语法与自然度1分，评分符合规则。"
+          },
+          {
+            "dimension": "内容完整",
+            "verdict": "符合",
+            "subscores": [
+              "基础信息",
+              "教育经历",
+              "核心经历模块",
+              "经历必要字段",
+              "技能与资格",
+              "求职方向",
+              "补充信息"
+            ],
+            "evidenceIds": [
+              "E001",
+              "E002",
+              "E004",
+              "E010",
+              "E011",
+              "E012",
+              "E013",
+              "E014",
+              "E015",
+              "E019",
+              "E020",
+              "E021",
+              "E022",
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "基础信息扣除缺少电话的3分，总结与经历岗位明确表明产品经理求职方向（10分），其余核心模块、教育、技能齐全，缺少补充信息得0分，子项评分准确。"
+          },
+          {
+            "dimension": "专业表达",
+            "verdict": "符合",
+            "subscores": [
+              "行动动词",
+              "岗位术语",
+              "表达精确度",
+              "贡献与责任边界",
+              "客观与可信"
+            ],
+            "evidenceIds": [
+              "E023",
+              "E024",
+              "E025",
+              "E026"
+            ],
+            "reason": "动词与术语使用恰当，职责边界与客观性良好，各项均获满分20分，判定符合。"
+          },
+          {
+            "dimension": "成果量化",
+            "verdict": "符合",
+            "subscores": [
+              "结果指标",
+              "基线与前后对比",
+              "覆盖规模",
+              "时间窗口",
+              "过程数量",
+              "数据可信度"
+            ],
+            "evidenceIds": [
+              "E025"
+            ],
+            "reason": "准确识别了Action中的过程数量（访谈15名、需求20条）及数据可信度，结果指标、基线对比、覆盖规模和时间窗口均为0分，计算与证据引用完全符合标准。"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "d837df1d-4af0-47d0-8339-22845033870c",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 21406,
+    "case": "baseline-P5L2-1",
+    "receipts": []
+  },
+  {
+    "id": "f716a026-75d9-48fa-80a3-71e36eb1156f",
+    "label": "resume_evaluation",
+    "status": "success",
+    "tokens": 22749,
+    "case": "baseline-P5L2-1",
+    "receipts": []
+  }
+]

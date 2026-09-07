@@ -1,3 +1,5 @@
+from .resume_evaluation_rubric import SHARED_RUBRIC
+
 JD_ANALYSIS_SHARED_RUBRIC = (
     "Scoring principles for experiences: "
     "1) First restore the candidate's actual behavior from the text before scoring. "
@@ -95,13 +97,14 @@ RESUME_EVALUATION_RULES = (
     "Evaluate the visible wording after ignoring those markers, while preserving every link target and emphasis marker. "
     "Inspect every visible Action and Result list item for sentence-ending punctuation. When neighboring items are "
     "complete prose sentences, report a genuinely missing terminal Chinese or English punctuation mark as a readability "
-    "or professional-expression issue; do not penalize headings, labels, URLs, or intentional short fragments. "
+    "issue; do not penalize headings, labels, URLs, or intentional short fragments. "
     "Use exactly six dimensions in this order, each with the exact fixed subscores and maxima: "
     "逻辑清晰[信息顺序25,因果关系30,信息层级20,一致性与聚焦25]; "
     "STAR应用[Situation情境15,Task任务15,Action行动35,Result结果35]; "
     "内容可读[扫读结构25,句子清晰度25,信息密度20,语法与自然度15,重复与冗余15]; "
     "内容完整[基础信息10,教育经历15,核心经历模块25,经历必要字段20,技能与资格15,求职方向10,补充信息5]; "
     "专业表达[行动动词20,岗位术语20,表达精确度20,贡献与责任边界20,客观与可信20]; "
+    "Use the shared evidence anchors below for professional-expression judgments. "
     "成果量化[结果指标30,基线与前后对比25,覆盖规模15,时间窗口10,过程数量10,数据可信度10]. "
     "A qualitative delivery or outcome still counts as STAR Result; absence of numbers belongs only to 成果量化. "
     "Only process or scale numbers without numeric business results caps 成果量化 at 74; qualitative results with no "
@@ -138,6 +141,12 @@ RESUME_EVALUATION_RULES = (
     "riskFlags contain type(unverified_fact/inferred_fact/exaggerated_claim/conflicting_date/duplicated_content), "
     "description, evidenceIds. topPriorities contain priority, issueId, action, expectedScoreGain. Improvement actions "
     "must ask for specific truthful information and must not fabricate replacement facts. "
+    "Generation-only deduction binding: each subscore additionally supplies deductionIssueId. "
+    "Use an empty string at full marks; otherwise use exactly one existing issue ID of this dimension "
+    "that explains this subscore's specific defect. One issue may explain multiple subscores in the "
+    "same dimension. Every issue must be bound to at least one actual deduction. The server computes "
+    "pointsNotEarned from these bound subscore gaps and computes all totals; never distribute deductions "
+    "to unrelated issues to balance arithmetic. Professional-expression deductions require cited text. "
 )
 
 JD_ANALYSIS_RESPONSE_RULES = (
@@ -654,63 +663,7 @@ JD_ANALYSIS_IMAGE = (
 )
 
 
-RESUME_EVALUATION_ANCHORS = """
-Reproducible scoring procedure (do not grade relative to imagined ideal resumes):
-1. For each fixed subscore, assess the evidence against that named criterion only.
-   Choose an anchored completion level: 0 absent; 0.25 vague assertion; 0.5 concrete
-   but incomplete; 0.75 mostly complete with one substantive gap; 1 fully met.
-   Score = round_half_up(maxScore * level). Do not invent finer-grained deductions.
-   Award full credit once the criterion is met; additional fashionable tools,
-   certificates or extra business metrics are not prerequisites for full credit.
-2. Quantification is coverage across the selected experiences, NOT how impressive
-   their metrics sound. For each of its six criteria, count experiences containing
-   an explicit valid supporting claim, divide by the number of selected experiences,
-   then multiply by the criterion's maxScore and round_half_up. Examples of criteria:
-   result metric = numeric achieved business outcome (not a task count);
-   baseline = explicit comparable before/after values for the same outcome;
-   scale = explicit people/accounts/channels reached or used;
-   time window = explicit measurement/observation duration (not employment dates);
-   process quantity = an explicit counted action/deliverable;
-   credibility = a quantitative claim with clear measure, scope and attribution,
-   with no contradiction. Without a quantitative claim, credibility earns ZERO.
-   Generic action text supports NONE of these six numeric criteria. Dates, degree,
-   phone numbers, IDs and the count of resume entries are never quantity evidence.
-   Do not penalize a disclosed confounder or refusal to claim exclusive causation.
-3. Avoid double deductions: missing numbers affect quantification, not an otherwise
-   present STAR result/task. Do not require a numeric task target to award Task credit.
-   Do not deduct merely because the same skill appears in the summary and skill list.
-4. For punctuation, inspect the actual final visible character of EACH prose item.
-   The sequence '。<br>' already has a full stop. Never report it as missing one.
-   Ignore markup, labels and intentional fragments; do not infer punctuation from
-   whitespace or an imagined visual layout.
-5. Emit separate actionable issues for distinct fields/experiences when their fixes
-   differ. Never hide several independently repairable fields inside one broad issue.
-   Describe concrete observed gaps, not generic demands for more sophistication.
-6. A dimension with score zero must have strengths=[]. A fully satisfied criterion
-   needs no invented deficiency. List every supporting experience in the evidenceIds
-   for a quantification subscore, so the server can count unique covered experiences.
-7. Professional expression is the quality of the written claims, NOT JD fit,
-   seniority, business impact or depth of industry expertise. Grade its five
-   criteria separately across all selected experience narratives with equal weight:
-   - Action verbs: a concrete action and object qualifies (interview customers,
-     organize feedback, write requirements). Generic "participated in related work"
-     is vague. Do not demand leadership verbs or more impressive work.
-   - Role terminology: accurate names for the actual work/tools qualify. Do not
-     require JD-specific terminology or named methodologies absent from the work.
-   - Precision: a reader can identify what was done and to what object. Numbers
-     are not required. Vague "related things/work" is deficient.
-   - Responsibility: a stated personal action or task qualifies, including support
-     and collaboration. Do not demand sole ownership, leadership, or originality.
-   - Objectivity: factual, bounded wording without unsupported superlatives,
-     contradictions or exclusive attribution qualifies. Lack of numeric results,
-     external verification, sophistication or unique contribution is NOT a reason
-     to deduct. User-claimed facts reduce confidence, not this wording score.
-   Use the anchored levels from rule 1 for each experience, then average the levels
-   for each criterion and round_half_up its score. A summary cannot erase supported
-   experience evidence: vague/repeated summary wording belongs to readability;
-   only an actual contradictory or exaggerated summary claim affects objectivity.
-   List evidence from every assessed experience, including qualitative ones.
-""".strip()
+RESUME_EVALUATION_ANCHORS = SHARED_RUBRIC
 
 RESUME_EVALUATION = (
     "You are a strict evidence-grounded resume evaluator. Evaluate the assembled current resume independently from "

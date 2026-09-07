@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "sample": "P8C6",
+  "seconds": 3.82,
+  "value": {
+    "documents": [
+      {
+        "id": "40b4c881b40f",
+        "unsupportedClaims": [],
+        "defects": [],
+        "reason": "完整且准确地保留了源数据中的具体成果与归因说明，表述清晰详实。"
+      },
+      {
+        "id": "c8595a238d33",
+        "unsupportedClaims": [],
+        "defects": [
+          "信息缺失：成果部分过度删减，丢失了源数据中关于重复提交次数下降等关键量化结果与背景说明。"
+        ],
+        "reason": "工作经历中的成果部分（r）被大幅删减为“系统上线了”，丢失了原始数据中具体的量化指标和客观说明。"
+      }
+    ],
+    "preferredId": "40b4c881b40f",
+    "mapping": {
+      "before": "c8595a238d33",
+      "after": "40b4c881b40f"
+    }
+  },
+  "providerResponses": [
+    {
+      "candidates": [
+        "{\"documents\": [{\"id\": \"40b4c881b40f\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"完整且准确地保留了源数据中的具体成果与归因说明，表述清晰详实。\"}, {\"id\": \"c8595a238d33\", \"unsupportedClaims\": [], \"defects\": [\"信息缺失：成果部分过度删减，丢失了源数据中关于重复提交次数下降等关键量化结果与背景说明。\"], \"reason\": \"工作经历中的成果部分（r）被大幅删减为“系统上线了”，丢失了原始数据中具体的量化指标和客观说明。\"}], \"preferredId\": \"40b4c881b40f\"}",
+        "0b4c881b40f\"}",
+        " [{\"id\": \"40b4c881b40f\", \"unsupportedClaims\": [], \"defects\": [], \"reason\": \"完整且准确地保留了源数据"
+      ]
+    }
+  ]
+}

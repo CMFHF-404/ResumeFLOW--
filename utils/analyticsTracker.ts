@@ -452,7 +452,6 @@ type ResumeOptimizationAnalyticsContext = {
 };
 
 type ResumeOptimizationAnalyticsPlanMetrics = ResumeOptimizationAnalyticsContext & {
-  beforeScore?: number | null;
   directChangeCount?: number;
   questionCount?: number;
   blockedChangeCount?: number;
@@ -473,7 +472,6 @@ type ResumeOptimizationAnalyticsAnswerMetrics = ResumeOptimizationAnalyticsConte
 
 type ResumeOptimizationAnalyticsMutationMetrics = ResumeOptimizationAnalyticsContext & {
   action?: ResumeOptimizationAnalyticsResultAction;
-  beforeScore?: number | null;
   acceptedChangeCount?: number;
   blockedChangeCount?: number;
   bankSuggestionCount?: number;
@@ -483,9 +481,6 @@ type ResumeOptimizationAnalyticsMutationMetrics = ResumeOptimizationAnalyticsCon
 
 type ResumeOptimizationAnalyticsRescoreMetrics = ResumeOptimizationAnalyticsContext & {
   action: ResumeOptimizationAnalyticsResultAction;
-  beforeScore?: number | null;
-  afterScore?: number | null;
-  scoreDelta?: number | null;
   acceptedChangeCount?: number;
   blockedChangeCount?: number;
   bankSuggestionCount?: number;
@@ -529,38 +524,19 @@ export const toResumeOptimizationAnalyticsFailureCode = (cause: unknown): string
   return safeResumeOptimizationFailureCode((cause as { code?: unknown }).code);
 };
 
-export const trackResumeOptimizationCtaView = ({
-  beforeScore,
-}: Pick<ResumeOptimizationAnalyticsPlanMetrics, 'beforeScore'> = {}) => {
-  const safeBeforeScore = safeResumeOptimizationNumber(beforeScore);
-  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_CTA_VIEW, {
-    ...(safeBeforeScore !== undefined
-      ? { [ANALYTICS_PROPERTIES.BEFORE_SCORE]: safeBeforeScore }
-      : {}),
-  });
+export const trackResumeOptimizationCtaView = () => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_CTA_VIEW, {});
 };
 
-export const trackResumeOptimizationCtaClick = ({
-  beforeScore,
-}: Pick<ResumeOptimizationAnalyticsPlanMetrics, 'beforeScore'> = {}) => {
-  const safeBeforeScore = safeResumeOptimizationNumber(beforeScore);
-  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_CTA_CLICK, {
-    ...(safeBeforeScore !== undefined
-      ? { [ANALYTICS_PROPERTIES.BEFORE_SCORE]: safeBeforeScore }
-      : {}),
-  });
+export const trackResumeOptimizationCtaClick = () => {
+  trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_CTA_CLICK, {});
 };
 
 export const trackResumeOptimizationPlanStart = ({
   resumeId,
-  beforeScore,
-}: Pick<ResumeOptimizationAnalyticsPlanMetrics, 'resumeId' | 'beforeScore'> = {}) => {
-  const safeBeforeScore = safeResumeOptimizationNumber(beforeScore);
+}: Pick<ResumeOptimizationAnalyticsPlanMetrics, 'resumeId'> = {}) => {
   trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_PLAN_START, {
     ...buildSafeResumeOptimizationIdentifiers({ resumeId }),
-    ...(safeBeforeScore !== undefined
-      ? { [ANALYTICS_PROPERTIES.BEFORE_SCORE]: safeBeforeScore }
-      : {}),
   });
 };
 
@@ -568,7 +544,6 @@ export const trackResumeOptimizationPlanResult = ({
   resumeId,
   runId,
   action,
-  beforeScore,
   directChangeCount,
   questionCount,
   blockedChangeCount,
@@ -581,9 +556,6 @@ export const trackResumeOptimizationPlanResult = ({
     ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
     ...(action === 'success' || action === 'failure'
       ? { [ANALYTICS_PROPERTIES.ACTION]: action }
-      : {}),
-    ...(safeResumeOptimizationNumber(beforeScore) !== undefined
-      ? { [ANALYTICS_PROPERTIES.BEFORE_SCORE]: beforeScore as number }
       : {}),
     ...(safeResumeOptimizationNumber(directChangeCount) !== undefined
       ? { [ANALYTICS_PROPERTIES.DIRECT_CHANGE_COUNT]: directChangeCount as number }
@@ -653,16 +625,12 @@ export const trackResumeOptimizationChangeToggle = ({
 export const trackResumeOptimizationApplyStart = ({
   resumeId,
   runId,
-  beforeScore,
   acceptedChangeCount,
   blockedChangeCount,
   bankSuggestionCount,
 }: ResumeOptimizationAnalyticsMutationMetrics) => {
   trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_APPLY_START, {
     ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
-    ...(safeResumeOptimizationNumber(beforeScore) !== undefined
-      ? { [ANALYTICS_PROPERTIES.BEFORE_SCORE]: beforeScore as number }
-      : {}),
     ...(safeResumeOptimizationNumber(acceptedChangeCount) !== undefined
       ? { [ANALYTICS_PROPERTIES.ACCEPTED_CHANGE_COUNT]: acceptedChangeCount as number }
       : {}),
@@ -679,7 +647,6 @@ export const trackResumeOptimizationApplyResult = ({
   resumeId,
   runId,
   action,
-  beforeScore,
   acceptedChangeCount,
   blockedChangeCount,
   bankSuggestionCount,
@@ -691,9 +658,6 @@ export const trackResumeOptimizationApplyResult = ({
     ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
     ...(action === 'success' || action === 'failure'
       ? { [ANALYTICS_PROPERTIES.ACTION]: action }
-      : {}),
-    ...(safeResumeOptimizationNumber(beforeScore) !== undefined
-      ? { [ANALYTICS_PROPERTIES.BEFORE_SCORE]: beforeScore as number }
       : {}),
     ...(safeResumeOptimizationNumber(acceptedChangeCount) !== undefined
       ? { [ANALYTICS_PROPERTIES.ACCEPTED_CHANGE_COUNT]: acceptedChangeCount as number }
@@ -715,9 +679,6 @@ export const trackResumeOptimizationRescoreResult = ({
   resumeId,
   runId,
   action,
-  beforeScore,
-  afterScore,
-  scoreDelta,
   acceptedChangeCount,
   blockedChangeCount,
   bankSuggestionCount,
@@ -728,15 +689,6 @@ export const trackResumeOptimizationRescoreResult = ({
   trackEvent(ANALYTICS_EVENTS.RESUME_OPTIMIZATION_RESCORE_RESULT, {
     ...buildSafeResumeOptimizationIdentifiers({ resumeId, runId }),
     [ANALYTICS_PROPERTIES.ACTION]: action,
-    ...(safeResumeOptimizationNumber(beforeScore) !== undefined
-      ? { [ANALYTICS_PROPERTIES.BEFORE_SCORE]: beforeScore as number }
-      : {}),
-    ...(safeResumeOptimizationNumber(afterScore) !== undefined
-      ? { [ANALYTICS_PROPERTIES.AFTER_SCORE]: afterScore as number }
-      : {}),
-    ...(safeResumeOptimizationNumber(scoreDelta) !== undefined
-      ? { [ANALYTICS_PROPERTIES.SCORE_DELTA]: scoreDelta as number }
-      : {}),
     ...(safeResumeOptimizationNumber(acceptedChangeCount) !== undefined
       ? { [ANALYTICS_PROPERTIES.ACCEPTED_CHANGE_COUNT]: acceptedChangeCount as number }
       : {}),

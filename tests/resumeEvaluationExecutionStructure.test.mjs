@@ -472,7 +472,7 @@ test('report stop action and single-button placeholder stay accessible', () => {
   const panel = read('views/ResumeEditor/components/JDAnalysisPanel.tsx');
   const editor = read('views/ResumeEditor/index.tsx');
 
-  assert.match(report, /aria-label="获取六维报告"/);
+  assert.match(report, /aria-label="获取简历改进指导"/);
   assert.match(report, /停止生成/);
   assert.match(panel, /onStop=\{onStopEvaluation\}/);
   const placeholder = report.slice(
@@ -484,7 +484,7 @@ test('report stop action and single-button placeholder stay accessible', () => {
   assert.match(editor, /onStopEvaluation: stopEvaluation/);
 });
 
-test('six-dimension failures retain only a current trusted report and expose safe retryable messages', () => {
+test('guidance failures retain only a current trusted report and expose safe retryable messages', () => {
   const hook = read('hooks/useResumeEvaluation.ts');
   const report = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx');
   const catchBlock = hook.slice(
@@ -492,8 +492,8 @@ test('six-dimension failures retain only a current trusted report and expose saf
     hook.indexOf('} finally {'),
   );
 
-  assert.match(hook, /const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次六维报告未保存，请重试。"/);
-  assert.match(hook, /const RESUME_EVALUATION_RETAINED_ERROR_MESSAGE =[\s\S]*"本次六维报告未保存，已保留上一份可信报告，请重试。"/);
+  assert.match(hook, /const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次简历改进指导未保存，请重试。"/);
+  assert.match(hook, /const RESUME_EVALUATION_RETAINED_ERROR_MESSAGE =[\s\S]*"本次简历改进指导未保存，已保留上一份可信指导，请重试。"/);
   assert.match(hook, /export const isCurrentTrustedEvaluation = \([\s\S]*isEvaluationOutdated === false/);
   assert.match(hook, /const hasTrustedEvaluationRef = useRef\(false\)/);
   assert.match(hook, /const trustedEvaluationIdentityRef = useRef\(\{ authUserKey, resumeId \}\)/);
@@ -512,13 +512,13 @@ test('six-dimension failures retain only a current trusted report and expose saf
 
 test('an evaluation invalidated while a request is running is not reported as retained after failure', async () => {
   const error = await runEvaluationFailureScenario({ invalidateWhileRunning: true });
-  assert.equal(error, '本次六维报告未保存，请重试。');
-  assert.doesNotMatch(error, /已保留上一份可信报告/);
+  assert.equal(error, '本次简历改进指导未保存，请重试。');
+  assert.doesNotMatch(error, /已保留上一份可信指导/);
 });
 
 test('a still-current trusted evaluation is explicitly reported as retained after failure', async () => {
   const error = await runEvaluationFailureScenario({ invalidateWhileRunning: false });
-  assert.equal(error, '本次六维报告未保存，已保留上一份可信报告，请重试。');
+  assert.equal(error, '本次简历改进指导未保存，已保留上一份可信指导，请重试。');
 });
 
 test('an owner switch cannot retain the previous owner report in failure copy', async () => {
@@ -526,8 +526,8 @@ test('an owner switch cannot retain the previous owner report in failure copy', 
     invalidateWhileRunning: false,
     switchOwnerBeforeRequest: true,
   });
-  assert.equal(error, '本次六维报告未保存，请重试。');
-  assert.doesNotMatch(error, /已保留上一份可信报告/);
+  assert.equal(error, '本次简历改进指导未保存，请重试。');
+  assert.doesNotMatch(error, /已保留上一份可信指导/);
 });
 
 test('a late evaluation cannot persist onto a different same-score JD result', async () => {

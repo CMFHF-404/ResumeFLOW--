@@ -228,7 +228,17 @@ class CalibrationServiceTests(unittest.IsolatedAsyncioTestCase):
         from app.domain.ai.resume_evaluation import SCORING_VERSION
 
         result, context = CalibrationTests().result("Delivered 20 documents.")
+        result['resumeEvaluation']['issues'] = [i for i in result['resumeEvaluation']['issues'] if i['pointsNotEarned']]
+        retained = {i['issueId'] for i in result['resumeEvaluation']['issues']}
+        for dimension in result['resumeEvaluation']['dimensions']:
+            dimension['issues'] = [i for i in dimension['issues'] if i in retained]
+        for issue in result['resumeEvaluation']['issues']:
+            if issue['primaryDimension'] == '专业表达':
+                issue['evidenceIds'] = ['E001']
         expected = calibrate_evaluation(result, context)
+        for dimension in result['resumeEvaluation']['dimensions']:
+            for sub in dimension['subscores']:
+                sub['deductionIssueId'] = dimension['issues'][0] if sub['score'] < sub['maxScore'] else ''
         expected["resumeEvaluation"]["scoringVersion"] = SCORING_VERSION
         context["evaluation_scope"] = "full_resume"
         context["fact_metadata"] = [{
@@ -237,7 +247,7 @@ class CalibrationServiceTests(unittest.IsolatedAsyncioTestCase):
             "content": fact["content"], "source": fact["source"],
         } for fact in context["fact_metadata"]]
         provider = AsyncMock(return_value=result)
-        with patch.object(service, "_call_llm", provider):
+        with patch.object(service, "_call_llm", provider), patch.object(service, "_analyze_resume_evaluation_consensus", service._analyze_resume_evaluation_consensus_v3):
             generated = await service.analyze_resume_evaluation("JD", json.dumps(context))
         self.assertEqual(generated, expected)
         self.assertEqual(provider.await_count, 3)

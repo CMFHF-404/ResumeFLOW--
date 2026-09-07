@@ -1,0 +1,85 @@
+{
+  "ok": false,
+  "seconds": 5.98,
+  "error_type": "AiProviderPayloadError",
+  "message": "Service call failed; inspect local diagnostic log",
+  "frames": [
+    {
+      "file": "qa_resume_blind_benchmark.py",
+      "line": 271,
+      "function": "call_record"
+    },
+    {
+      "file": "tasks.py",
+      "line": 507,
+      "function": "wait_for"
+    },
+    {
+      "file": "resume_evaluation_audit.py",
+      "line": 133,
+      "function": "audit_reports"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2844,
+      "function": "_call_llm"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 2002,
+      "function": "_stream_gemini_json_response_legacy"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 272,
+      "function": "wrapped"
+    },
+    {
+      "file": "runtime_budget.py",
+      "line": 259,
+      "function": "run_with_total_timeout"
+    },
+    {
+      "file": "llm_transport.py",
+      "line": 1982,
+      "function": "_stream_gemini_json_response_once"
+    },
+    {
+      "file": "response_normalizers.py",
+      "line": 122,
+      "function": "_parse_json_content_candidates"
+    },
+    {
+      "file": "response_normalizers.py",
+      "line": 117,
+      "function": "_parse_json_content_candidates"
+    },
+    {
+      "file": "response_normalizers.py",
+      "line": 102,
+      "function": "_parse_json_content"
+    }
+  ],
+  "cause_type": "JSONDecodeError",
+  "diagnostics": []
+}

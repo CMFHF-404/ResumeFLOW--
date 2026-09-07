@@ -1,0 +1,291 @@
+{
+  "evaluationVersion": "guidance_audit_v1",
+  "expectedLogicalRequests": 30,
+  "executedLogicalRequests": 30,
+  "publishedGuidance": 27,
+  "complete": true,
+  "onePassPublicationRateCurrent": 0.9,
+  "onePassPublicationRateFinal": 0.9,
+  "fullServiceSuccessRate": 0.9,
+  "auditCallAttempts": 28,
+  "auditCallSuccesses": 27,
+  "auditCallSuccessRate": 0.9642857142857143,
+  "safeGuidanceAuditedItems": 292,
+  "safeGuidanceApprovedItems": 292,
+  "safeGuidanceApprovalRate": 1.0,
+  "failures": {
+    "ResumeEvaluationAuditError": 1,
+    "TimeoutError": 1,
+    "AiRuntimeTimeoutError": 1
+  },
+  "latency": {
+    "p50Seconds": 34.85,
+    "p95Seconds": 114.2,
+    "maxSeconds": 143.35
+  },
+  "stageLatency": {
+    "generation": {
+      "targetSeconds": 50,
+      "p95Seconds": 34.67
+    },
+    "rubric_audit": {
+      "targetSeconds": 35,
+      "p95Seconds": 84.35
+    }
+  },
+  "stability": {
+    "R7K2": {
+      "status": "unstable",
+      "successfulRepeats": 3,
+      "overallBands": [
+        "needs_attention",
+        "needs_attention",
+        "needs_attention"
+      ],
+      "dimensionBandDistance": {
+        "逻辑清晰": 2,
+        "STAR应用": 0,
+        "内容可读": 0,
+        "内容完整": 0,
+        "专业表达": 1,
+        "成果量化": 0
+      },
+      "commonTopPriorityTaskIds": [
+        "EXP_001_STAR_RESULT",
+        "EXP_001_STAR_SITUATION",
+        "EXP_001_STAR_TASK"
+      ],
+      "priorityStatus": "shared_two_or_more",
+      "priorityConsistent": true,
+      "classificationStable": false,
+      "missingClassificationTaskIds": [
+        "GLOBAL_LOGIC_FOCUS"
+      ],
+      "advicePresenceVarianceTaskIds": [
+        "GLOBAL_LOGIC_FOCUS"
+      ],
+      "classificationFlipTaskIds": [],
+      "semanticStabilityStatus": "anonymous_quality_not_available"
+    },
+    "R2M9": {
+      "status": "insufficient_successes",
+      "successfulRepeats": 2,
+      "semanticStabilityStatus": "insufficient_successes"
+    },
+    "R8P4": {
+      "status": "insufficient_successes",
+      "successfulRepeats": 2,
+      "semanticStabilityStatus": "insufficient_successes"
+    },
+    "R3V6": {
+      "status": "insufficient_successes",
+      "successfulRepeats": 2,
+      "semanticStabilityStatus": "insufficient_successes"
+    },
+    "H4Q1": {
+      "status": "consistent_with_fewer_than_two_priorities",
+      "successfulRepeats": 3,
+      "overallBands": [
+        "strong",
+        "strong",
+        "strong"
+      ],
+      "dimensionBandDistance": {
+        "逻辑清晰": 0,
+        "STAR应用": 0,
+        "内容可读": 0,
+        "内容完整": 0,
+        "专业表达": 0,
+        "成果量化": 0
+      },
+      "commonTopPriorityTaskIds": [
+        "GLOBAL_COMPLETENESS_BASIC"
+      ],
+      "priorityStatus": "not_applicable_fewer_than_two",
+      "priorityConsistent": true,
+      "classificationStable": true,
+      "missingClassificationTaskIds": [],
+      "advicePresenceVarianceTaskIds": [],
+      "classificationFlipTaskIds": [],
+      "semanticStabilityStatus": "anonymous_quality_not_available"
+    },
+    "H9S2": {
+      "status": "unstable",
+      "successfulRepeats": 3,
+      "overallBands": [
+        "adequate",
+        "adequate",
+        "adequate"
+      ],
+      "dimensionBandDistance": {
+        "逻辑清晰": 0,
+        "STAR应用": 0,
+        "内容可读": 0,
+        "内容完整": 0,
+        "专业表达": 0,
+        "成果量化": 0
+      },
+      "commonTopPriorityTaskIds": [
+        "EXP_001_QUANT_BASELINE_COMPARISON",
+        "GLOBAL_COMPLETENESS_BASIC",
+        "GLOBAL_READABILITY_PUNCTUATION_001"
+      ],
+      "priorityStatus": "shared_two_or_more",
+      "priorityConsistent": true,
+      "classificationStable": false,
+      "missingClassificationTaskIds": [
+        "EXP_001_QUANT_COVERAGE_SCALE",
+        "EXP_001_QUANT_RESULT_METRIC",
+        "EXP_001_QUANT_TIME_WINDOW"
+      ],
+      "advicePresenceVarianceTaskIds": [
+        "EXP_001_QUANT_COVERAGE_SCALE",
+        "EXP_001_QUANT_RESULT_METRIC",
+        "EXP_001_QUANT_TIME_WINDOW"
+      ],
+      "classificationFlipTaskIds": [],
+      "semanticStabilityStatus": "anonymous_quality_not_available"
+    },
+    "N6D2": {
+      "status": "stable",
+      "successfulRepeats": 3,
+      "overallBands": [
+        "adequate",
+        "adequate",
+        "adequate"
+      ],
+      "dimensionBandDistance": {
+        "逻辑清晰": 0,
+        "STAR应用": 0,
+        "内容可读": 0,
+        "内容完整": 0,
+        "专业表达": 0,
+        "成果量化": 0
+      },
+      "commonTopPriorityTaskIds": [
+        "EXP_001_QUANT_BASELINE_COMPARISON",
+        "GLOBAL_COMPLETENESS_BASIC",
+        "GLOBAL_READABILITY_PUNCTUATION_001"
+      ],
+      "priorityStatus": "shared_two_or_more",
+      "priorityConsistent": true,
+      "classificationStable": true,
+      "missingClassificationTaskIds": [],
+      "advicePresenceVarianceTaskIds": [],
+      "classificationFlipTaskIds": [],
+      "semanticStabilityStatus": "anonymous_quality_not_available"
+    },
+    "N4T8": {
+      "status": "stable",
+      "successfulRepeats": 3,
+      "overallBands": [
+        "adequate",
+        "adequate",
+        "adequate"
+      ],
+      "dimensionBandDistance": {
+        "逻辑清晰": 0,
+        "STAR应用": 0,
+        "内容可读": 0,
+        "内容完整": 0,
+        "专业表达": 0,
+        "成果量化": 0
+      },
+      "commonTopPriorityTaskIds": [
+        "EXP_001_QUANT_BASELINE_COMPARISON",
+        "EXP_001_QUANT_COVERAGE_SCALE",
+        "GLOBAL_COMPLETENESS_BASIC"
+      ],
+      "priorityStatus": "shared_two_or_more",
+      "priorityConsistent": true,
+      "classificationStable": true,
+      "missingClassificationTaskIds": [],
+      "advicePresenceVarianceTaskIds": [],
+      "classificationFlipTaskIds": [],
+      "semanticStabilityStatus": "anonymous_quality_not_available"
+    },
+    "P5L2": {
+      "status": "stable",
+      "successfulRepeats": 3,
+      "overallBands": [
+        "adequate",
+        "adequate",
+        "adequate"
+      ],
+      "dimensionBandDistance": {
+        "逻辑清晰": 0,
+        "STAR应用": 0,
+        "内容可读": 0,
+        "内容完整": 0,
+        "专业表达": 0,
+        "成果量化": 0
+      },
+      "commonTopPriorityTaskIds": [
+        "GLOBAL_COMPLETENESS_BASIC",
+        "GLOBAL_READABILITY_PUNCTUATION_001",
+        "GLOBAL_READABILITY_PUNCTUATION_002"
+      ],
+      "priorityStatus": "shared_two_or_more",
+      "priorityConsistent": true,
+      "classificationStable": true,
+      "missingClassificationTaskIds": [],
+      "advicePresenceVarianceTaskIds": [],
+      "classificationFlipTaskIds": [],
+      "semanticStabilityStatus": "anonymous_quality_not_available"
+    },
+    "P8C6": {
+      "status": "stable",
+      "successfulRepeats": 3,
+      "overallBands": [
+        "adequate",
+        "adequate",
+        "adequate"
+      ],
+      "dimensionBandDistance": {
+        "逻辑清晰": 0,
+        "STAR应用": 0,
+        "内容可读": 0,
+        "内容完整": 0,
+        "专业表达": 0,
+        "成果量化": 0
+      },
+      "commonTopPriorityTaskIds": [
+        "EXP_001_QUANT_BASELINE_COMPARISON",
+        "EXP_001_QUANT_COVERAGE_SCALE",
+        "GLOBAL_COMPLETENESS_BASIC"
+      ],
+      "priorityStatus": "shared_two_or_more",
+      "priorityConsistent": true,
+      "classificationStable": true,
+      "missingClassificationTaskIds": [],
+      "advicePresenceVarianceTaskIds": [],
+      "classificationFlipTaskIds": [],
+      "semanticStabilityStatus": "anonymous_quality_not_available"
+    }
+  },
+  "blindQuality": {
+    "status": "not_run",
+    "plannedCases": 10,
+    "guidanceCases": 0,
+    "guidanceJudgeAttempts": 0,
+    "guidanceJudgeSuccesses": 0,
+    "guidanceJudgeSuccessRate": null,
+    "safeAccurateActionableGuidance": 0,
+    "safeAccurateActionableRate": 0.0,
+    "safeAccurateActionableRateAmongAttempted": null,
+    "textPairCases": 0,
+    "textPairAttempts": 0,
+    "textPairSuccesses": 0,
+    "textPairSuccessRate": null,
+    "textPreference": {},
+    "textPairsWithUnsupportedClaims": 0,
+    "contradictionEligibleCases": 0,
+    "contradictoryAdviceCases": 0,
+    "contradictoryAdviceRate": null,
+    "skippedTextPairs": 0,
+    "guidedRewriteCases": 0,
+    "guidedRewriteAttempts": 0,
+    "guidedRewriteSuccesses": 0,
+    "guidedRewriteAppliedChanges": 0
+  }
+}
