@@ -1086,7 +1086,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const focusRestoredAnalysisReport = useCallback(() => {
         window.requestAnimationFrame(() => {
             const focusTarget = Array.from(document.querySelectorAll<HTMLButtonElement>(
-                '[data-resume-optimization-focus-return="true"][aria-label="关闭分析报告"]:not([disabled])'
+                '[data-resume-optimization-focus-return="true"][aria-label="返回 AI 助手"]:not([disabled])'
             )).find((candidate) => (
                 candidate.isConnected
                 && candidate.getClientRects().length > 0
@@ -1618,13 +1618,24 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setRightSidebarSurface(null);
         setWorkspaceLayout('list');
     }, []);
+    const handleReturnFromAnalysisToAssistant = useCallback(() => {
+        if (window.matchMedia('(max-width: 767px)').matches) {
+            handleCloseJDAnalysisDetailsSidebar();
+            handleLaunchResumeAssistant();
+            return;
+        }
+        lastRightSidebarSurfaceRef.current = 'assistant';
+        setIsAssistantSidebarMounted(true);
+        setRightSidebarSurface('assistant');
+        setWorkspaceLayout('ai');
+    }, [handleCloseJDAnalysisDetailsSidebar, handleLaunchResumeAssistant]);
     const {
         captureReturnFocus: captureMobileAnalysisReturnFocus,
         isMobileAnalysisViewport,
         mobileAnalysisDialogRef,
     } = useMobileJDAnalysisDialog({
         isOpen: isJDAnalysisDetailsSidebarOpen,
-        onClose: handleCloseJDAnalysisDetailsSidebar,
+        onClose: handleReturnFromAnalysisToAssistant,
     });
     const handleOpenJDAnalysisDetailsSidebar = useCallback(() => {
         if (!analysisResult) {
@@ -2422,7 +2433,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         canStartOptimization: resumeOptimizationFlow.canStart,
         optimizationDisabledReason: resumeOptimizationFlow.disabledReason,
         onStartOptimization: handleStartResumeOptimization,
-        onClose: handleCloseJDAnalysisDetailsSidebar,
+        onClose: handleReturnFromAnalysisToAssistant,
         onOpenAgentPluginConfig,
     } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;
     const rightSidebarContent = isRightSidebarOpen || hasOpenedRightSidebar ? (

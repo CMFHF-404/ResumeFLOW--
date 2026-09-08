@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, CreditCard, KeyRound, LoaderCircle, RefreshCw, Wallet, X } from 'lucide-react';
+import { ArrowLeft, CreditCard, Gauge, KeyRound, LoaderCircle, RefreshCw, X } from 'lucide-react';
 import {
   billingService,
   type BillingProduct,
@@ -56,16 +56,15 @@ const QuotaDashboard: React.FC<{
   purchaseButtonRef: React.RefObject<HTMLButtonElement | null>;
 }> = ({ summary, onOpenPurchase, purchaseButtonRef }) => {
   const remaining = Math.max(Number(summary?.remaining_tokens ?? 0), 0);
-  const used = Math.max(Number(summary?.used_tokens ?? 0), 0);
   const limit = Math.max(Number(summary?.token_limit ?? 0), 0);
   const isUnlimitedQuota = Boolean(summary?.is_unlimited);
   const unlimitedExpiryText = formatDateTime(summary?.unlimited_expires_at);
 
-  // 消耗比例
-  const usedPercent = limit > 0
-    ? Math.max(0, Math.min((used / limit) * 100, 100))
+  // 剩余额度比例
+  const remainingPercent = limit > 0
+    ? Math.max(0, Math.min((remaining / limit) * 100, 100))
     : 0;
-  const progressPercent = isUnlimitedQuota ? 100 : usedPercent;
+  const progressPercent = isUnlimitedQuota ? 100 : remainingPercent;
 
   return (
     <div className={`rounded-xl border p-4 ${
@@ -94,14 +93,14 @@ const QuotaDashboard: React.FC<{
           </div>
         </div>
 
-        {/* 已用进度条 */}
+        {/* 剩余额度进度条 */}
         <div className="flex-[1.2] space-y-1.5 border-t border-gray-100 pt-3 sm:border-t-0 sm:pt-0 dark:border-gray-800">
           <div className="flex items-center justify-between text-xs font-semibold">
             <span className={isUnlimitedQuota ? 'text-amber-700 dark:text-amber-200' : 'text-gray-600 dark:text-gray-300'}>
-              {isUnlimitedQuota ? '本期 AI 服务不扣 Token' : `已用 ${formatTokens(used)}`}
+              {isUnlimitedQuota ? '本期 AI 服务不扣 Token' : `剩余 ${formatTokens(remaining)}`}
             </span>
             <span className="text-gray-400">
-              {isUnlimitedQuota ? '无限可用' : `上限 ${formatTokens(limit)} (${usedPercent.toFixed(0)}%)`}
+              {isUnlimitedQuota ? '无限可用' : `上限 ${formatTokens(limit)} (剩余 ${remainingPercent.toFixed(0)}%)`}
             </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-gray-200/70 dark:bg-gray-800">
@@ -1765,7 +1764,7 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
           ) : (
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-                <Wallet className="h-5 w-5" />
+                <Gauge className="h-5 w-5" />
               </div>
               <div>
                 <h2 id="token-quota-dialog-title" className="text-sm font-extrabold text-gray-900 dark:text-white">额度</h2>

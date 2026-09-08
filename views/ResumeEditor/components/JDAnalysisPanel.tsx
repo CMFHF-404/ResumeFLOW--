@@ -651,11 +651,11 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
                     <button
                         type="button"
                         onClick={handleClose}
-                        aria-label="关闭分析报告"
+                        aria-label="返回 AI 助手"
                         data-resume-optimization-focus-return="true"
                         className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-100"
                     >
-                        <X className="h-4 w-4" />
+                        <ChevronDown className="h-4 w-4" />
                     </button>
                 </div>
             </div>

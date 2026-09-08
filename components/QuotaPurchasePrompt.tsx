@@ -1,5 +1,5 @@
 import React from 'react';
-import { CreditCard, WalletCards, X } from 'lucide-react';
+import { CreditCard, Gauge, X } from 'lucide-react';
 import { DEFAULT_QUOTA_PURCHASE_MESSAGE } from '../services/quotaPurchasePrompt';
 
 type QuotaPurchasePromptProps = {
@@ -21,7 +21,7 @@ const QuotaPurchasePrompt: React.FC<QuotaPurchasePromptProps> = ({
         className="pointer-events-auto flex w-full max-w-xl flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-white/95 p-3 shadow-xl shadow-amber-950/10 backdrop-blur sm:flex-nowrap dark:border-amber-500/30 dark:bg-gray-950/95"
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-          <WalletCards className="h-4 w-4" aria-hidden="true" />
+          <Gauge className="h-4 w-4" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-extrabold text-gray-900 dark:text-white">AI 额度不足</p>

@@ -61,18 +61,18 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(conversationViewport, /readMessageAttachmentPreviews\(message\)/);
   assert.match(conversationViewport, /readMessageSelectedExperiences\(message\)/);
   assert.match(conversationViewport, /readMessageSelectedResume\(message\)/);
-  assert.match(conversationViewport, /<ActiveThoughtBlock thought=\{activeThought\} \/>/);
+  assert.doesNotMatch(conversationViewport, /<ActiveThoughtBlock/);
   assert.match(conversationViewport, /isSending: boolean/);
   assert.match(conversationViewport, /正在生成回复\.\.\./);
   assert.doesNotMatch(conversationViewport, /latestSuggestedFollowups\.map/);
   assert.doesNotMatch(assistant, /你的AI求职助手/);
   assert.doesNotMatch(assistant, /<Bot className="h-5 w-5" \/>/);
-  assert.match(assistant, /const assistantSidebarTitle = selectedSession\?\.title\?\.trim\(\) \|\| 'AI助手';/);
+  assert.match(assistant, /const assistantSidebarTitle = selectedSessionId.*: '新对话';/);
   assert.match(assistant, /import \{ AssistantSidebarHeader \} from '\.\/AIAssistant\/AssistantSidebarHeader'/);
   assert.match(assistant, /<AssistantSidebarHeader/);
   assert.match(assistant, /title=\{assistantSidebarTitle\}/);
   assert.match(assistant, /isHistoryOpen=\{isSidebarHistoryOpen\}/);
-  assert.match(assistant, /onNewChat=\{handleSidebarNewChat\}/);
+  assert.match(assistant, /onNewChat=\{selectedSessionId \? handleSidebarNewChat : undefined\}/);
   assert.match(assistant, /onToggleHistory=\{\(\) => setIsSidebarHistoryOpen\(\(current\) => !current\)\}/);
   assert.match(assistant, /onExpandToFullPage=\{\(\) => onExpandToFullPage\?\.\(selectedSessionId\)\}/);
   assert.match(assistant, /onOpenAnalysisDetails=\{onOpenAnalysisDetails\}/);
@@ -110,12 +110,13 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(sidebarHeader, /aria-controls="assistant-sidebar-history-panel"/);
   assert.match(sidebarHeader, /aria-expanded=\{isHistoryOpen\}/);
   assert.match(sidebarHeader, /aria-label=\{isHistoryOpen \? '关闭对话记录' : '打开对话记录'\}/);
-  assert.match(sidebarHeader, /<History className="h-4 w-4" \/>/);
+  assert.match(sidebarHeader, /<ChevronDown/);
+  assert.doesNotMatch(sidebarHeader, /<History/);
   assert.match(sidebarHeader, /<FileSearch className="h-4 w-4" \/>/);
   assert.match(sidebarHeader, /<Maximize2 className="h-4 w-4" \/>/);
   assert.ok(
-    analysisButtonIndex < historyButtonIndex,
-    'analysis details button should appear before history button in the sidebar header'
+    historyButtonIndex < analysisButtonIndex,
+    'title history trigger should appear before sidebar actions'
   );
   assert.ok(
     historyButtonIndex < newChatButtonIndex,

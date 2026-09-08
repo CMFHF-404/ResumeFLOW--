@@ -3,7 +3,6 @@ import {
   Plus,
   Mic,
   ArrowUp,
-  BrainCircuit,
   ChevronUp,
   Sparkles,
   PenLine,
@@ -19,10 +18,7 @@ export type ChatInputBoxProps = {
   onChange: (value: string) => void;
   onSubmit: () => void;
   isSending: boolean;
-  isDeepThinkingEnabled?: boolean;
-  shouldExpandDeepThinkingButton?: boolean;
   surface?: 'full' | 'sidebar';
-  onDeepThinkingChange?: (enabled: boolean) => void;
   placeholder?: string;
   plusActions?: { key: string; label: string; onClick?: () => void }[];
   onAddAttachments?: (files: File[]) => void;
@@ -82,10 +78,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   onChange,
   onSubmit,
   isSending,
-  isDeepThinkingEnabled = false,
-  shouldExpandDeepThinkingButton = true,
   surface = 'full',
-  onDeepThinkingChange,
   placeholder = '有问题，尽管问',
   plusActions = [],
   onAddAttachments,
@@ -168,7 +161,6 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   }, [isModuleMenuOpen]);
 
   const canSubmit = Boolean(value.trim() || hasContextItems) && !isSending;
-  const shouldShowDeepThinkingLabel = isDeepThinkingEnabled && shouldExpandDeepThinkingButton;
 
   const handleResumeModuleToggle = (mod: NonNullable<ChatInputBoxProps['resumeModules']>[number]) => {
     const nextIds = selectedResumeModuleIds.includes(mod.id)
@@ -413,39 +405,6 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           </div>
 
           <div className="flex shrink-0 items-center gap-2 pr-1">
-            <button
-              type="button"
-              onClick={() => onDeepThinkingChange?.(!isDeepThinkingEnabled)}
-              disabled={isSending}
-              aria-pressed={isDeepThinkingEnabled}
-              aria-label="深度思考"
-              style={{
-                width: shouldShowDeepThinkingLabel ? 112 : 36,
-                paddingLeft: shouldShowDeepThinkingLabel ? 12 : 0,
-                paddingRight: shouldShowDeepThinkingLabel ? 12 : 0,
-              }}
-              className={`inline-flex h-9 shrink-0 items-center justify-center overflow-hidden rounded-full border transition-[width,padding,background-color,border-color,color,box-shadow] duration-200 ease-out motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-55 ${
-                shouldShowDeepThinkingLabel ? 'gap-1.5' : 'gap-0'
-              } ${
-                isDeepThinkingEnabled
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:shadow-none'
-                  : 'border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200'
-              }`}
-              title="深度思考"
-            >
-              <BrainCircuit className={`h-5 w-5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none ${isDeepThinkingEnabled ? 'scale-105' : 'scale-100'}`} />
-              <span
-                aria-hidden={!shouldShowDeepThinkingLabel}
-                style={{
-                  width: shouldShowDeepThinkingLabel ? 64 : 0,
-                  opacity: shouldShowDeepThinkingLabel ? 1 : 0,
-                  transform: shouldShowDeepThinkingLabel ? 'translateX(0)' : 'translateX(-4px)',
-                }}
-                className="inline-block overflow-hidden whitespace-nowrap text-xs font-semibold transition-[width,opacity,transform] duration-200 ease-out motion-reduce:transition-none"
-              >
-                深度思考
-              </span>
-            </button>
             <button
               type="button"
               className="hidden rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
