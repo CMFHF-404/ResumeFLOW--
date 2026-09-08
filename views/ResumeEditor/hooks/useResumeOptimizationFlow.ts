@@ -1928,6 +1928,25 @@ export const useResumeOptimizationFlow = ({
     });
   }, [acceptedChangeIds, authUserKey, enabled, resumeId]);
 
+  const acceptAllChanges = useCallback(() => {
+    if (!enabled) return;
+    const currentRun = latestRunRef.current;
+    if (!currentRun || currentRun.status !== 'preview_ready' || !isResumeOptimizationRunContextCurrent(
+      currentRun,
+      latestInputsRef.current.sourceResumeUpdatedAt,
+      latestInputsRef.current.evaluationSignature,
+    )) return;
+    const changes = effectivePlan(currentRun).changes;
+    const next = filterResumeOptimizationSelectableChangeIds(changes, changes.map(change => change.changeId));
+    setAcceptedChangeIds(next);
+    saveResumeOptimizationSelectionSnapshot(authUserKey, resumeId, currentRun.id, next);
+    trackResumeOptimizationChangeToggle({
+      resumeId: currentRun.resumeId,
+      runId: currentRun.id,
+      acceptedChangeCount: next.length,
+    });
+  }, [authUserKey, enabled, resumeId]);
+
   const runPostApplyEvaluation = useCallback(async (
     appliedRun: ResumeOptimizationRun,
     generation: number,
@@ -2511,7 +2530,7 @@ export const useResumeOptimizationFlow = ({
         applyRunToState(authoritativeRun);
         return authoritativeRun;
       }
-      applyRunToState(authoritativeRun, false, true);
+      applyRunToState(authoritativeRun, false, true, 'rescoring');
       let checkpoint = postApplyCheckpointRef.current;
       if (!checkpoint || checkpoint.runId !== authoritativeRun.id) {
         const appliedResumeUpdatedAt = canonicalizeResumeOptimizationFlowTimestamp(
@@ -2829,6 +2848,7 @@ export const useResumeOptimizationFlow = ({
     setAnswer,
     submitAnswers,
     toggleChange,
+    acceptAllChanges,
     applyAcceptedChanges,
     retryRescore,
     revertRun,

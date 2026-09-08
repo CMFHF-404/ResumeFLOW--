@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 let hookImportSequence = 0;
 
@@ -475,7 +475,7 @@ test('report stop action and single-button placeholder stay accessible', () => {
   assert.match(report, /aria-label="六维简历评分"/);
   assert.match(report, /停止生成/);
   assert.match(panel, /onStop=\{onStopEvaluation\}/);
-  assert.match(report, /onClick=\{onGenerate\} disabled=\{isGenerating \|\| isOptimizationBusy\}/);
+  assert.match(report, /onClick=\{isGenerating \? onStop : onGenerate\} disabled=\{isGenerating \? !onStop : isOptimizationBusy\}/);
   assert.match(panel, /onStopEvaluation\?: \(\) => void/);
   assert.match(editor, /onStopEvaluation: stopEvaluation/);
 });
@@ -502,7 +502,7 @@ test('guidance failures retain only a current trusted report and expose safe ret
   assert.doesNotMatch(catchBlock, /cause\.message|setError\(cause|Invalid resume evaluation structure|repair attempt/);
   assert.doesNotMatch(catchBlock, /persistResumeEvaluationResult|onEvaluationComplete/);
   assert.match(catchBlock, /return \{ status: "error" \}/);
-  assert.match(report, /onGenerate && <button[\s\S]*disabled=\{isGenerating \|\| isOptimizationBusy\}/);
+  assert.match(report, /\(onGenerate \|\| \(isGenerating && onStop\)\) && <button[\s\S]*disabled=\{isGenerating \? !onStop : isOptimizationBusy\}/);
   assert.match(report, /role="alert"/);
 });
 

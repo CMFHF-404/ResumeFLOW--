@@ -191,7 +191,7 @@ test('numeric scoring CTA records only aggregate visibility and selection clicks
   assert.match(report, /ctaViewTrackedRef/);
   assert.match(report, /trackResumeOptimizationCtaView\(\)/);
   assert.match(report, /trackResumeOptimizationCtaClick\(\)/);
-  assert.ok(report.indexOf('本次优化按实际模型用量消耗 Token。') < report.indexOf('优化所选模块'));
+  assert.doesNotMatch(report, /本次优化按实际模型用量消耗 Token。/);
 });
 
 test('hook emits aggregate events at frozen mutation boundaries without leaking identifiers', () => {

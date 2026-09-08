@@ -14,7 +14,7 @@ test('ExperienceBank hosts desktop assistant sidebar and falls back to full-page
   assert.match(experienceBankRoute, /onJumpToResumeEditor=\{handleJumpToResumeEditor\}/);
 
   assert.match(bank, /import AIAssistant from '\.\/AIAssistant'/);
-  assert.match(bank, /const EXPERIENCE_BANK_ASSISTANT_SIDEBAR_WIDTH = '390px'/);
+  assert.match(read('views/ExperienceBank/useAssistantSidebarResize.ts'), /ASSISTANT_SIDEBAR_MIN_WIDTH = 390/);
   assert.match(bank, /const EXPERIENCE_BANK_DESKTOP_ASSISTANT_MEDIA_QUERY = '\(min-width: 768px\)'/);
   assert.match(bank, /const buildExperienceBankAssistantRequest = \(\): AssistantLaunchRequest => \(\{/);
   const headerAssistantRequest = bank.match(/const buildExperienceBankAssistantRequest = \(\): AssistantLaunchRequest => \(\{[\s\S]*?\n\}\);/)?.[0] ?? '';
@@ -49,7 +49,7 @@ test('ExperienceBank hosts desktop assistant sidebar and falls back to full-page
   assert.match(bank, /<Bot className="h-4 w-4" \/>[\s\S]*<span className="sr-only">\{assistantHeaderButtonLabel\}<\/span>/);
   assert.match(
     bank,
-    /style=\{\{\s*width: isAssistantSidebarOpen \? EXPERIENCE_BANK_ASSISTANT_SIDEBAR_WIDTH : 0,\s*opacity: isAssistantSidebarOpen \? 1 : 0,\s*flexShrink: 0,\s*\}\}/
+    /style=\{\{\s*width: isAssistantSidebarOpen \? assistantResize\.width : 0,\s*opacity: isAssistantSidebarOpen \? 1 : 0,\s*flexShrink: 0,\s*\}\}/
   );
   assert.doesNotMatch(bank, /setCurrentView\(ViewState\.AI_ASSISTANT\)/);
 });

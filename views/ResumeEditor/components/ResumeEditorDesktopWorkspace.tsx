@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import ResumeFactorySidebar, { type ResumeFactorySidebarProps } from './ResumeFactorySidebar';
 import ResumeEditorLayoutAdjustPanel from './ResumeEditorLayoutAdjustPanel';
 import ResumeEditorPreviewStage from './ResumeEditorPreviewStage';
@@ -28,6 +28,13 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
 }) => {
     const showRightSidebar = layoutMode !== 'list' && isRightSidebarOpen;
     const hideFactorySidebar = layoutMode === 'ai';
+    const lastExpandedLayout = useRef<'list' | 'triple'>('list');
+    if (layoutMode !== 'ai') lastExpandedLayout.current = layoutMode;
+    const factoryWidthClasses = lastExpandedLayout.current === 'triple'
+        ? '[--factory-sidebar-width:0px] xl:[--factory-sidebar-width:460px]'
+        : factorySidebarProps.activeTab === 'templates'
+            ? '[--factory-sidebar-width:384px] lg:[--factory-sidebar-width:562.5px] xl:[--factory-sidebar-width:607.5px]'
+            : '[--factory-sidebar-width:562.5px] xl:[--factory-sidebar-width:607.5px]';
     const rightSidebarWidth = layoutMode === 'ai' ? AI_RIGHT_SIDEBAR_WIDTH : DEFAULT_RIGHT_SIDEBAR_WIDTH;
 
     return (
@@ -36,18 +43,19 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
             aria-hidden={hideFactorySidebar}
             inert={hideFactorySidebar ? true : undefined}
             className={[
-                'hidden md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
-                'transition-[width,opacity] duration-300 ease-in-out',
-                hideFactorySidebar
-                    ? 'md:w-0 opacity-0 pointer-events-none'
-                    : layoutMode === 'triple'
-                    ? 'xl:flex xl:w-[460px]'
-                    : factorySidebarProps.activeTab === 'templates'
-                        ? 'md:flex md:w-[384px] lg:w-[562.5px] xl:w-[607.5px]'
-                        : 'md:flex md:w-[562.5px] xl:w-[607.5px]',
+                'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-clip',
+                'transition-[width] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+                factoryWidthClasses,
+                hideFactorySidebar ? 'md:w-0 pointer-events-none' : 'md:w-[var(--factory-sidebar-width)]',
             ].join(' ')}
         >
-            <ResumeFactorySidebar {...factorySidebarProps} />
+            <div className={[
+                'h-full w-[var(--factory-sidebar-width)] shrink-0 transition-[transform,opacity] duration-[220ms] ease-out motion-reduce:transition-none',
+                lastExpandedLayout.current === 'triple' ? 'invisible xl:visible' : '',
+                hideFactorySidebar ? '-translate-x-4 opacity-0' : 'translate-x-0 opacity-100',
+            ].join(' ')}>
+                <ResumeFactorySidebar {...factorySidebarProps} />
+            </div>
         </div>
         <ResumeEditorPreviewStage
             layoutAdjustProps={layoutAdjustProps}

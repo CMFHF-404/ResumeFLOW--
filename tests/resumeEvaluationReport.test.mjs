@@ -100,7 +100,7 @@ test('missing report exposes a keyboard-accessible explicit generation action', 
   assert.match(source, /评分同时标注可优化模块和改进方向/);
   assert.match(source, /重新进行六维评分/);
   assert.match(source, /aria-busy=\{isGenerating\}/);
-  assert.match(source, /disabled=\{isGenerating \|\| isOptimizationBusy\}/);
+  assert.match(source, /disabled=\{isGenerating \? !onStop : isOptimizationBusy\}/);
   assert.match(source, /focus-visible:ring-2/);
   assert.match(source, /aria-label="六维简历评分"/);
   assert.match(source, /停止生成/);

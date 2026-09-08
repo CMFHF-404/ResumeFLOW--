@@ -86,11 +86,11 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
     const hasStrategy = recommendedTitles.length > 0 || searchQueries.length > 0 || avoidTitles.length > 0;
 
     return (
-        <div className="rounded-xl border border-indigo-100/50 bg-gradient-to-br from-indigo-50/50 via-violet-50/15 to-transparent p-4 shadow-[0_8px_30px_rgba(99,102,241,0.03)] dark:border-indigo-900/30 dark:from-indigo-950/20 dark:via-violet-950/5 dark:to-transparent">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
             <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-1.5 text-indigo-900 dark:text-indigo-100">
-                    <Compass className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                    <h4 className="text-[12px] font-bold">
+                <div className="flex items-center gap-1.5 text-slate-900 dark:text-white">
+                    <Compass className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <h4 className="text-sm font-bold">
                         可同时投递的岗位方向
                     </h4>
                 </div>
@@ -99,7 +99,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                         type="button"
                         onClick={() => onCopyText(queryText, 'queries')}
                         disabled={!queryText}
-                        className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[10.5px] font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50/70 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-200 dark:hover:bg-indigo-950/30"
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-[10.5px] font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50/70 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:bg-gray-900 dark:text-emerald-200 dark:hover:bg-emerald-950/30"
                     >
                         <Copy className="h-3 w-3" />
                         复制搜索词
@@ -108,7 +108,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                         type="button"
                         onClick={() => onCopyText(buildAgentSearchPrompt(analysisResult, jdText), 'agent')}
                         disabled={!hasStrategy}
-                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[10.5px] font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[10.5px] font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <Search className="h-3 w-3" />
                         让 Agent 搜同类岗位
@@ -116,7 +116,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                 </div>
             </div>
             {copyStatus !== 'idle' ? (
-                <p className={`mb-3 inline-flex items-center gap-1 text-[10.5px] font-medium ${copyStatus === 'copied' ? 'text-indigo-700 dark:text-indigo-200' : 'text-red-600 dark:text-red-400'}`}>
+                <p className={`mb-3 inline-flex items-center gap-1 text-[10.5px] font-medium ${copyStatus === 'copied' ? 'text-emerald-700 dark:text-emerald-200' : 'text-red-600 dark:text-red-400'}`}>
                     {copyStatus === 'copied' ? <Check className="h-3 w-3" /> : null}
                     {copyStatus === 'copied' ? '已复制，可交给 Agent 或岗位网站搜索框使用' : '复制失败，请从下方手动复制'}
                 </p>
@@ -132,7 +132,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
             ) : null}
             <div className="space-y-3.5">
                 <div className="space-y-1.5">
-                    <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                         强推荐同投
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -144,7 +144,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                                 </Pill>
                             ))
                         ) : (
-                            <span className="text-[11px] text-indigo-500 dark:text-indigo-300">
+                            <span className="text-[11px] text-emerald-500 dark:text-emerald-300">
                                 刷新分析后生成同类岗位方向
                             </span>
                         )}
@@ -152,19 +152,19 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                 </div>
                 {searchQueries.length > 0 ? (
                     <div className="space-y-1.5">
-                        <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                             搜索词
                         </p>
                         <div className="space-y-2">
                             {searchQueries.slice(0, 4).map((item) => (
                                 <div
                                     key={`${item.label}-${item.query}`}
-                                    className="group rounded-r-lg border-l-2 border-indigo-500 bg-white/60 p-2.5 text-[11px] leading-relaxed text-indigo-950 shadow-[0_1px_2px_rgba(99,102,241,0.02)] transition-all duration-200 hover:bg-white dark:border-indigo-900/30 dark:bg-gray-900/50 dark:text-indigo-100 dark:hover:bg-gray-900"
+                                    className="group rounded-r-lg border-l-2 border-emerald-500 bg-white/60 p-2.5 text-[11px] leading-relaxed text-emerald-950 shadow-[0_1px_2px_rgba(99,102,241,0.02)] transition-all duration-200 hover:bg-white dark:border-emerald-900/30 dark:bg-gray-900/50 dark:text-emerald-100 dark:hover:bg-gray-900"
                                 >
                                     <span className="font-semibold">{item.label}：</span>
                                     <span>{item.query}</span>
                                     {item.excludeKeywords?.length ? (
-                                        <span className="text-indigo-700/70 dark:text-indigo-300/75">
+                                        <span className="text-emerald-700/70 dark:text-emerald-300/75">
                                             {' '}排除：{item.excludeKeywords.join('、')}
                                         </span>
                                     ) : null}
@@ -175,7 +175,7 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
                 ) : null}
                 {avoidTitles.length > 0 ? (
                     <div className="space-y-1.5">
-                        <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                             不建议混投
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -230,28 +230,28 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
         : null;
 
     return (
-        <div className="overflow-hidden rounded-xl border border-emerald-100/70 bg-gradient-to-br from-emerald-50/75 via-white to-teal-50/30 p-4 shadow-[0_10px_28px_rgba(16,185,129,0.045)] dark:border-emerald-900/35 dark:from-emerald-950/25 dark:via-slate-950 dark:to-teal-950/10">
-            <div className="flex items-start justify-between gap-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-center justify-between gap-3">
                 <div>
-                    <p className="text-[10.5px] font-bold tracking-[0.12em] text-emerald-700/75 dark:text-emerald-300/75">JD ANALYSIS REPORT</p>
-                    <h4 className="mt-1 text-[13px] font-bold text-slate-900 dark:text-white">JD 分析报告</h4>
+                    <p className="mb-1 text-[10px] font-semibold tracking-widest text-emerald-700 dark:text-emerald-400">岗位匹配</p>
+                    <h4 className="text-base font-bold text-slate-900 dark:text-white">JD 分析报告</h4>
                 </div>
                 {jdMatch === null ? (
                     <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">待分析</span>
                 ) : (
                     <div className="text-right" aria-label={`JD 匹配度 ${jdMatch}%`}>
-                        <strong className="text-3xl font-black tracking-tight text-emerald-700 dark:text-emerald-300">{jdMatch}</strong>
-                        <span className="ml-0.5 text-[13px] font-bold text-emerald-700 dark:text-emerald-300">%</span>
+                        <strong className="text-4xl font-bold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-400">{jdMatch}</strong>
+                        <span className="ml-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">%</span>
                     </div>
                 )}
             </div>
-            <div className="mt-4 space-y-4 border-t border-emerald-100/70 pt-3.5 dark:border-emerald-900/35">
+            <div className="mt-4 space-y-4 border-t border-slate-100 pt-4 dark:border-slate-800">
                 <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
                     <Target className="h-3.5 w-3.5" />
                     <span className="text-[12px] font-bold tracking-wide uppercase">JD 解读</span>
                 </div>
                 <div className="space-y-1.5">
-                    <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                         岗位画像
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -265,16 +265,16 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
                     </div>
                 </div>
                 <div className="space-y-1.5">
-                    <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                         JD 真实诉求
                     </p>
-                    <div className="relative rounded-r-lg border-l-2 border-emerald-500/60 bg-emerald-50/20 px-3 py-2 text-[11.5px] leading-relaxed text-emerald-900/90 dark:bg-emerald-950/10 dark:text-emerald-200/90">
+                    <div className="border-l-2 border-emerald-400 pl-3 text-[13px] leading-6 text-slate-600 dark:text-slate-300">
                         {getText(interpretation?.roleIntent) || '暂无解读，重新分析后会补齐岗位真实诉求。'}
                     </div>
                 </div>
                 {(coreResponsibilities.length > 0 || mustHave.length > 0) ? (
                     <div className="space-y-2">
-                        <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                             核心要求
                         </p>
                         <div className="space-y-2">
@@ -283,14 +283,14 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
                                 .map((item) => (
                                     <div
                                         key={`${item.label}-${item.evidence}`}
-                                        className="group flex flex-col rounded-lg border border-emerald-100/50 bg-white/60 p-2.5 text-[11.5px] leading-relaxed text-emerald-950 shadow-[0_1px_2px_rgba(16,185,129,0.02)] transition-all duration-200 hover:bg-white dark:border-emerald-900/30 dark:bg-gray-900/50 dark:text-emerald-100 dark:hover:bg-gray-900"
+                                        className="flex flex-col rounded-xl border border-slate-200 p-3 text-xs leading-5 dark:border-slate-800"
                                     >
-                                        <div className="flex items-start gap-1.5 font-semibold text-emerald-900 dark:text-emerald-100">
+                                        <div className="flex items-start gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
                                             <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
                                             <span>{item.label}</span>
                                         </div>
                                         {item.evidence ? (
-                                            <p className="mt-1 border-l border-emerald-100/80 pl-3 text-[11px] leading-relaxed text-emerald-700/80 dark:border-emerald-800/40 dark:text-emerald-300/80">
+                                            <p className="mt-2 pl-3 text-xs leading-5 text-slate-500 dark:text-slate-400">
                                                 {item.evidence}
                                             </p>
                                         ) : null}
@@ -301,7 +301,7 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
                 ) : null}
                 {hardFilters.length > 0 ? (
                     <div className="space-y-1.5">
-                        <p className="text-[11px] font-bold tracking-wider text-gray-400/90 dark:text-gray-500/90 uppercase">
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                             硬门槛
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -515,7 +515,10 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
     const selectedReport = shouldShowJdAnalysis ? activeReport : 'resume';
     return (
       <div>
-        <div className="mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-900" role="tablist" aria-label="分析报告类型">
+        <div className="relative mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-900" role="tablist" aria-label="分析报告类型">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-1">
+                <div className={`h-full w-1/2 rounded-lg bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none dark:bg-slate-800 ${selectedReport === 'resume' ? 'translate-x-full' : 'translate-x-0'}`} />
+            </div>
             <button
                 type="button"
                 role="tab"
@@ -524,7 +527,7 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
                 aria-controls="jd-report-panel"
                 disabled={!shouldShowJdAnalysis}
                 onClick={() => setActiveReport('jd')}
-                className={`rounded-lg px-3 py-2 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-45 ${selectedReport === 'jd' ? 'bg-white text-emerald-700 shadow-sm dark:bg-slate-800 dark:text-emerald-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}
+                className={`relative z-10 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-45 ${selectedReport === 'jd' ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}
             >
                 JD 分析报告
             </button>
@@ -535,13 +538,13 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
                 aria-selected={selectedReport === 'resume'}
                 aria-controls="resume-report-panel"
                 onClick={() => setActiveReport('resume')}
-                className={`rounded-lg px-3 py-2 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${selectedReport === 'resume' ? 'bg-white text-emerald-700 shadow-sm dark:bg-slate-800 dark:text-emerald-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}
+                className={`relative z-10 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${selectedReport === 'resume' ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'}`}
             >
                 简历诊断报告
             </button>
         </div>
         {selectedReport === 'jd' ? (
-            <section id="jd-report-panel" role="tabpanel" aria-labelledby="jd-report-tab" className="space-y-3">
+            <section id="jd-report-panel" role="tabpanel" aria-labelledby="jd-report-tab" className="rf-report-panel-enter space-y-4">
                 {isOutdated ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-relaxed text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">这是较早版本简历的历史 JD 分析，请重新分析后再据此判断。</div> : null}
                 <JDInterpretationCard analysisResult={analysisResult} />
                 <CapabilityEvidenceCard analysisResult={analysisResult} />
@@ -555,7 +558,7 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
                 />
             </section>
         ) : (
-            <div id="resume-report-panel" role="tabpanel" aria-labelledby="resume-report-tab">
+            <div id="resume-report-panel" role="tabpanel" aria-labelledby="resume-report-tab" className="rf-report-panel-enter">
                 <ResumeEvaluationReport
                     evaluation={evaluation}
                     summary={analysisResult.summary}
@@ -658,7 +661,7 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
                     </button>
                 </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-4 py-4">
                 <JDAnalysisDetailsContent
                     analysisResult={analysisResult}
                     jdText={jdText}
@@ -740,7 +743,7 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                         <X className="h-4 w-4" />
                     </button>
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-5 py-4">
                     <JDAnalysisDetailsContent
                         analysisResult={analysisResult}
                         jdText={jdText}
@@ -809,12 +812,12 @@ const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
     const textColor = analysis.scoreConfidence === 'high' ? 'text-emerald-700 dark:text-emerald-400' : analysis.scoreConfidence === 'low' ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400';
 
     return (
-        <div className="rounded-xl border border-amber-100/50 bg-gradient-to-br from-amber-50/50 via-orange-50/15 to-transparent p-4 shadow-[0_8px_30px_rgba(245,158,11,0.03)] dark:border-amber-900/30 dark:from-amber-950/20 dark:via-orange-950/5 dark:to-transparent">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
             <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5 text-amber-900 dark:text-amber-100">
-                        <Award className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                        <h4 className="text-[12px] font-bold">
+                    <div className="flex items-center gap-1.5 text-slate-900 dark:text-white">
+                        <Award className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        <h4 className="text-sm font-bold">
                             能力证据诊断
                         </h4>
                     </div>
@@ -854,7 +857,7 @@ const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
                             className="group flex flex-col rounded-lg border border-amber-100/50 bg-white/60 p-2.5 text-[11.5px] leading-relaxed text-amber-950 shadow-[0_1px_2px_rgba(245,158,11,0.02)] transition-all duration-200 hover:bg-white dark:border-amber-900/30 dark:bg-gray-900/50 dark:text-amber-100 dark:hover:bg-gray-900"
                         >
                             <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="font-semibold text-amber-950 dark:text-amber-50">{item.name}</span>
+                                <span className="font-semibold text-slate-900 dark:text-slate-100">{item.name}</span>
                                 <Pill tone={getCapabilityRiskTone(item.risk)}>
                                     {EVIDENCE_LEVEL_LABELS[item.resumeEvidenceLevel] ?? '待判断'}
                                 </Pill>
@@ -866,7 +869,7 @@ const CapabilityEvidenceCard: React.FC<CapabilityEvidenceCardProps> = ({
                                 ) : null}
                             </div>
                             {item.resumeEvidenceSummary ? (
-                                <p className="mt-1.5 border-t border-dashed border-amber-100/60 pt-1.5 text-[11px] leading-relaxed text-amber-800/80 dark:border-amber-900/20 dark:text-amber-200/80">
+                                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
                                     {item.resumeEvidenceSummary}
                                 </p>
                             ) : null}

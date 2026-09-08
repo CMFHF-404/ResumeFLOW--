@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, CheckCircle2, RotateCcw, RefreshCw, ShieldCheck } from 'lucide-react';
 
 import type { ResumeOptimizationRun } from '../../../../types/resumeOptimization';
+import { ResumeOptimizationRevertButton } from './ResumeOptimizationRevertButton';
 import { ResumeOptimizationScoreDelta } from './ResumeOptimizationScoreDelta';
 
 type ResumeOptimizationResultProps = {
@@ -47,19 +48,19 @@ export const ResumeOptimizationResult: React.FC<ResumeOptimizationResultProps> =
     const blockedCount = evaluation?.blockedChangeCount ?? plan.safetySummary.blockedChangeIds.length;
     const bankCount = evaluation?.bankSuggestionCount ?? plan.bankSuggestions.length;
 
-    const requestRevert = () => {
-        if (!window.confirm('撤销仅适用于应用后未继续手工编辑的简历；后续手工编辑后将不可撤销。是否继续？')) {
-            return;
-        }
-        onRevert();
-    };
-
-    if (run.policyVersion === 'json_structure_v1') return <section aria-label="优化结果" className="space-y-4 p-4">
-        <h3 className="text-lg font-bold">{run.status === 'reverted' ? '已撤销本次优化' : '所选修改已应用'}</h3>
-        <p className="text-sm">已接受 {acceptedCount} 项修改。原评分已过期，可按需重新评分。</p>
-        {error && <p role="alert" className="text-sm text-amber-700">{error}</p>}
-        {isApplied && <button type="button" disabled={busy} onClick={onRetry} className="min-h-11 rounded-lg bg-emerald-600 px-4 text-sm text-white disabled:opacity-50">重新评分</button>}
-        {canRevert && <button type="button" disabled={busy} onClick={requestRevert} className="ml-2 min-h-11 rounded-lg border px-4 text-sm">撤销本次应用</button>}
+    if (run.policyVersion === 'json_structure_v1') return <section aria-label="优化结果" className="flex flex-col items-center px-4 py-10 text-center">
+        <span className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+            {run.status === 'reverted' ? <RotateCcw className="h-8 w-8" aria-hidden="true" /> : <CheckCircle2 className="h-9 w-9" aria-hidden="true" />}
+        </span>
+        <h3 className="text-xl font-bold text-slate-900 dark:text-white">{run.status === 'reverted' ? '已撤销本次优化' : '简历优化完成'}</h3>
+        <p className="mt-3 max-w-xs text-[13px] leading-6 text-slate-500 dark:text-slate-400">
+            {run.status === 'reverted' ? '已恢复优化前的内容，可返回报告继续查看。' : `已将 ${acceptedCount} 项修改应用到简历。可以重新评分，查看更新后的简历表现。`}
+        </p>
+        {error && <p role="alert" className="mt-4 text-sm text-amber-700 dark:text-amber-300">{error}</p>}
+        <div className="mt-6 flex w-full max-w-[200px] flex-col items-center gap-2">
+            {isApplied && <button type="button" disabled={busy} onClick={onRetry} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50"><RefreshCw className="h-4 w-4" aria-hidden="true" />重新评分</button>}
+            {canRevert && <ResumeOptimizationRevertButton busy={busy} onRevert={onRevert} className="min-h-11 rounded-lg px-4 text-xs text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-100" />}
+        </div>
     </section>;
 
     return (
@@ -132,15 +133,8 @@ export const ResumeOptimizationResult: React.FC<ResumeOptimizationResultProps> =
                     </button>
                 ) : null}
                 {canRevert ? (
-                    <button
-                        type="button"
-                        disabled={busy}
-                        onClick={requestRevert}
-                        className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-[12px] font-bold text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                        <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                        撤销本次应用
-                    </button>
+                    <ResumeOptimizationRevertButton busy={busy} onRevert={onRevert} label="撤销本次应用"
+                        className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-[12px] font-bold text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" />
                 ) : null}
             </div>
         </section>

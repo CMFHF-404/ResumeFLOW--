@@ -335,6 +335,13 @@ const buildMountedHookHarness = async () => {
             isPolishing: false,
             isAutoAssembling: false,
             reloadResumeContext: async () => {
+              globalThis.__reloadCount = (globalThis.__reloadCount ?? 0) + 1;
+              if (globalThis.__failOptimizationReload) {
+                return { status: 'failed', error: new Error('Temporary resume reload failure') };
+              }
+              if (globalThis.__pauseOptimizationReload) {
+                await new Promise(resolve => { globalThis.__releaseOptimizationReload = resolve; });
+              }
               flushSync(() => setInputs((current) => ({
                 ...current,
                 sourceResumeUpdatedAt: appliedRun.appliedResumeUpdatedAt,
@@ -347,6 +354,7 @@ const buildMountedHookHarness = async () => {
               return { status: 'success', resumeId: 'resume-a' };
             },
             generateEvaluation: async () => {
+              globalThis.__scoredOptimizationSignature = inputs.evaluationSignature;
               calls.generate += 1;
               if (harnessMode === 'claim-retry' && calls.generate === 1) {
                 return { status: 'error' };
@@ -387,9 +395,10 @@ const buildMountedHookHarness = async () => {
             'data-accepted-count': String(flow.acceptedChangeIds.length),
           });
           return React.createElement(React.Fragment, null, output,
-            harnessMode.startsWith('regenerate-') && flow.uiState !== 'closed'
+            (harnessMode.startsWith('regenerate-') || harnessMode === 'single-pass') && flow.uiState !== 'closed'
               ? React.createElement(ResumeOptimizationWorkspace, {
                   ...flow, surface: 'sidebar', onRequestClose: flow.closeWorkspace,
+                  onRescoreInReport: () => { globalThis.__reportRescoreCalls = (globalThis.__reportRescoreCalls ?? 0) + 1; },
                   returnFocusRef: { current: null }, suppressReturnFocusRef: { current: false },
                   skillNameById: {}, moduleOrder: [], onViewExperience: () => {}, onOpenAutoAssembly: () => {},
                 }) : null,
@@ -1362,6 +1371,47 @@ test('mounted observer never reopens a hydrated rescore after an explicit close'
   assert.equal(await page.locator('output').getAttribute('data-run-status'), 'completed');
 });
 
+
+test('single-pass result retries failed reload before scoring and keeps failures recoverable', async (t) => {
+  const browser = await launchMountedHookBrowser(t);
+  if (!browser) return;
+  t.after(() => browser.close());
+  const page = await createSameOriginHarnessPage(browser);
+  await page.evaluate(() => {
+    globalThis.__failOptimizationReload = true;
+    globalThis.__mountResumeOptimizationHarness('single-pass');
+  });
+  await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow?.run?.status === 'preview_ready');
+  await page.evaluate(() => globalThis.__selectResumeOptimizationChange());
+  await page.evaluate(() => globalThis.__applyResumeOptimization());
+  await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.uiState === 'error');
+  await page.getByRole('button', { name: /优化结果/ }).first().click();
+  await page.getByRole('button', { name: '重新评分', exact: true }).click();
+  await page.waitForFunction(() => (globalThis.__reloadCount ?? 0) >= 2 || globalThis.__reportRescoreCalls > 0);
+  assert.equal(await page.evaluate(() => globalThis.__reportRescoreCalls ?? 0), 0);
+  await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.uiState === 'error');
+  assert.equal(await page.evaluate(() => globalThis.__resumeOptimizationHarnessCalls.generate), 0);
+  await page.evaluate(() => {
+    globalThis.__failOptimizationReload = false;
+    globalThis.__pauseOptimizationReload = true;
+  });
+  await page.getByRole('button', { name: '重新评分', exact: true }).click();
+  await page.waitForFunction(() => Boolean(globalThis.__releaseOptimizationReload));
+  assert.equal(await page.evaluate(() => globalThis.__resumeOptimizationHarnessFlow.uiState), 'rescoring');
+  assert.equal(await page.getByRole('button', { name: '重新评分', exact: true }).count(), 0);
+  assert.equal(await page.evaluate(() => globalThis.__resumeOptimizationHarnessCalls.generate), 0);
+  await page.evaluate(() => globalThis.__releaseOptimizationReload());
+  await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.uiState === 'completed');
+  assert.deepEqual(await page.evaluate(() => ({
+    reloads: globalThis.__reloadCount,
+    signature: globalThis.__scoredOptimizationSignature,
+    applies: globalThis.__resumeOptimizationHarnessCalls.apply,
+    scores: globalThis.__resumeOptimizationHarnessCalls.generate,
+    reportCalls: globalThis.__reportRescoreCalls ?? 0,
+  })), { reloads: 3, signature: 'S2', applies: 1, scores: 1, reportCalls: 0 });
+  await page.getByRole('button', { name: '重新评分', exact: true }).click();
+  assert.equal(await page.evaluate(() => globalThis.__reportRescoreCalls), 1);
+});
 
 test('single-pass apply finishes with zero rescore calls until explicitly requested', async (t) => {
   const browser = await launchMountedHookBrowser(t); if (!browser) return;

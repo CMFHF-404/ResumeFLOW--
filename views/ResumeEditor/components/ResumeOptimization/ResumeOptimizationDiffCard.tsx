@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
+import { useScoreAnnotations } from '../ResumeEvaluationReport/ScoreAnnotations';
 import { CheckCircle2, LockKeyhole } from 'lucide-react';
 
 import type { ResumeOptimizationChange } from '../../../../types/resumeOptimization';
 import {
     buildResumeOptimizationChangePreview,
     buildResumeOptimizationSafetyFindingCopy,
-    formatResumeOptimizationDimensionLabel,
     formatResumeOptimizationModuleLabel,
     formatResumeOptimizationSourceLabel,
     formatResumeOptimizationUserCopy,
@@ -81,9 +81,10 @@ export const ResumeOptimizationDiffCard: React.FC<ResumeOptimizationDiffCardProp
         [change.safetyFindings],
     );
     const isOrderPreview = change.moduleType === 'skills_order' || change.moduleType === 'section_order';
-    const scopeLabel = change.scope === 'jd_targeted' ? 'JD定向' : '通用优化';
+    const { experienceNameFor } = useScoreAnnotations();
+    const moduleName = change.moduleType === 'experience_star' ? experienceNameFor(change.moduleId) || '未命名经历' : formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath);
     const rationale = formatResumeOptimizationUserCopy(change.rationale, '该项说明已安全隐藏。');
-    const choiceLabel = `${formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}是否采用优化`;
+    const choiceLabel = `${moduleName} · ${formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}是否采用优化`;
     const handleChoiceKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
         if (!selectable || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
         event.preventDefault();
@@ -108,14 +109,8 @@ export const ResumeOptimizationDiffCard: React.FC<ResumeOptimizationDiffCardProp
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                         <h4 className="text-sm font-bold text-slate-950 dark:text-white">
-                            {formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}
+                            {moduleName}
                         </h4>
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            {formatResumeOptimizationDimensionLabel(change.dimension)}
-                        </span>
-                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-200">
-                            {scopeLabel}
-                        </span>
                         {isBlocked ? (
                             <span className="rounded-full bg-rose-100 px-2 py-1 text-[10px] font-bold text-rose-700 dark:bg-rose-950/60 dark:text-rose-200">
                                 安全阻断

@@ -834,3 +834,40 @@ test('preview selections survive a same-owner top-level navigation remount', asy
   const toggleBlock = hook.slice(hook.indexOf('const toggleChange'), hook.indexOf('const runPostApplyEvaluation'));
   assert.match(toggleBlock, /saveResumeOptimizationSelectionSnapshot/);
 });
+
+
+test('accept all atomically selects only reviewable targets and rejects stale or read-only runs', async () => {
+  const { filterResumeOptimizationSelectableChangeIds, isResumeOptimizationRunContextCurrent } = await importFlow();
+  const source = read('views/ResumeEditor/hooks/useResumeOptimizationFlow.ts');
+  const action = source.slice(source.indexOf('const acceptAllChanges ='), source.indexOf('const runPostApplyEvaluation ='));
+  const changes = [
+    {...change('one', 'allowed', false), moduleType:'experience_star', moduleId:'one', fieldPath:'star.s'},
+    {...change('two', 'not_reviewed', false), moduleType:'experience_star', moduleId:'two', fieldPath:'star.r'},
+    {...change('blocked', 'blocked', false), moduleType:'experience_star', moduleId:'three', fieldPath:'star.a'},
+    {...change('empty', 'allowed', false, 'ask_user', null), moduleType:'experience_star', moduleId:'four', fieldPath:'star.t'},
+  ];
+  const currentRun = { id:'run', resumeId:'resume', status:'preview_ready', sourceResumeUpdatedAt:'2026-09-01T01:00:00.000Z', sourceEvaluationSignature:'current', plan:{changes} };
+  const runRef = {current:currentRun};
+  const inputsRef = {current:{sourceResumeUpdatedAt:currentRun.sourceResumeUpdatedAt, evaluationSignature:'current'}};
+  const writes = [], saves = [];
+  const dependencies = {
+    useCallback: fn => fn, enabled:true, latestRunRef:runRef, latestInputsRef:inputsRef,
+    isResumeOptimizationRunContextCurrent, effectivePlan: run => run.plan, filterResumeOptimizationSelectableChangeIds,
+    setAcceptedChangeIds: ids => writes.push(ids), saveResumeOptimizationSelectionSnapshot: (...args) => saves.push(args),
+    trackResumeOptimizationChangeToggle: () => {}, authUserKey:'owner', resumeId:'resume',
+  };
+  const acceptAll = new Function(...Object.keys(dependencies), `${action}; return acceptAllChanges;`)(...Object.values(dependencies));
+  acceptAll();
+  assert.deepEqual(writes, [['one','two']]);
+  assert.equal(saves.length, 1);
+  assert.deepEqual(saves[0], ['owner','resume','run',['one','two']]);
+  acceptAll();
+  assert.deepEqual(writes[1], ['one','two']);
+  inputsRef.current.evaluationSignature = 'stale';
+  acceptAll();
+  inputsRef.current.evaluationSignature = 'current';
+  currentRun.status = 'applied';
+  acceptAll();
+  assert.equal(writes.length, 2);
+  assert.equal(saves.length, 2);
+});

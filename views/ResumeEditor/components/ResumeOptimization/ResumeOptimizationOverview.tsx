@@ -1,11 +1,9 @@
 import React, { useMemo } from 'react';
-import { BookOpenCheck, CircleAlert, ListChecks, Sparkles } from 'lucide-react';
+import { useScoreAnnotations } from '../ResumeEvaluationReport/ScoreAnnotations';
 
 import type { ResumeOptimizationPlan } from '../../../../types/resumeOptimization';
 import {
-    buildResumeOptimizationOverviewMetrics,
     buildResumeOptimizationSafetyFindingCopy,
-    formatResumeOptimizationDimensionLabel,
     formatResumeOptimizationModuleLabel,
     formatResumeOptimizationSourceLabel,
     formatResumeOptimizationUserCopy,
@@ -18,22 +16,8 @@ type ResumeOptimizationOverviewProps = {
     moduleOrder?: string[];
 };
 
-const METRIC_CONFIG = [
-    { key: 'directChanges', label: '可直接优化', icon: Sparkles, tone: 'emerald' },
-    { key: 'questions', label: '需要确认', icon: ListChecks, tone: 'amber' },
-    { key: 'blockedChanges', label: '安全阻断', icon: CircleAlert, tone: 'rose' },
-    { key: 'bankOpportunities', label: '经历库机会', icon: BookOpenCheck, tone: 'slate' },
-] as const;
-
-const TONE_CLASSES = {
-    emerald: 'border-emerald-200/80 bg-emerald-50/70 text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/25 dark:text-emerald-200',
-    amber: 'border-amber-200/80 bg-amber-50/70 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/25 dark:text-amber-200',
-    rose: 'border-rose-200/80 bg-rose-50/70 text-rose-800 dark:border-rose-900/70 dark:bg-rose-950/25 dark:text-rose-200',
-    slate: 'border-slate-200/80 bg-slate-50/80 text-slate-700 dark:border-slate-800 dark:bg-slate-900/55 dark:text-slate-200',
-} as const;
-
 export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProps> = ({ plan, moduleOrder = [] }) => {
-    const metrics = useMemo(() => buildResumeOptimizationOverviewMetrics(plan), [plan]);
+    const { experienceNameFor } = useScoreAnnotations();
     const priorities = useMemo(
         () => sortResumeOptimizationChangesByResumeOrder(
             plan.changes.filter(isResumeOptimizationChangeReviewable),
@@ -60,24 +44,14 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                         id="resume-optimization-overview-title"
                         className="mt-1 text-lg font-bold text-slate-950 dark:text-white"
                     >
-                        先看优化范围，再决定下一步
+                        查看优化计划
                     </h3>
                     <p className="mt-2 text-[12px] leading-6 text-slate-500 dark:text-slate-400">
                         查看所选模块的改写与补充问题，逐项确认后应用。
                     </p>
                 </div>
 
-                <dl className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    {METRIC_CONFIG.filter(item => item.key !== 'blockedChanges').map(({ key, label, icon: Icon, tone }) => (
-                        <div key={key} className={`rounded-2xl border p-4 ${TONE_CLASSES[tone]}`}>
-                            <div className="flex items-center justify-between gap-3">
-                                <dt className="text-[11px] font-semibold">{label}</dt>
-                                <Icon className="h-4 w-4" aria-hidden="true" />
-                            </div>
-                            <dd className="mt-3 text-2xl font-black tabular-nums">{metrics[key]}</dd>
-                        </div>
-                    ))}
-                </dl>
+
             </section>
 
             {blockedChanges.length > 0 ? (
@@ -95,7 +69,7 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                         {blockedChanges.map((change) => (
                             <li key={change.changeId} className="px-4 py-3 md:px-5">
                                 <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">
-                                    {formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}
+                                    {formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath).replace(/^经历 STAR · /, '')}
                                 </p>
                                 <ul className="mt-1.5 space-y-1 text-[11px] leading-5 text-rose-800 dark:text-rose-100">
                                     {buildResumeOptimizationSafetyFindingCopy(change.safetyFindings).map((finding) => (
@@ -128,10 +102,10 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                                 <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-200">
-                                            {formatResumeOptimizationDimensionLabel(change.dimension)}
+                                            {change.moduleType === 'experience_star' ? experienceNameFor(change.moduleId) || '未命名经历' : formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}
                                         </span>
                                         <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                                            {formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath)}
+                                            {formatResumeOptimizationModuleLabel(change.moduleType, change.fieldPath).replace(/^经历 STAR · /, '')}
                                         </span>
                                     </div>
                                     <p className="mt-2 text-[12px] leading-5 text-slate-700 dark:text-slate-200">

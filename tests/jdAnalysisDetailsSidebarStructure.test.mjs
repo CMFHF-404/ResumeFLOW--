@@ -56,7 +56,7 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(editor, /const isRightSidebarOpen = workspaceLayout !== 'list' && rightSidebarSurface !== null/);
   assert.match(editor, /const isAssistantSidebarActive = rightSidebarSurface === 'assistant'/);
   assert.match(editor, /const rightSidebarContent = isRightSidebarOpen \|\| hasOpenedRightSidebar \? \(/);
-  assert.match(editor, /relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950/);
+  assert.match(editor, /relative h-full min-h-0 w-full overflow-clip bg-white dark:bg-slate-950/);
   assert.match(editor, /isAssistantSidebarMounted \? \(/);
   assert.match(editor, /<React\.Suspense/);
   assert.match(editor, /aria-hidden=\{!isAssistantSidebarActive\}/);
@@ -89,7 +89,7 @@ test('JD interpretation renders the independent JD-fit badge and deep-report act
   const interpretationEnd = panel.indexOf('type JDAnalysisPanelProps');
   const interpretationCard = panel.slice(interpretationStart, interpretationEnd);
   assert.match(interpretationCard, /const jdMatch = typeof analysisResult\.matchPercentage === 'number'/);
-  assert.match(interpretationCard, /JD ANALYSIS REPORT/);
+  assert.match(interpretationCard, /岗位匹配/);
   assert.match(interpretationCard, /aria-label=\{`JD 匹配度 \$\{jdMatch\}%`\}/);
   assert.match(interpretationCard, /<strong[^>]*>\{jdMatch\}<\/strong>/);
   assert.match(interpretationCard, /<span[^>]*>%<\/span>/);
