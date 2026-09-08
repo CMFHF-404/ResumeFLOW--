@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { transform } from 'esbuild';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -42,7 +43,7 @@ test('workspace focus, overlay, and close handling fail closed and restore exact
   const workspace = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx');
 
   assert.match(workspace, /tabIndex=\{-1\}/);
-  assert.match(workspace, /headingRef\.current\?\.focus\(\)/);
+  assert.match(workspace, /headingRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
   assert.match(workspace, /event\.key === 'Escape'/);
   assert.match(workspace, /event\.key !== 'Tab'/);
   assert.match(workspace, /event\.shiftKey/);
@@ -84,7 +85,7 @@ test('workspace keeps stable steps and does not expose low-level source pointers
   );
   assert.match(
     workspace,
-    /displayStep === 'result' && run && \['applied', 'completed'\]\.includes\(run\.status\)[\s\S]*<ResumeOptimizationResult[\s\S]*onRetry=\{\(\) => void retryRescore\(\)\}[\s\S]*onRevert=\{\(\) => void revertRun\(\)\}/,
+    /displayStep === 'result' && run && \['applied', 'completed'\]\.includes\(run\.status\)[\s\S]*<ResumeOptimizationResult[\s\S]*onRetry=\{[\s\S]*onRescoreInReport\(\)[\s\S]*retryRescore\(\)[\s\S]*onRevert=\{\(\) => void revertRun\(\)\}/,
   );
   for (const forbidden of ['fieldPath', 'sourceRefs', 'sourceSnapshotHash', 'requestId', '/currentResume']) {
     assert.doesNotMatch(combined, new RegExp(forbidden));
@@ -203,7 +204,7 @@ test('CTA-owned workspace close restores analysis in AI layout and never opens i
   );
   assert.match(
     editor,
-    /const focusRestoredAnalysisReport = useCallback\(\(\) => \{[\s\S]*?window\.requestAnimationFrame[\s\S]*?data-resume-optimization-focus-return="true"\]\[aria-label="关闭分析报告"\][\s\S]*?!candidate\.closest\('\[inert\]'\)[\s\S]*?focusTarget\?\.focus\(\)/,
+    /const focusRestoredAnalysisReport = useCallback\(\(\) => \{[\s\S]*?window\.requestAnimationFrame[\s\S]*?data-resume-optimization-focus-return="true"\]\[aria-label="关闭分析报告"\][\s\S]*?!candidate\.closest\('\[inert\]'\)[\s\S]*?focusTarget\?\.focus\(\{ preventScroll: true \}\)/,
   );
   assert.match(editor, /onRequestClose=\{handleCloseResumeOptimization\}/);
   assert.match(
@@ -247,4 +248,37 @@ test('overview cannot continue when the shared reviewability gate rejects every 
   assert.match(workspace, /if \(!canContinueFromOverview\) return/);
   assert.match(workspace, /disabled=\{!canContinueFromOverview\}/);
   assert.match(workspace, /请重新生成优化方案/);
+});
+
+
+test('finish returns to the resume report and rescore waits for successful close', async () => {
+  const editor = read('views/ResumeEditor/index.tsx');
+  const source = editor.slice(editor.indexOf('const handleFinishResumeOptimization ='), editor.indexOf('const handleRevertResumeOptimization ='));
+  const {code} = await transform(source, {loader:'ts'});
+  let closeAllowed = true;
+  const events = [], frames = [];
+  const tab = {getClientRects: () => [1], closest: () => null, click: () => events.push('resume-tab'), focus: () => events.push('focus')};
+  const deps = {
+    useCallback: fn => fn, analysisResult: {}, resumeOptimizationShouldRestoreReportRef:{current:false},
+    handleCloseResumeOptimization: async () => {events.push('close'); return closeAllowed;},
+    window:{requestAnimationFrame: fn => frames.push(fn)}, document:{querySelectorAll: () => [tab]},
+    handleGenerateEvaluation: async () => events.push('score'),
+  };
+  const {finish,rescore} = new Function(...Object.keys(deps), `${code}; return {finish:handleFinishResumeOptimization,rescore:handleRescoreInReport};`)(...Object.values(deps));
+  assert.equal(await finish(), true);
+  frames.shift()();
+  assert.deepEqual(events, ['close','resume-tab','focus']);
+  assert.equal(deps.resumeOptimizationShouldRestoreReportRef.current, true);
+  events.length = 0;
+  await rescore();
+  assert.deepEqual(events, ['close','score']);
+  frames.shift()();
+  assert.deepEqual(events, ['close','score','resume-tab','focus']);
+  events.length = 0;
+  closeAllowed = false;
+  await rescore();
+  assert.deepEqual(events, ['close']);
+  assert.equal(frames.length, 0);
+  assert.equal((editor.match(/onFinish=\{handleFinishResumeOptimization\}/g) || []).length, 2);
+  assert.equal((editor.match(/onRescoreInReport=\{handleRescoreInReport\}/g) || []).length, 2);
 });

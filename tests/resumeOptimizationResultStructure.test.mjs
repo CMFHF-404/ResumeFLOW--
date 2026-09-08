@@ -134,3 +134,45 @@ test('workspace confirms accepted count, disables zero apply, and wires result a
   assert.match(workspace, /retryRescore/);
   assert.match(workspace, /revertRun/);
 });
+
+
+test('single-pass result presents centered success and rescore actions without scoring automatically', async () => {
+  const { ResumeOptimizationResult, cleanup } = await importResult();
+  try {
+    let scores = 0;
+    const props = {run:{...run('applied', null),policyVersion:'json_structure_v1'},busy:false,error:null,onRetry:()=>scores++,onRevert:()=>{}};
+    const html = renderToStaticMarkup(React.createElement(ResumeOptimizationResult, props));
+    assert.match(html, /简历优化完成/);
+    assert.match(html, /已将 2 项修改应用到简历/);
+    assert.match(html, /text-center/);
+    assert.match(html, /lucide-circle-check|lucide-check-circle/);
+    assert.match(html, /撤销结果/);
+    assert.doesNotMatch(html, /撤销本次应用|所选修改已应用/);
+    assert.equal(scores, 0);
+    const findRetry = node => {
+      if (!node || typeof node !== 'object') return undefined;
+      if (node.type === 'button' && node.props.onClick === props.onRetry) return node;
+      return React.Children.toArray(node.props?.children).map(findRetry).find(Boolean);
+    };
+    findRetry(ResumeOptimizationResult(props)).props.onClick();
+    assert.equal(scores, 1);
+    const busyHtml = renderToStaticMarkup(React.createElement(ResumeOptimizationResult, {...props,busy:true}));
+    assert.equal((busyHtml.match(/disabled=""/g) || []).length, 4);
+  } finally { cleanup(); }
+});
+
+
+test('revert uses an in-page modal and sidebar focus cannot scroll the clipped outer shell', () => {
+  const result = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationResult.tsx');
+  const dialog = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationRevertButton.tsx');
+  const editor = read('views/ResumeEditor/index.tsx');
+  assert.doesNotMatch(result + dialog, /window.confirm/);
+  assert.match(dialog, /<dialog[\s\S]*aria-labelledby=\{titleId\} aria-describedby=\{descriptionId\}/);
+  assert.match(dialog, /showModal\(\)/);
+  assert.match(dialog, /取消/);
+  assert.match(dialog, /确认撤销/);
+  assert.match(dialog, /autoFocus/);
+  assert.match(dialog, /onKeyDown=\{event => event.stopPropagation\(\)\}/);
+  assert.match(editor, /relative h-full min-h-0 w-full overflow-clip bg-white/);
+  assert.match(editor, /focusTarget\?\.focus\(\{ preventScroll: true \}\)/);
+});

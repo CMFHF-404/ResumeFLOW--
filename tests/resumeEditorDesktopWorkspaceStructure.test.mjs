@@ -35,8 +35,8 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(workspace, /<ResumeEditorPreviewStage/);
   assert.match(workspace, /layoutAdjustProps=\{layoutAdjustProps\}/);
   assert.match(workspace, /previewProps=\{previewProps\}/);
-  assert.match(workspace, /layoutMode === 'triple'\s*\n\s*\? 'xl:flex xl:w-\[460px\]'/);
-  assert.match(workspace, /factorySidebarProps\.activeTab === 'templates'\s*\n\s*\? 'md:flex md:w-\[384px\] lg:w-\[562\.5px\] xl:w-\[607\.5px\]'\s*\n\s*: 'md:flex md:w-\[562\.5px\] xl:w-\[607\.5px\]'/);
+  assert.match(workspace, /lastExpandedLayout.current === 'triple'\s*\? '\[--factory-sidebar-width:0px\] xl:\[--factory-sidebar-width:460px\]'/);
+  assert.match(workspace, /factorySidebarProps\.activeTab === 'templates'[\s\S]*factory-sidebar-width:384px[\s\S]*factory-sidebar-width:562.5px[\s\S]*factory-sidebar-width:607.5px/);
   assert.match(workspace, /const DEFAULT_RIGHT_SIDEBAR_WIDTH = '390px'/);
   assert.match(workspace, /const AI_RIGHT_SIDEBAR_WIDTH = '460px'/);
   assert.match(workspace, /data-rf-right-sidebar/);
@@ -75,7 +75,7 @@ test('triple layout defers its factory rail below xl so the desktop preview rema
 
   assert.match(
     workspace,
-    /layoutMode === 'triple'\s*\? 'xl:flex xl:w-\[460px\]'/,
+    /lastExpandedLayout.current === 'triple'\s*\? '\[--factory-sidebar-width:0px\] xl:\[--factory-sidebar-width:460px\]'/,
   );
   assert.doesNotMatch(workspace, /layoutMode === 'triple'\s*\? 'md:w-\[430px\]/);
   assert.match(workspace, /showRightSidebar\s*\? 'w-\[390px\] opacity-100/);

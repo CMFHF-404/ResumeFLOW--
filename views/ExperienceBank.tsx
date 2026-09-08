@@ -30,6 +30,7 @@ import ExperienceSection from './ExperienceSection';
 import CertificationSection from './CertificationSection';
 import SkillsSection from './SkillsSection';
 import AIAssistant from './AIAssistant';
+import { ASSISTANT_SIDEBAR_MIN_WIDTH, useAssistantSidebarResize } from './ExperienceBank/useAssistantSidebarResize';
 import type { AssistantLaunchRequest } from './AIAssistant/types';
 import { useExperienceBankProfile } from './ExperienceBank/useExperienceBankProfile';
 import { buildExperienceBankSummaryPayload } from './ExperienceBank/summaryPayloadUtils';
@@ -51,7 +52,7 @@ type ExperienceBankFocusRequest = {
   targetId?: string;
 };
 
-const EXPERIENCE_BANK_ASSISTANT_SIDEBAR_WIDTH = '390px';
+
 const EXPERIENCE_BANK_DESKTOP_ASSISTANT_MEDIA_QUERY = '(min-width: 768px)';
 
 const buildExperienceBankAssistantRequest = (): AssistantLaunchRequest => ({
@@ -104,6 +105,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   onJumpToResumeEditor,
   focusRequest,
 }) => {
+  const assistantResize = useAssistantSidebarResize();
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
   const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
   const [assistantSidebarLaunchRequest, setAssistantSidebarLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
@@ -384,7 +386,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   const assistantHeaderButtonLabel = isAssistantSidebarOpen ? '关闭 AI 助手' : '打开 AI 助手';
 
   return (
-    <div className="flex-1 flex h-full min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900/50">
+    <div ref={assistantResize.containerRef} className="flex-1 flex h-full min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900/50">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <header className="hidden bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:block md:px-8">
         <div className="flex flex-col gap-3 md:h-10 md:flex-row md:items-center md:justify-between">
@@ -865,19 +867,29 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
       <div
         data-experience-bank-assistant-sidebar
         className={[
-          'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
-          'border-border-light dark:border-border-dark transition-all duration-300 ease-in-out',
+          'relative hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
+          'border-border-light dark:border-border-dark',
+          assistantResize.isResizing ? 'transition-none' : 'transition-[width,opacity] duration-300 ease-in-out',
           isAssistantSidebarOpen
-            ? 'w-[390px] opacity-100 md:border-l shadow-[0_18px_60px_-36px_rgba(15,23,42,0.55)]'
+            ? 'opacity-100 md:border-l shadow-[0_18px_60px_-36px_rgba(15,23,42,0.55)]'
             : 'w-0 opacity-0 md:border-l-0 pointer-events-none',
         ].join(' ')}
         style={{
-          width: isAssistantSidebarOpen ? EXPERIENCE_BANK_ASSISTANT_SIDEBAR_WIDTH : 0,
+          width: isAssistantSidebarOpen ? assistantResize.width : 0,
           opacity: isAssistantSidebarOpen ? 1 : 0,
           flexShrink: 0,
         }}
       >
-        <div className="h-full shrink-0" style={{ width: EXPERIENCE_BANK_ASSISTANT_SIDEBAR_WIDTH }}>
+        {isAssistantSidebarOpen && <div role="separator" aria-label="调整 AI 助理宽度" aria-orientation="vertical" tabIndex={0}
+          aria-valuemin={ASSISTANT_SIDEBAR_MIN_WIDTH} aria-valuemax={Math.round(assistantResize.maxWidth)} aria-valuenow={Math.round(assistantResize.width)}
+          aria-valuetext={`${Math.round(assistantResize.width)} 像素`} title="拖动调整宽度，或使用左右方向键"
+          onPointerDown={assistantResize.onPointerDown} onPointerMove={assistantResize.onPointerMove}
+          onPointerUp={assistantResize.stopResize} onPointerCancel={assistantResize.stopResize} onLostPointerCapture={assistantResize.stopResize}
+          onKeyDown={assistantResize.onKeyDown}
+          className="group absolute inset-y-0 left-0 z-20 flex w-2 cursor-col-resize touch-none select-none items-center justify-center hover:bg-emerald-100/60 focus-visible:bg-emerald-100 focus-visible:outline-none dark:hover:bg-emerald-950/60">
+          <span aria-hidden="true" className="h-10 w-0.5 rounded-full bg-slate-300 group-hover:bg-emerald-500 group-focus-visible:bg-emerald-500 dark:bg-slate-600" />
+        </div>}
+        <div className="h-full shrink-0" style={{ width: assistantResize.width }}>
           {isAssistantSidebarOpen ? (
             <AIAssistant
               surface="sidebar"

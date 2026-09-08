@@ -1092,7 +1092,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 && candidate.getClientRects().length > 0
                 && !candidate.closest('[inert]')
             ));
-            focusTarget?.focus();
+            focusTarget?.focus({ preventScroll: true });
         });
     }, []);
     const handleCloseResumeOptimization = useCallback(async () => {
@@ -1112,6 +1112,24 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         resumeOptimizationShouldRestoreReportRef.current = false;
         return true;
     }, [analysisResult, focusRestoredAnalysisReport, resumeOptimizationFlow.closeWorkspace]);
+
+    const handleFinishResumeOptimization = useCallback(async () => {
+        resumeOptimizationShouldRestoreReportRef.current = Boolean(analysisResult);
+        const didClose = await handleCloseResumeOptimization();
+        if (!didClose) return false;
+        window.requestAnimationFrame(() => {
+            const reportTab = Array.from(document.querySelectorAll<HTMLButtonElement>('[id="resume-report-tab"]')).find(
+                candidate => candidate.getClientRects().length > 0 && !candidate.closest('[inert]'),
+            );
+            reportTab?.click();
+            reportTab?.focus({ preventScroll: true });
+        });
+        return true;
+    }, [analysisResult, handleCloseResumeOptimization]);
+    const handleRescoreInReport = useCallback(async () => {
+        if (!await handleFinishResumeOptimization()) return;
+        return handleGenerateEvaluation();
+    }, [handleFinishResumeOptimization, handleGenerateEvaluation]);
 
     const handleRevertResumeOptimization = useCallback(async () => {
         const shouldRestoreAnalysis = resumeOptimizationShouldRestoreReportRef.current && Boolean(analysisResult);
@@ -2408,7 +2426,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         onOpenAgentPluginConfig,
     } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;
     const rightSidebarContent = isRightSidebarOpen || hasOpenedRightSidebar ? (
-        <div aria-hidden={!isRightSidebarOpen} inert={!isRightSidebarOpen ? true : undefined} className="relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950">
+        <div aria-hidden={!isRightSidebarOpen} inert={!isRightSidebarOpen ? true : undefined} className="relative h-full min-h-0 w-full overflow-clip bg-white dark:bg-slate-950">
             {isAssistantSidebarMounted ? (
                 <div
                     aria-hidden={!isAssistantSidebarActive}
@@ -2455,6 +2473,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         revertRun={handleRevertResumeOptimization}
                         surface="sidebar"
                         onRequestClose={handleCloseResumeOptimization}
+                        onFinish={handleFinishResumeOptimization}
+                        onRescoreInReport={handleRescoreInReport}
                         returnFocusRef={resumeOptimizationReturnFocusRef}
                         suppressReturnFocusRef={resumeOptimizationSuppressReturnFocusRef}
                         skillNameById={resumeOptimizationSkillNameById}
@@ -2467,7 +2487,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         </div>
     ) : null;
     return (
-        <ScoreAnnotationProvider onLocate={isMobileAnalysisViewport ? handleCloseJDAnalysisDetailsSidebar : undefined} suggestions={!isEvaluationOutdated && analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v2' ? analysisResult.resumeEvaluation.suggestions : []}
+        <ScoreAnnotationProvider experiences={[...selectedWorkItems, ...selectedProjectItems]} onLocate={isMobileAnalysisViewport ? handleCloseJDAnalysisDetailsSidebar : undefined} suggestions={!isEvaluationOutdated && analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v2' ? analysisResult.resumeEvaluation.suggestions : []}
             reportKey={JSON.stringify([resumeId, evaluationSignature, analysisResult?.resumeEvaluation, isEvaluationOutdated])}>
         <div
             ref={mobileEditorScrollContainerRef}
@@ -2678,6 +2698,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         revertRun={handleRevertResumeOptimization}
                         surface="modal"
                         onRequestClose={handleCloseResumeOptimization}
+                        onFinish={handleFinishResumeOptimization}
+                        onRescoreInReport={handleRescoreInReport}
                         returnFocusRef={resumeOptimizationReturnFocusRef}
                         suppressReturnFocusRef={resumeOptimizationSuppressReturnFocusRef}
                         skillNameById={resumeOptimizationSkillNameById}

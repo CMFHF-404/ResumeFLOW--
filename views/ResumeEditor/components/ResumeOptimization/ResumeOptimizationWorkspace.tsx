@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { ArrowLeft, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, PenLine } from 'lucide-react';
 
 import type { ExperienceCategory } from '../../../../services/experienceService';
 import type { useResumeOptimizationFlow } from '../../hooks/useResumeOptimizationFlow';
@@ -36,6 +36,7 @@ type ResumeOptimizationFutureContentProps = Pick<ResumeOptimizationFlowSlice,
     | 'submitAnswers'
     | 'acceptedChangeIds'
     | 'toggleChange'
+    | 'acceptAllChanges'
     | 'applyAcceptedChanges'
     | 'retryRescore'
     | 'revertRun'
@@ -44,6 +45,8 @@ type ResumeOptimizationFutureContentProps = Pick<ResumeOptimizationFlowSlice,
 type ResumeOptimizationWorkspaceProps = ResumeOptimizationFlowSlice & ResumeOptimizationFutureContentProps & {
     surface?: 'modal' | 'sidebar';
     onRequestClose: () => boolean | Promise<boolean>;
+    onFinish?: () => boolean | Promise<boolean>;
+    onRescoreInReport?: () => unknown;
     returnFocusRef: MutableRefObject<HTMLElement | null>;
     suppressReturnFocusRef: MutableRefObject<boolean>;
     skillNameById: Record<string, string>;
@@ -149,6 +152,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     submitAnswers,
     acceptedChangeIds,
     toggleChange,
+    acceptAllChanges,
     applyAcceptedChanges,
     retryRescore,
     revertRun,
@@ -156,6 +160,8 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     canStart,
     disabledReason,
     onRequestClose,
+    onFinish = onRequestClose,
+    onRescoreInReport,
     returnFocusRef,
     suppressReturnFocusRef,
     skillNameById,
@@ -304,7 +310,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
             const returnTarget = savedReturnFocus && isVisibleFocusable(savedReturnFocus)
                 ? savedReturnFocus
                 : fallbackReturnFocus;
-            returnTarget?.focus();
+            returnTarget?.focus({ preventScroll: true });
         });
     }, [returnFocusRef, suppressReturnFocusRef]);
 
@@ -321,7 +327,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         const focusableElements = getFocusableElements();
         if (!dialog || focusableElements.length === 0) {
             event.preventDefault();
-            headingRef.current?.focus();
+            headingRef.current?.focus({ preventScroll: true });
             return;
         }
         const firstFocusable = focusableElements[0];
@@ -362,7 +368,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         if (isSidebarSurface) return;
         const dialog = dialogRef.current;
         if (dialog && !dialog.contains(document.activeElement)) {
-            headingRef.current?.focus();
+            headingRef.current?.focus({ preventScroll: true });
         }
     }, [displayStep, isSidebarSurface, uiState]);
 
@@ -372,7 +378,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
             ? document.activeElement
             : null;
         if (!returnFocusRef.current) returnFocusRef.current = activeElementAtOpen;
-        const focusHeadingFrame = window.requestAnimationFrame(() => headingRef.current?.focus());
+        const focusHeadingFrame = window.requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: true }));
         return () => {
             window.cancelAnimationFrame(focusHeadingFrame);
             restoreReturnFocus();
@@ -403,10 +409,10 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         const previousHtmlOverflow = document.documentElement.style.overflow;
         document.body.style.overflow = 'hidden';
         document.documentElement.style.overflow = 'hidden';
-        const focusHeadingFrame = window.requestAnimationFrame(() => headingRef.current?.focus());
+        const focusHeadingFrame = window.requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: true }));
         const handleExternalFocus = (event: FocusEvent) => {
             if (event.target instanceof Node && !dialog.contains(event.target)) {
-                headingRef.current?.focus();
+                headingRef.current?.focus({ preventScroll: true });
             }
         };
         document.addEventListener('focusin', handleExternalFocus);
@@ -456,7 +462,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                 ].join(' ')}>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
-                            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                            <PenLine className="h-4 w-4" aria-hidden="true" />
                             <span className="text-[10px] font-bold tracking-[0.14em]">RESUME OPTIMIZATION</span>
                         </div>
                         <h2
@@ -532,6 +538,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                     readOnly={run?.status !== 'preview_ready'}
                                     skillNameById={skillNameById}
                                     onToggleChange={toggleChange}
+                                    onAcceptAll={acceptAllChanges}
                                     onViewExperience={onViewExperience}
                                     onOpenAutoAssembly={onOpenAutoAssembly}
                                     surface={surface}
@@ -542,7 +549,14 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                     run={run}
                                     busy={uiState === 'applying' || uiState === 'rescoring' || uiState === 'stale'}
                                     error={error}
-                                    onRetry={() => void retryRescore()}
+                                    onRetry={() => {
+                                        // Failed post-apply reloads must recover the committed version before scoring.
+                                        if (run.policyVersion === 'json_structure_v1' && uiState !== 'error' && onRescoreInReport) {
+                                            void onRescoreInReport();
+                                        } else {
+                                            void retryRescore();
+                                        }
+                                    }}
                                     onRevert={() => void revertRun()}
                                 />
                             ) : (
@@ -568,6 +582,12 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                         >
                             上一步
                         </button>
+                        {displayStep === 'result' && run && ['applied', 'completed'].includes(run.status) ? (
+                            <button type="button" disabled={isCloseBlocked} onClick={() => void onFinish()}
+                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50">
+                                完成
+                            </button>
+                        ) : null}
                         {canReplaceUnreviewablePlan || canRetryPlanning ? (
                             <button
                                 type="button"

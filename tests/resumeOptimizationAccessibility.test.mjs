@@ -26,8 +26,8 @@ test('workspace moves focus on open, traps it, and restores the saved or CTA tar
   const workspace = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx');
 
   assert.match(workspace, /element\.getClientRects\(\)\.length > 0[\s\S]*?!element\.closest\('\[inert\]'\)/);
-  assert.match(workspace, /window\.requestAnimationFrame\(\(\) => headingRef\.current\?\.focus\(\)\)/);
-  assert.match(workspace, /dialog && !dialog\.contains\(document\.activeElement\)[\s\S]*headingRef\.current\?\.focus\(\)/);
+  assert.match(workspace, /window\.requestAnimationFrame\(\(\) => headingRef\.current\?\.focus\(\{ preventScroll: true \}\)\)/);
+  assert.match(workspace, /dialog && !dialog\.contains\(document\.activeElement\)[\s\S]*headingRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
   assert.match(workspace, /document\.addEventListener\('focusin', handleExternalFocus\)/);
   assert.match(workspace, /document\.removeEventListener\('focusin', handleExternalFocus\)/);
   assert.match(workspace, /document\.activeElement === firstFocusable/);
@@ -38,7 +38,7 @@ test('workspace moves focus on open, traps it, and restores the saved or CTA tar
   assert.match(workspace, /\[data-resume-optimization-focus-return\]:not\(\[disabled\]\)/);
   assert.match(workspace, /document\.querySelectorAll<HTMLElement>[\s\S]*?\.find\(isVisibleFocusable\)/);
   assert.match(workspace, /savedReturnFocus && isVisibleFocusable\(savedReturnFocus\)/);
-  assert.match(workspace, /returnTarget\?\.focus\(\)/);
+  assert.match(workspace, /returnTarget\?\.focus\(\{ preventScroll: true \}\)/);
   assert.match(workspace, /suppressReturnFocusRef\.current/);
 });
 
@@ -47,7 +47,7 @@ test('sidebar activation receives focus without enabling the modal focus trap', 
 
   assert.match(
     workspace,
-    /useEffect\(\(\) => \{\s*if \(!isSidebarSurface\) return undefined;[\s\S]*?window\.requestAnimationFrame\(\(\) => headingRef\.current\?\.focus\(\)\)[\s\S]*?restoreReturnFocus\(\);[\s\S]*?\}, \[isSidebarSurface, restoreReturnFocus\]\);/,
+    /useEffect\(\(\) => \{\s*if \(!isSidebarSurface\) return undefined;[\s\S]*?window\.requestAnimationFrame\(\(\) => headingRef\.current\?\.focus\(\{ preventScroll: true \}\)\)[\s\S]*?restoreReturnFocus\(\);[\s\S]*?\}, \[isSidebarSurface, restoreReturnFocus\]\);/,
   );
   assert.match(
     workspace,

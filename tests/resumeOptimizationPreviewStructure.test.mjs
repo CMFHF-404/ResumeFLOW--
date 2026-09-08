@@ -82,6 +82,12 @@ test('diff and bank components expose safe responsive controls and documented la
   const bank = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationBankSuggestions.tsx');
   const utility = read('views/ResumeEditor/components/ResumeOptimization/optimizationDisplayUtils.mjs');
 
+  assert.match(preview, /全部接受/);
+  assert.match(preview, /onClick=\{onAcceptAll\}/);
+  assert.match(overview, /查看优化计划/);
+  assert.doesNotMatch(overview, /<dl|METRIC_CONFIG|formatResumeOptimizationDimensionLabel/);
+  assert.match(card, /experienceNameFor\(change.moduleId\)/);
+  assert.doesNotMatch(card, /scopeLabel|formatResumeOptimizationDimensionLabel/);
   assert.match(card, /原内容/);
   assert.match(card, /优化后/);
   assert.match(card, /beforeValue/);
@@ -108,7 +114,7 @@ test('diff and bank components expose safe responsive controls and documented la
   assert.match(card, /bg-slate/);
   assert.match(card, /bg-emerald/);
   assert.match(card, /border-rose|bg-rose/);
-  for (const label of ['通用优化', 'JD定向', '来自补充信息', '从总经历补回', '安全阻断']) {
+  for (const label of ['来自补充信息', '从总经历补回', '安全阻断']) {
     assert.match(`${preview}\n${card}\n${utility}`, new RegExp(label));
   }
   assert.match(utility, /stripRichTextToText/);
@@ -197,7 +203,7 @@ test('preview SSR uses targeted values, human order labels, and no internal iden
     assert.match(html, /查看经历/);
     assert.match(html, /前往一键组装/);
     assert.equal((html.match(/role="radio"/g) ?? []).length, 8);
-    assert.equal((html.match(/disabled=""/g) ?? []).length, 2);
+    assert.equal((html.match(/disabled=""/g) ?? []).length, 3);
     assert.doesNotMatch(html, /请核对/);
     assert.doesNotMatch(
       html,
@@ -216,7 +222,7 @@ test('preview SSR uses targeted values, human order labels, and no internal iden
       onOpenAutoAssembly: () => undefined,
     }));
     assert.equal((historyHtml.match(/role="radio"/g) ?? []).length, 8);
-    assert.equal((historyHtml.match(/disabled=""/g) ?? []).length, 8);
+    assert.equal((historyHtml.match(/disabled=""/g) ?? []).length, 9);
     assert.match(historyHtml, /已应用/);
   } finally {
     cleanup();
@@ -267,7 +273,7 @@ test('blocked changes retain their original text while exposing a safe safety ex
     assert.match(html, /保留原文/);
     assert.match(html, /此项不可应用/);
     assert.equal((html.match(/role="radio"/g) ?? []).length, 2);
-    assert.equal((html.match(/disabled=""/g) ?? []).length, 2);
+    assert.equal((html.match(/disabled=""/g) ?? []).length, 3);
     assert.doesNotMatch(html, /private-id|\/currentResume|自动规则未发现风险/);
 
     const fallbackHtml = renderBlocked(['{"issueId":"ISS_PRIVATE","evidenceId":"E_PRIVATE"}']);

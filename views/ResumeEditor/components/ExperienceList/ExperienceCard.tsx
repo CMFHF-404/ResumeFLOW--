@@ -146,6 +146,17 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
     onClosePolishToolbar,
     onDismissPolishToolbar,
 }) => {
+    const [retainedToolbar, setRetainedToolbar] = useState<React.ReactNode>(null);
+    const toolbarVisible = Boolean(isPolishToolbarOpen && polishToolbar);
+    useEffect(() => {
+        if (toolbarVisible) {
+            setRetainedToolbar(polishToolbar);
+            return;
+        }
+        const timer = window.setTimeout(() => setRetainedToolbar(null), 160);
+        return () => window.clearTimeout(timer);
+    }, [toolbarVisible, polishToolbar]);
+    const renderedToolbar = toolbarVisible ? polishToolbar : retainedToolbar;
     const hasReason = Boolean(item.matchReason?.trim());
     const [isReasonOpen, setIsReasonOpen] = useState(true);
 
@@ -177,7 +188,7 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                 }
                 onToggleSelection(item.id);
             }}
-            className={`bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm transition-all group relative cursor-pointer ${isSelected ? `${themeStyles.borderSelected} ring-1 ${themeStyles.ringSelected}` : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'} ${isPolishToolbarOpen ? 'z-20 opacity-100 shadow-[0_18px_50px_rgba(15,23,42,0.12)]' : ''}`}
+            className={`bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm transition-all group relative cursor-pointer ${isSelected ? `${themeStyles.borderSelected} ring-1 ${themeStyles.ringSelected}` : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'} ${renderedToolbar ? 'z-20 opacity-100 shadow-[0_18px_50px_rgba(15,23,42,0.12)]' : ''}`}
         >
             <div className="flex items-start gap-3">
                 <div className="pt-1">
@@ -233,24 +244,27 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                     <ExperienceReasonPanel reason={item.matchReason ?? ''} onClick={handleReasonAreaClick} />
                 </div>
             ) : null}
-            {isPolishToolbarOpen && polishToolbar ? (
+            {renderedToolbar ? (
                 <>
                     <div
-                        className="fixed inset-0 z-[55] bg-slate-950/18 backdrop-blur-[1px] md:hidden"
+                        aria-hidden="true"
+                        className={`fixed inset-0 z-[55] bg-slate-950/18 backdrop-blur-[1px] transition-opacity duration-150 motion-reduce:transition-none md:hidden ${toolbarVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
                         onClick={(event) => {
                             event.stopPropagation();
                             onDismissPolishToolbar?.();
                         }}
                     />
                     <div
+                        aria-hidden={!toolbarVisible}
+                        inert={!toolbarVisible ? true : undefined}
                         className="fixed inset-x-4 top-[max(16px,env(safe-area-inset-top))] bottom-[max(16px,env(safe-area-inset-bottom))] z-[60] flex items-center justify-center md:absolute md:inset-x-auto md:right-3 md:top-12 md:bottom-auto md:z-30 md:mt-0 md:block md:w-[calc(100%-24px)] md:max-w-[560px] md:max-h-[48vh]"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="flex max-h-full w-full max-w-[36rem] flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur md:max-h-[48vh]">
+                        <div className={`flex max-h-full w-full max-w-[36rem] origin-top flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur md:max-h-[48vh] ${toolbarVisible ? 'rf-polish-panel-enter' : 'rf-polish-panel-exit'}`}>
                             <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
                                 <div className="min-w-0">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
-                                        AI 润色工具栏
+                                        AI润色
                                     </div>
                                     <div className="mt-1 truncate text-sm font-semibold text-slate-900">
                                         {item.title || '未填写职位'}
@@ -277,7 +291,7 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({
                                 ) : null}
                             </div>
                             <div className="min-h-0 flex flex-1 flex-col overflow-hidden p-3">
-                                {polishToolbar}
+                                {renderedToolbar}
                             </div>
                         </div>
                     </div>

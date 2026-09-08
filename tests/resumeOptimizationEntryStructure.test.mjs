@@ -9,7 +9,7 @@ test('only current numeric reports expose a selected-module optimization CTA', (
   const current = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeScoreReport.tsx');
   assert.match(report, /if \(numericReport\) return <ResumeScoreReport/);
   assert.match(current, /优化所选模块/);
-  assert.match(current, /disabled=\{outdated \|\| busy \|\| !canStart \|\| annotations.selected.length === 0\}/);
+  assert.match(current, /disabled=\{outdated \|\| busy \|\| generating \|\| !canStart \|\| annotations.selected.length === 0\}/);
   assert.match(current, /onStart\(annotations.selected\)/);
   assert.doesNotMatch(report, /根据指导优化|trackResumeOptimizationCtaClick/);
   assert.match(report, /查看历史文字指导（无数值评分）/);

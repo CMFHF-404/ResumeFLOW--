@@ -92,12 +92,11 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
             {report?.kind === 'guidance' ? '当前保存的是旧版文字指导，没有六维分数。生成六维评分后，将显示总分、雷达图和可选择的优化模块。'
                 : hasHistoricalScores ? '这是历史数值报告。重新评分后可选择需要优化的模块。' : '评分同时标注可优化模块和改进方向。'}
         </p>
-        {onGenerate && <button type="button" onClick={onGenerate} disabled={isGenerating || isOptimizationBusy}
+        {(onGenerate || (isGenerating && onStop)) && <button type="button" onClick={isGenerating ? onStop : onGenerate} disabled={isGenerating ? !onStop : isOptimizationBusy}
             className="mt-3 min-h-[44px] w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50">
-            {isGenerating ? '正在生成六维评分…' : hasHistoricalScores ? '重新进行六维评分' : '生成六维评分'}
+            {isGenerating ? '停止生成' : hasHistoricalScores ? '重新进行六维评分' : '生成六维评分'}
         </button>}
         {isGenerating && thinkingText && <p className="mt-2 text-xs text-slate-500">{thinkingText}</p>}
-        {isGenerating && onStop && <button type="button" onClick={onStop} className="mt-2 min-h-[44px] text-xs text-rose-700">停止生成</button>}
         {error && <p role="alert" className="mt-2 text-xs text-rose-600">{error}</p>}
     </section>;
     if (!report) return scoreEntry;
