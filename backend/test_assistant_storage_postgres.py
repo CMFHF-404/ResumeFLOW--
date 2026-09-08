@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import unittest
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import asyncpg
@@ -27,7 +28,7 @@ os.environ.setdefault("LOGTO_APP_ID", "resume-spa-app-id")
 
 from app.domain.assistant import assistant_service, assistant_storage
 from app.domain.assistant.schemas import AssistantSessionCreate
-from app.models import AIAssistantImageBlob, AIAssistantSession
+from app.models import AIAssistantImageBlob, AIAssistantMessage, AIAssistantSession
 
 
 RUN_ENV = "RUN_ASSISTANT_STORAGE_POSTGRES_TESTS"
@@ -118,6 +119,43 @@ class AssistantStoragePostgresTests(unittest.IsolatedAsyncioTestCase):
             )
         finally:
             await connection.close()
+
+    async def test_utc_message_pagination_with_equal_timestamp_tiebreaker(self) -> None:
+        timestamp = datetime(2026, 9, 8, 0, 30, 26, 6264, tzinfo=timezone.utc)
+        async with self.sessions() as session:
+            assistant = AIAssistantSession(
+                user_id="timestamp-test", title="UTC history", mode="direct",
+            )
+            session.add(assistant)
+            await session.flush()
+            messages = [
+                AIAssistantMessage(
+                    id=uuid.UUID(int=index), session_id=assistant.id,
+                    role="assistant", message_type="text",
+                    content_json={"text": f"message {index}"}, created_at=timestamp,
+                )
+                for index in (1, 2, 3)
+            ]
+            session.add_all(messages)
+            await session.commit()
+            assistant_id = assistant.id
+            # Force PostgreSQL round trips instead of reusing inserted objects.
+            session.expire_all()
+            first = await assistant_service.get_session_detail_page(
+                session, "timestamp-test", assistant_id, limit=2,
+            )
+            self.assertEqual([message.id.int for message in first.messages], [2, 3])
+            self.assertIsNotNone(first.next_cursor)
+            self.assertTrue(first.truncated)
+            self.assertEqual(first.messages[0].created_at, timestamp)
+            self.assertIsNotNone(first.messages[0].created_at.tzinfo)
+            second = await assistant_service.get_session_detail_page(
+                session, "timestamp-test", first.assistant_session.id,
+                limit=2, before_cursor=first.next_cursor,
+            )
+            self.assertEqual([message.id.int for message in second.messages], [1])
+            self.assertIsNone(second.next_cursor)
+            self.assertFalse(second.truncated)
 
     async def test_context_and_message_db_byte_boundaries_match_application(self) -> None:
         context_overhead = assistant_storage.storage_json_utf8_size({"text": ""})
