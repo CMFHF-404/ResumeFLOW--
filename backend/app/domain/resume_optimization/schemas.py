@@ -10,8 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 OPTIMIZER_VERSION = "resume_optimization_v1"
-POLICY_VERSION = "evidence_semantic_v2"
-PROMPT_VERSION = "resume_optimization_tasks_v2"
+POLICY_VERSION = "json_structure_v1"
+PROMPT_VERSION = "resume_optimization_single_pass_v1"
 RESUME_EVALUATION_DIMENSION_NAMES = (
     "逻辑清晰",
     "STAR应用",
@@ -127,7 +127,7 @@ class OptimizationChange(BaseModel):
     # serialized into storage or a public optimization response.
     expected_score_gain: int = Field(default=0, ge=0, le=100, exclude=True)
     default_selected: bool = True
-    safety_status: Literal["pending", "allowed", "blocked"] = "pending"
+    safety_status: Literal["pending", "allowed", "blocked", "not_reviewed"] = "pending"
     safety_findings: list[str] = Field(default_factory=list)
     semantic_review: OptimizationSemanticReview | None = None
 
@@ -167,7 +167,7 @@ class OptimizationChange(BaseModel):
                 and has_rewritten_value
             )
         )
-        if text_changing and not self.source_refs:
+        if text_changing and self.safety_status != "not_reviewed" and not self.source_refs:
             raise ValueError("text-changing actions require source_refs")
 
         if self.module_type not in {
@@ -445,8 +445,8 @@ class ResumeOptimizationRunRead(BaseModel):
     resume_id: str
     status: ResumeOptimizationStatus
     optimizer_version: Literal[OPTIMIZER_VERSION] = OPTIMIZER_VERSION
-    policy_version: Literal["thin_safety_v1", POLICY_VERSION] = POLICY_VERSION
-    prompt_version: Literal["resume_optimization_prompt_v1", "resume_optimization_tasks_v2"] = PROMPT_VERSION
+    policy_version: Literal["thin_safety_v1", "evidence_semantic_v2", POLICY_VERSION] = POLICY_VERSION
+    prompt_version: Literal["resume_optimization_prompt_v1", "resume_optimization_tasks_v2", PROMPT_VERSION] = PROMPT_VERSION
     source_resume_updated_at: datetime
     source_evaluation_signature: str
     source_jd_signature: str = ""
@@ -474,6 +474,7 @@ class ResumeOptimizationStartRequest(BaseModel):
     evaluation_signature: str
     expected_resume_updated_at: datetime
     include_bank_suggestions: bool = True
+    selected_suggestion_ids: list[str] = Field(default_factory=list)
 
     @field_validator("resume_id", "evaluation_signature")
     @classmethod

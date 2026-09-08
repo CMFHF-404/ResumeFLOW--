@@ -63,12 +63,12 @@ export const ResumeOptimizationOverview: React.FC<ResumeOptimizationOverviewProp
                         先看优化范围，再决定下一步
                     </h3>
                     <p className="mt-2 text-[12px] leading-6 text-slate-500 dark:text-slate-400">
-                        所有改写均经过自动事实边界检查，请在应用前核对；最终效果以应用后的独立审核为准。
+                        查看所选模块的改写与补充问题，逐项确认后应用。
                     </p>
                 </div>
 
                 <dl className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    {METRIC_CONFIG.map(({ key, label, icon: Icon, tone }) => (
+                    {METRIC_CONFIG.filter(item => item.key !== 'blockedChanges').map(({ key, label, icon: Icon, tone }) => (
                         <div key={key} className={`rounded-2xl border p-4 ${TONE_CLASSES[tone]}`}>
                             <div className="flex items-center justify-between gap-3">
                                 <dt className="text-[11px] font-semibold">{label}</dt>

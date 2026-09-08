@@ -1,6 +1,24 @@
 # AI 回答校验职责
 
-## 当前评估：guidance_audit_v1
+## 当前评估：resume_score_v2 / single_pass_v1
+
+评分和所选模块优化接受裸 JSON 或完整的 Markdown JSON 代码块外壳；只移除完整外壳后执行一次 JSON 解析，不从解释文字中截取对象、不修复缺失符号、不重生成。块内语法或必要结构错误仍明确失败。该处理独立于其他 AI 功能的历史解析器。
+
+优化启动仍校验评分签名、当前简历与版本令牌。新流程只比较评分实际使用的简历内容与目标岗位，不将旧经历库副本或旧证据元数据作为评分新鲜度依据；所选经历版本另行按账号和简历链接验证。经历可选日期的缺省与 `null` 等价，具体日期值变化仍视为版本内容冲突。
+
+新六维评分每次仅生成一次：模型返回六维分数、简短评语及模块改进方向，服务端计算六维等权平均总分（四舍五入），分配建议 ID 并解析目标模块。模型不能提交任意写入地址。公开报告包含 `dimensions`、`summary`、`suggestions`，独立 JD 匹配仍使用 `jdMatch`。
+
+仅检查 JSON 语法和应用必需的结构：字段类型、完整且不重复的六维、0–100 分数以及存在的目标模块。允许额外字段，可选建议缺省为空。不进行证据逐字匹配、业务正则判定、扣分分项复算、多样本共识、量表审核或事实 AI 审核。格式无效直接报错，用户可手动重试；没有自动修复、重新生成或隐式提供方重试。提示词继续要求依据用户材料、不编造内容。
+
+关联优化使用 `json_structure_v1` / `resume_optimization_single_pass_v1`：用户在报告中勾选模块后才生成方案；`selectedSuggestionIds` 在请求中发送为 `selected_suggestion_ids`，与当前报告、简历版本共同绑定。一次规划返回改写或必要问题，有效回答最多触发一次批量改写；无数据、不确定或跳过不调用模型，保留已有候选或原文。新候选状态 `not_reviewed` 仅用于区分历史协议，不表示已通过审核，不依赖 `sourceRefs` 或语义凭据。
+
+应用仍检查用户归属、字段写入范围、排序 ID、请求幂等和当前版本，并清理不安全 HTML。删除的是内容质量与事实审核，不是账号或数据保存保护。应用只保存用户接受的修改，完成于 `applied`，将旧评分标为过期；不会自动复评或要求 finalize。用户手动重新评分时只生成一次，失败不撤销已保存的文本。
+
+历史 `resume_flow_v1` 和 `guidance_audit_v1` 报告保持只读，不补算或转换；新优化必须先生成当前报告。旧已应用记录的读取和撤销继续保留，旧未应用方案不能通过公开应用入口写入。历史协议的内部兼容函数仅用于历史记录及回归测试，生产评分／新优化入口不调用它们。下面的 guidance、v3/v4 及语义审核说明是历史六维流程记录；共享给其他 AI 功能的检查仍按各自契约执行。
+
+验证：`python -B -m unittest test_resume_score`（backend）和 `node --test tests/resumeScore.test.mjs tests/resumeOptimizationPostScoreFlow.test.mjs`（根目录），并运行 AGENTS.md 的关联回归组。新增测试覆盖单次调用、非法结构、取消、无选择零调用、跳过问答、应用 HTML 清理及手动复评。模型均被替换，不证明真实模型质量。开发预览：`/__dev/resume-template-preview?templateId=modern-slate&scoreReview=1`；追加 `scorePrint=1` 查看无标注的打印内容。
+
+## 历史评估：guidance_audit_v1
 
 指导评估要求已解析的结构化简历。纯文本 `resume_text`（包括 JSON 中的 `raw_text`）会在调用模型前返回 HTTP 422，错误码为 `resume_evaluation_structured_input_required`，且 `retryable=false`；请先完成简历解析。普通 JSON 简历对象与 `evaluation_scope=full_resume` 包装格式继续受支持。
 

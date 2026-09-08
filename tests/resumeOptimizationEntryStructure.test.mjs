@@ -4,38 +4,15 @@ import test from 'node:test';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('valid resume reports expose the restrained emerald optimization CTA', () => {
+test('only current numeric reports expose a selected-module optimization CTA', () => {
   const report = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx');
-
-  assert.match(report, /import \{[^}]*Wand2[^}]*\} from 'lucide-react'/s);
-  assert.match(report, /根据指导优化/);
-  assert.match(report, /data-resume-optimization-focus-return="true"/);
-  assert.match(report, /isOptimizationEnabled && onStartOptimization/);
-  assert.match(
-    report,
-    /disabled=\{!isGuidance \|\| isOutdated \|\| isOptimizationBusy \|\| !canStartOptimization\}/,
-  );
-  assert.match(report, /resolvedOptimizationDisabledReason/);
-  assert.match(report, /\{resolvedOptimizationDisabledReason\}/);
-  for (const className of [
-    'inline-flex items-center justify-center gap-1.5',
-    'rounded-lg',
-    'bg-emerald-600',
-    'px-3 py-2',
-    'text-[11px] font-bold text-white',
-    'shadow-sm',
-    'hover:bg-emerald-700',
-    'focus-visible:ring-2',
-    'focus-visible:ring-emerald-500',
-    'disabled:opacity-50',
-  ]) {
-    assert.ok(report.includes(className), `missing CTA class: ${className}`);
-  }
-  assert.match(report, /重新生成简历改进指导/);
-  assert.ok(
-    report.indexOf('根据指导优化') > report.indexOf('if (!report)'),
-    'the optimization CTA must exist only in the valid-report branch',
-  );
+  const current = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeScoreReport.tsx');
+  assert.match(report, /if \(numericReport\) return <ResumeScoreReport/);
+  assert.match(current, /优化所选模块/);
+  assert.match(current, /disabled=\{outdated \|\| busy \|\| !canStart \|\| annotations.selected.length === 0\}/);
+  assert.match(current, /onStart\(annotations.selected\)/);
+  assert.doesNotMatch(report, /根据指导优化|trackResumeOptimizationCtaClick/);
+  assert.match(report, /查看历史文字指导（无数值评分）/);
 });
 
 test('optimization props traverse report, details content, sidebar, modal, and panel', () => {

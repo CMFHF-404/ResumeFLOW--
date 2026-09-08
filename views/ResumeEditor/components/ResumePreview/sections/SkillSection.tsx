@@ -1,3 +1,4 @@
+import { ModuleScoreNote } from '../../ResumeEvaluationReport/ScoreAnnotations';
 import React from 'react';
 import { Edit3, GripVertical } from 'lucide-react';
 import type { SkillGroupView } from '../../../../../types/resume';
@@ -133,6 +134,7 @@ const SkillSection: React.FC<SkillSectionProps> = ({
                 }}
             >
                 {includeOverflowState ? renderOverflowMarker('skills') : null}
+                <ModuleScoreNote moduleType="skills_order" moduleId="skills" readOnly={isReadOnly} />
                 {renderSectionHeading('专业技能', 'skills')}
                 <div
                     className="text-xs text-gray-800 space-y-[var(--rf-list-spacing)]"

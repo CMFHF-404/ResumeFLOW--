@@ -32,7 +32,7 @@ const ANSWER_STATE_VALUES = new Set([
   'not_my_work',
   'skipped',
 ]);
-const SAFETY_STATUS_VALUES = new Set(['pending', 'allowed', 'blocked']);
+const SAFETY_STATUS_VALUES = new Set(['pending', 'allowed', 'blocked', 'not_reviewed']);
 const GUIDANCE_BAND_VALUES = new Set([
   'strong',
   'adequate',
@@ -273,7 +273,7 @@ const normalizeChange = (value, index) => {
     actionKind === 'rewrite_now'
     || (actionKind === 'ask_user' && (generalValue !== null || targetedValue !== null))
   );
-  if (isTextChanging && sourceRefs.length === 0) {
+  if (isTextChanging && safetyStatus !== 'not_reviewed' && sourceRefs.length === 0) {
     fail(`${fieldName} text changes require source references`);
   }
   const sourceLabels = [...new Set(sourceRefs.map(formatResumeOptimizationSourceRef))];
@@ -638,8 +638,8 @@ export const normalizeResumeOptimizationRun = (value) => {
   const record = toRecord(value, 'run');
   const status = enumValue(record.status, STATUS_VALUES, 'run.status');
   if (record.optimizer_version !== 'resume_optimization_v1') fail('run.optimizer_version is unsupported');
-  if (!['thin_safety_v1', 'evidence_semantic_v2'].includes(record.policy_version)) fail('run.policy_version is unsupported');
-  if (!['resume_optimization_prompt_v1', 'resume_optimization_tasks_v2'].includes(record.prompt_version)) fail('run.prompt_version is unsupported');
+  if (!['thin_safety_v1', 'evidence_semantic_v2', 'json_structure_v1'].includes(record.policy_version)) fail('run.policy_version is unsupported');
+  if (!['resume_optimization_prompt_v1', 'resume_optimization_tasks_v2', 'resume_optimization_single_pass_v1'].includes(record.prompt_version)) fail('run.prompt_version is unsupported');
 
   const plan = normalizePlan(record.plan, 'run.plan');
   const rawResult = record.result;
@@ -665,7 +665,7 @@ export const normalizeResumeOptimizationRun = (value) => {
   const changesById = new Map(effectivePlan.changes.map((item) => [item.changeId, item]));
   for (const changeId of acceptedChangeIds) {
     const change = changesById.get(changeId);
-    if (!change || change.safetyStatus !== 'allowed') {
+    if (!change || !['allowed', 'not_reviewed'].includes(change.safetyStatus)) {
       fail('run.accepted_change_ids contains an unknown or unsafe change');
     }
   }

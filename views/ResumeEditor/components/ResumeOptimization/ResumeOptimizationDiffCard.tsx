@@ -150,6 +150,8 @@ export const ResumeOptimizationDiffCard: React.FC<ResumeOptimizationDiffCardProp
                 <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                     {readOnly && changeSelectable && selected ? (
                         <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> 已应用</>
+                    ) : change.safetyStatus === 'not_reviewed' ? (
+                        <span>请确认是否采用</span>
                     ) : changeSelectable ? (
                         <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> 自动规则未发现风险</>
                     ) : (

@@ -842,6 +842,9 @@ def normalize_resume_evaluation(
     jd_available: bool,
     fact_metadata: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
+    if isinstance(raw, dict) and raw.get("evaluationVersion") == "resume_score_v2":
+        from .resume_score import normalize_score
+        return normalize_score(raw)
     if isinstance(raw, dict) and raw.get("evaluationVersion") == "guidance_audit_v1":
         from .guidance_evaluation import normalize_guidance_report
         return normalize_guidance_report(raw)

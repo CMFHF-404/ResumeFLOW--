@@ -1,3 +1,4 @@
+import { ModuleScoreNote } from '../../ResumeEvaluationReport/ScoreAnnotations';
 import React from 'react';
 import { Edit3, GripVertical } from 'lucide-react';
 import type {
@@ -258,6 +259,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                                         {item.title}
                                     </p>
 
+                                    <ModuleScoreNote moduleType="experience_star" moduleId={item.id} readOnly={isReadOnly} />
                                     {renderStarBlocks(
                                         item.star,
                                         item.id,

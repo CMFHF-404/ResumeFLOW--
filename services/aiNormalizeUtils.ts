@@ -1,3 +1,4 @@
+import { normalizeResumeScore } from '../utils/resumeScore.mjs';
 import type {
     JDCapabilityAnalysis,
     JDAnalysisResult,
@@ -1094,6 +1095,8 @@ export const normalizeGuidanceAuditEvaluation = (
 
 /** Reads legacy numeric reports and the new guidance contract without coercing one into the other. */
 export const normalizeResumeEvaluation = (value: unknown): ResumeEvaluation | undefined => {
+    const score = normalizeResumeScore(value);
+    if (score) return score as ResumeEvaluation;
     const record = toRecord(value);
     if (!record) return undefined;
     const version = toText(getAliased(record, 'evaluationVersion', 'evaluation_version'));

@@ -50,7 +50,7 @@ export type ResumeOptimizationAnswerState =
   | 'not_my_work'
   | 'skipped';
 
-export type ResumeOptimizationSafetyStatus = 'pending' | 'allowed' | 'blocked';
+export type ResumeOptimizationSafetyStatus = 'pending' | 'allowed' | 'blocked' | 'not_reviewed';
 
 export type ResumeOptimizationProgressNode =
   | 'freeze_snapshot'
@@ -200,8 +200,8 @@ export interface ResumeOptimizationRun {
   resumeId: string;
   status: ResumeOptimizationStatus;
   optimizerVersion: 'resume_optimization_v1';
-  policyVersion: 'thin_safety_v1' | 'evidence_semantic_v2';
-  promptVersion: 'resume_optimization_prompt_v1' | 'resume_optimization_tasks_v2';
+  policyVersion: 'thin_safety_v1' | 'evidence_semantic_v2' | 'json_structure_v1';
+  promptVersion: 'resume_optimization_prompt_v1' | 'resume_optimization_tasks_v2' | 'resume_optimization_single_pass_v1';
   sourceResumeUpdatedAt: string;
   sourceEvaluationSignature: string;
   sourceJdSignature: string;
@@ -225,6 +225,7 @@ export interface ResumeOptimizationStartInput {
   evaluationSignature: string;
   expectedResumeUpdatedAt: string;
   includeBankSuggestions?: boolean;
+  selectedSuggestionIds?: string[];
 }
 
 export interface ResumeOptimizationAnswersInput {

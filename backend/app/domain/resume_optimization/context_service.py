@@ -1704,6 +1704,16 @@ def _first_snapshot_mismatch(
     if isinstance(trusted, Mapping) or isinstance(signed, Mapping):
         if not isinstance(trusted, Mapping) or not isinstance(signed, Mapping):
             return path or "resume"
+        # API experience dates may be null, while the server projection omits
+        # unset dates. Both represent the same empty optional field. Keep this
+        # equivalence scoped to experience rows; real date changes still fail.
+        if path.endswith(']') and path.rsplit('[', 1)[0] in (
+            'resume.experiences', 'experience_atoms',
+        ):
+            trusted = {key: value for key, value in trusted.items()
+                       if key not in ('start_date', 'end_date') or value is not None}
+            signed = {key: value for key, value in signed.items()
+                      if key not in ('start_date', 'end_date') or value is not None}
         trusted_keys = set(trusted)
         signed_keys = set(signed)
         if trusted_keys != signed_keys:
@@ -1822,6 +1832,211 @@ def _source_experience(version: Any, category: str) -> dict[str, Any]:
 
 
 async def build_frozen_optimization_context(
+    session: AsyncSession,
+    user_id: str,
+    request: ResumeOptimizationStartRequest,
+) -> FrozenOptimizationContext:
+    try:
+        uuid.UUID(request.resume_id)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise OptimizationContextRequestError("resume_id must be a valid UUID") from exc
+
+    try:
+        resume, resume_items = await get_resume_detail(
+            session, user_id, request.resume_id
+        )
+    except ResumeNotFoundError as exc:
+        raise OptimizationContextNotFoundError("Resume not found") from exc
+
+    (
+        evaluation,
+        evaluation_signature,
+        jd_signature,
+        jd_available,
+        signed_resume_snapshot,
+        analysis_result,
+    ) = _validate_report(resume, request)
+    linked_by_master = _linked_items_by_master(list(resume_items))
+    explicit_selected_ids = _explicit_selected_ids(getattr(resume, "config", None))
+    if explicit_selected_ids is not None:
+        unlinked = [
+            master_id
+            for master_id in explicit_selected_ids
+            if master_id not in linked_by_master
+        ]
+        if unlinked:
+            raise OptimizationSelectionInvalidError(
+                "The resume selects an experience without a persisted resume link"
+            )
+
+    bank = await _load_agent_bank(session, user_id)
+    category_by_master_id = await _load_resume_item_categories(
+        session, user_id, list(resume_items)
+    )
+    analysis_text = await build_resume_analysis_text(
+        session,
+        user_id,
+        resume,
+        resume_items=list(resume_items),
+        bank=bank,
+        category_by_master_id=category_by_master_id,
+        target_role=resume.target_role,
+    )
+    parsed = _parse_analysis_text(analysis_text)
+    target_role = _string(getattr(resume, "target_role", ""))
+    trusted_resume_snapshot = _trusted_frontend_evaluation_snapshot(
+        parsed,
+        resume=resume,
+        resume_items=list(resume_items),
+        bank=bank,
+        category_by_master_id=category_by_master_id,
+    )
+    mismatch_path = _first_snapshot_mismatch(
+        # Single-pass scoring reads the displayed resume, not the experience
+        # bank or legacy evidence metadata. Bind the same input here. Selected
+        # source versions are independently loaded and checked below.
+        {key: trusted_resume_snapshot.get(key) for key in ('resume', 'target_role')},
+        {key: signed_resume_snapshot.get(key) for key in ('resume', 'target_role')},
+    )
+    if mismatch_path is not None:
+        raise OptimizationContextStaleError(
+            "The persisted evaluation resume snapshot no longer matches "
+            f"the server resume at {mismatch_path}"
+        )
+    current_resume = _allowlist_current_resume(
+        trusted_resume_snapshot.get("resume"),
+        target_role=target_role,
+    )
+    selected_master_ids = list(current_resume["experiences"])
+    if (
+        not all(selected_master_ids)
+        or len(set(selected_master_ids)) != len(selected_master_ids)
+    ):
+        raise OptimizationSelectionInvalidError(
+            "The current resume snapshot contains invalid experience IDs"
+        )
+    if explicit_selected_ids is not None:
+        hidden_selected_ids = [
+            master_id
+            for master_id in explicit_selected_ids
+            if master_id not in selected_master_ids
+        ]
+        archived_hidden_ids = await _archived_master_ids_for_user(
+            session,
+            user_id,
+            hidden_selected_ids,
+        )
+        if set(hidden_selected_ids) != archived_hidden_ids:
+            raise OptimizationSelectionInvalidError(
+                "The current resume snapshot does not match the persisted selection"
+            )
+        effective_selected_ids = [
+            master_id
+            for master_id in explicit_selected_ids
+            if master_id not in archived_hidden_ids
+        ]
+        if (
+            len(selected_master_ids) != len(effective_selected_ids)
+            or set(selected_master_ids) != set(effective_selected_ids)
+        ):
+            raise OptimizationSelectionInvalidError(
+                "The current resume snapshot does not match the persisted selection"
+            )
+    if any(master_id not in linked_by_master for master_id in selected_master_ids):
+        raise OptimizationSelectionInvalidError(
+            "The current resume snapshot contains an unlinked experience"
+        )
+
+    selected_sources: dict[str, dict[str, Any]] = {}
+    selected_links: dict[str, dict[str, str]] = {}
+    for master_id in selected_master_ids:
+        item = linked_by_master[master_id]
+        source_version_id = _string(getattr(item, "experience_version_id", ""))
+        try:
+            source_version = await get_version_for_user(
+                session, user_id, source_version_id
+            )
+        except ExperienceNotFoundError as exc:
+            raise OptimizationSelectionInvalidError(
+                "A selected source experience version is unavailable"
+            ) from exc
+        if (
+            _string(getattr(source_version, "id", "")) != source_version_id
+            or _string(getattr(source_version, "master_experience_id", ""))
+            != master_id
+        ):
+            raise OptimizationSelectionInvalidError(
+                "A resume link does not match its selected source version"
+            )
+        category = _category_value(category_by_master_id.get(master_id))
+        if category not in _EXPERIENCE_CATEGORIES:
+            raise OptimizationSelectionInvalidError(
+                "A selected source experience has an unsupported category"
+            )
+        selected_sources[master_id] = _source_experience(source_version, category)
+        selected_links[master_id] = {
+            "resume_link_id": _string(getattr(item, "id", "")),
+            "source_version_id": source_version_id,
+        }
+
+    config = getattr(resume, "config", None)
+    analysis = config.get("jdAnalysis") if isinstance(config, Mapping) else None
+    bank_candidates = _bank_candidates(
+        parsed,
+        selected_ids=set(selected_master_ids),
+        analysis_result=analysis_result,
+        enabled=request.include_bank_suggestions and jd_available,
+    )
+    fact_metadata = _allowlist_fact_metadata(
+        trusted_resume_snapshot.get("fact_metadata"),
+        current_resume=current_resume,
+    )
+    resume_updated_at = _normalized_timestamp(resume.updated_at).isoformat()
+
+    source_documents = {
+        "currentResume": deepcopy(current_resume),
+        "selectedSourceExperiences": deepcopy(selected_sources),
+        "userAnswers": {},
+    }
+    if set(source_documents) != _SOURCE_DOCUMENT_ROOTS:
+        raise AssertionError("Unexpected optimization source document root")
+    from ..ai.resume_score import VERSION, normalize_score, module_catalog
+    if evaluation.get("evaluationVersion") != VERSION:
+        raise OptimizationContextStaleError("评估规则已更新，请重新进行六维评分后再优化。")
+    try:
+        evaluation = normalize_score(dict(evaluation), catalog=module_catalog(current_resume))
+        ids = request.selected_suggestion_ids
+        available = {row['suggestionId']: row for row in evaluation['suggestions']}
+        if not ids or len(ids) != len(set(ids)) or any(identity not in available or not available[identity]['editable'] for identity in ids):
+            raise ValueError("Select valid editable suggestions")
+    except (ValueError, TypeError) as exc:
+        raise OptimizationSelectionInvalidError("请选择有效的优化模块。") from exc
+    evaluation['selectedSuggestionIds'] = list(ids)
+    _parse_persisted_frontend_evaluation_signature(
+        evaluation_signature,
+        jd_signature=jd_signature,
+        evaluation=evaluation,
+        analysis_result=analysis_result,
+    )
+
+    return FrozenOptimizationContext(
+        resume_id=_string(resume.id),
+        resume_updated_at=resume_updated_at,
+        evaluation_signature=evaluation_signature,
+        jd_signature=jd_signature,
+        target_role=target_role,
+        evaluation=deepcopy(evaluation),
+        current_resume=deepcopy(current_resume),
+        selected_source_experiences=deepcopy(selected_sources),
+        selected_master_experience_ids=list(selected_master_ids),
+        selected_experience_links=deepcopy(selected_links),
+        bank_suggestion_candidates=deepcopy(bank_candidates),
+        fact_metadata=deepcopy(fact_metadata),
+    )
+
+
+# Historical context reader retained for compatibility tests; never used by new requests.
+async def build_legacy_frozen_optimization_context(
     session: AsyncSession,
     user_id: str,
     request: ResumeOptimizationStartRequest,

@@ -1,10 +1,9 @@
-import React, { useEffect, useRef } from 'react';
-import { FileWarning, ListChecks, Wand2 } from 'lucide-react';
-import { normalizeResumeEvaluationDisplay } from './evaluationReportUtils.mjs';
-import {
-    trackResumeOptimizationCtaClick,
-    trackResumeOptimizationCtaView,
-} from '../../../../utils/analyticsTracker';
+import { ResumeScoreReport, ScoreRadar } from './ResumeScoreReport';
+import { normalizeResumeScore } from '../../../../utils/resumeScore.mjs';
+import type { ResumeScoreEvaluation } from '../../../../types/ai';
+import React from 'react';
+import { ListChecks } from 'lucide-react';
+import { EVALUATION_DIMENSIONS, normalizeResumeEvaluationDisplay } from './evaluationReportUtils.mjs';
 
 type ResumeEvaluationReportProps = {
     evaluation: unknown;
@@ -19,7 +18,7 @@ type ResumeEvaluationReportProps = {
     isOptimizationBusy?: boolean;
     canStartOptimization?: boolean;
     optimizationDisabledReason?: string | null;
-    onStartOptimization?: () => void;
+    onStartOptimization?: (ids: string[]) => void;
 };
 
 const BAND_LABELS: Record<string, string> = {
@@ -77,86 +76,38 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
     onStartOptimization,
 }) => {
     const report = normalizeResumeEvaluationDisplay(evaluation);
-    const optimizationCtaRef = useRef<HTMLButtonElement | null>(null);
-    const ctaViewTrackedRef = useRef(false);
-    const isGuidance = report?.kind === 'guidance';
-
-    useEffect(() => {
-        const node = optimizationCtaRef.current;
-        if (!isGuidance || !canStartOptimization || isOutdated || isOptimizationBusy) {
-            return undefined;
-        }
-        if (!report || !isOptimizationEnabled || !onStartOptimization || !node || ctaViewTrackedRef.current) {
-            return undefined;
-        }
-        const trackIfVisible = (isIntersecting: boolean) => {
-            if (!isIntersecting || ctaViewTrackedRef.current || node.getClientRects().length === 0) return;
-            if (node.closest('[inert], [aria-hidden="true"]')) return;
-            const style = window.getComputedStyle(node);
-            if (style.display === 'none' || style.visibility === 'hidden') return;
-            ctaViewTrackedRef.current = true;
-            trackResumeOptimizationCtaView();
-        };
-        if (typeof IntersectionObserver === 'function') {
-            const observer = new IntersectionObserver((entries) => {
-                trackIfVisible(Boolean(entries[0]?.isIntersecting));
-            });
-            observer.observe(node);
-            return () => observer.disconnect();
-        }
-        const frame = window.requestAnimationFrame(() => trackIfVisible(true));
-        return () => window.cancelAnimationFrame(frame);
-    }, [
-        canStartOptimization, isGuidance, isOptimizationBusy, isOptimizationEnabled,
-        isOutdated, onStartOptimization, report,
-    ]);
-
-    if (!report) {
-        const placeholderContent = <>
-            <FileWarning className="mx-auto h-5 w-5 text-slate-400" />
-            <span className="mt-2 block text-[12px] font-bold text-slate-700 dark:text-slate-200">简历改进指导待更新</span>
-            <span className="mt-1 block text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">基于六大维度给出有证据支持的改进建议</span>
-            <span className="mt-3 inline-flex rounded-md border border-emerald-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300">
-                {isGenerating ? (thinkingText ? `生成中：${thinkingText}` : '正在生成简历改进指导…') : '获取简历改进指导'}
-            </span>
-            {error ? <span role="alert" className="mt-2 block text-[11px] text-rose-600 dark:text-rose-300">{error}</span> : null}
-        </>;
-        if (onGenerate && !isGenerating) {
-            return (
-                <button
-                    type="button"
-                    onClick={onGenerate}
-                    aria-label="获取简历改进指导"
-                    className="block w-full rounded-xl border border-dashed border-slate-200 bg-slate-50/55 p-4 text-center transition hover:border-emerald-300 hover:bg-emerald-50/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-800 dark:bg-slate-900/35 dark:hover:border-emerald-800 dark:focus-visible:ring-offset-slate-950"
-                >
-                    {placeholderContent}
-                </button>
-            );
-        }
-        return (
-            <section className="rounded-xl border border-dashed border-slate-200 bg-slate-50/55 p-4 text-center dark:border-slate-800 dark:bg-slate-900/35" aria-busy={isGenerating}>
-                {placeholderContent}
-                {isGenerating && onStop ? <button
-                    type="button"
-                    onClick={onStop}
-                    className="mt-3 rounded-md border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 dark:border-rose-900 dark:bg-slate-900 dark:text-rose-300 dark:focus-visible:ring-offset-slate-950"
-                >停止生成</button> : null}
-            </section>
-        );
-    }
-
-    const resolvedOptimizationDisabledReason = report.kind === 'legacy'
-        ? '历史数值报告不能用于新的优化，请重新生成简历改进指导。'
-        : isOutdated
-            ? '简历改进指导已过期，请重新生成后再优化。'
-            : isOptimizationBusy
-                ? '简历优化正在进行，请稍候。'
-                : !canStartOptimization
-                    ? (optimizationDisabledReason || '当前暂不满足优化条件。')
-                    : null;
+    const numericReport = normalizeResumeScore(evaluation);
+    if (numericReport) return <ResumeScoreReport report={numericReport as ResumeScoreEvaluation} outdated={isOutdated}
+        enabled={isOptimizationEnabled} busy={isOptimizationBusy} canStart={canStartOptimization}
+        disabledReason={optimizationDisabledReason} onStart={onStartOptimization} onGenerate={onGenerate}
+        generating={isGenerating} onStop={onStop} error={error} />;
+    const hasHistoricalScores = report?.kind === 'legacy' && Array.isArray((evaluation as any)?.dimensions);
+    const scoreEntry = <section className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 dark:border-emerald-900 dark:bg-slate-950" aria-label="六维简历评分" aria-busy={isGenerating}>
+        <div className="flex items-center justify-between gap-3">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white">六维简历评分</h4>
+            {hasHistoricalScores ? <span className="text-xl font-bold text-emerald-700">{(evaluation as any).overallScore} 分<span className="ml-1 text-[10px]">历史评分</span></span> : <span className="text-xs text-slate-500">待评分</span>}
+        </div>
+        <ScoreRadar pending={!hasHistoricalScores} dimensions={hasHistoricalScores ? (evaluation as any).dimensions : EVALUATION_DIMENSIONS.map(dimension => ({dimension, score: 0}))} />
+        <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+            {report?.kind === 'guidance' ? '当前保存的是旧版文字指导，没有六维分数。生成六维评分后，将显示总分、雷达图和可选择的优化模块。'
+                : hasHistoricalScores ? '这是历史数值报告。重新评分后可选择需要优化的模块。' : '评分同时标注可优化模块和改进方向。'}
+        </p>
+        {onGenerate && <button type="button" onClick={onGenerate} disabled={isGenerating || isOptimizationBusy}
+            className="mt-3 min-h-[44px] w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50">
+            {isGenerating ? '正在生成六维评分…' : hasHistoricalScores ? '重新进行六维评分' : '生成六维评分'}
+        </button>}
+        {isGenerating && thinkingText && <p className="mt-2 text-xs text-slate-500">{thinkingText}</p>}
+        {isGenerating && onStop && <button type="button" onClick={onStop} className="mt-2 min-h-[44px] text-xs text-rose-700">停止生成</button>}
+        {error && <p role="alert" className="mt-2 text-xs text-rose-600">{error}</p>}
+    </section>;
+    if (!report) return scoreEntry;
 
     return (
-        <section className="space-y-3" aria-label="简历改进指导">
+        <section className="space-y-3" aria-label="六维评分与历史报告">
+            {scoreEntry}
+            <details className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300">{report.kind === 'guidance' ? '查看历史文字指导（无数值评分）' : '查看历史评分评语'}</summary>
+            <div className="mt-3 space-y-3">
             {isOutdated ? (
                 <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-relaxed text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
                     这是较早版本简历的历史指导；当前内容已变化，请重新生成后再据此优化。
@@ -165,8 +116,8 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
             <div className="overflow-hidden rounded-xl border border-emerald-100/70 bg-gradient-to-br from-emerald-50/75 via-white to-amber-50/30 p-4 shadow-[0_10px_28px_rgba(16,185,129,0.045)] dark:border-emerald-900/35 dark:from-emerald-950/25 dark:via-slate-950 dark:to-amber-950/10">
                 <div className="flex items-start justify-between gap-3">
                     <div>
-                        <p className="text-[10.5px] font-bold tracking-[0.12em] text-emerald-700/75 dark:text-emerald-300/75">RESUME GUIDANCE</p>
-                        <h4 className="mt-1 text-[13px] font-bold text-slate-900 dark:text-white">简历改进指导{report.kind === 'legacy' ? ' · 历史报告' : ''}</h4>
+                        <p className="text-[10.5px] font-bold tracking-[0.12em] text-emerald-700/75 dark:text-emerald-300/75">HISTORICAL REPORT</p>
+                        <h4 className="mt-1 text-[13px] font-bold text-slate-900 dark:text-white">{report.kind === 'guidance' ? '历史文字指导' : '历史评分评语'}</h4>
                     </div>
                     <span className="rounded-md bg-emerald-100/75 px-2 py-1 text-[10.5px] font-semibold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
                         整体状态：{BAND_LABELS[report.overallBand] || report.overallBand}
@@ -174,44 +125,7 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
                 </div>
                 {report.kind === 'guidance' ? <p className="mt-2 text-[10.5px] text-slate-500 dark:text-slate-400">{CONFIDENCE_LABELS[report.confidence]}</p> : null}
                 {summary ? <p className="mt-3 border-l-2 border-emerald-500/60 pl-3 text-[11.5px] leading-relaxed text-slate-700 dark:text-slate-300">{summary}</p> : null}
-                {isOptimizationEnabled && onStartOptimization ? (
-                    <div className="mt-3 flex flex-col items-start gap-1.5">
-                        <p className="text-[10.5px] leading-relaxed text-slate-500 dark:text-slate-400">
-                            本次优化按实际模型用量消耗 Token，改写会保持在可核实的事实边界内。
-                        </p>
-                        <button
-                            ref={optimizationCtaRef}
-                            type="button"
-                            onClick={() => {
-                                trackResumeOptimizationCtaClick();
-                                onStartOptimization?.();
-                            }}
-                            data-resume-optimization-focus-return="true"
-                            disabled={!isGuidance || isOutdated || isOptimizationBusy || !canStartOptimization}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-slate-950"
-                        >
-                            <Wand2 className="h-3.5 w-3.5" aria-hidden="true" />
-                            根据指导优化
-                        </button>
-                        {resolvedOptimizationDisabledReason ? (
-                            <p role="status" className="text-[10.5px] leading-relaxed text-slate-500 dark:text-slate-400">
-                                {resolvedOptimizationDisabledReason}
-                            </p>
-                        ) : null}
-                    </div>
-                ) : null}
-                {isGenerating && onStop ? <button
-                    type="button"
-                    onClick={onStop}
-                    className="mt-3 text-[11px] font-semibold text-rose-700 underline decoration-rose-300 underline-offset-2 dark:text-rose-300"
-                >停止生成</button> : onGenerate ? <button
-                    type="button"
-                    onClick={onGenerate}
-                    disabled={isGenerating}
-                    aria-busy={isGenerating}
-                    className="mt-3 text-[11px] font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:text-emerald-300"
-                >{isGenerating ? '正在重新生成简历改进指导…' : '重新生成简历改进指导'}</button> : null}
-                {error ? <p role="alert" className="mt-2 text-[11px] text-rose-600 dark:text-rose-300">{error}</p> : null}
+
             </div>
 
             <div className="space-y-2">
@@ -234,6 +148,8 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
                     </details>
                 ))}
             </div>
+            </div>
+            </details>
         </section>
     );
 };

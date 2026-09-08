@@ -105,7 +105,7 @@ const buildMountedHookHarness = async () => {
           auditVersion: 'guidance_task_audit_v1',
         };
         const sourceEvaluation = {
-          evaluationVersion: 'guidance_audit_v1', overallBand: 'needs_attention',
+          evaluationVersion: 'resume_score_v2', scoringVersion: 'single_pass_v1', overallBand: 'needs_attention', suggestions: [{ suggestionId: 'suggestion-1' }],
           auditReceipt,
         };
         const postEvaluation = {
@@ -114,7 +114,7 @@ const buildMountedHookHarness = async () => {
         };
         const plan = {
           changes: [{
-            changeId: 'change-a',
+            changeId: 'change-a', issueIds: ['suggestion-1'],
             safetyStatus: 'allowed',
             actionKind: 'rewrite_now',
             targetedValue: 'after',
@@ -362,8 +362,14 @@ const buildMountedHookHarness = async () => {
             },
             flushResumeConfig: async () => {
               calls.flush += 1;
+              if (globalThis.__deferScoreFlush) {
+                await new Promise((resolve) => { globalThis.__releaseScoreFlush = resolve; });
+              }
               if (harnessMode === 'regenerate-close-flush') {
                 await new Promise((resolve) => { globalThis.__releaseRegenerationCloseStage = resolve; });
+              }
+              if (globalThis.__publishScoreSaveVersion) {
+                setInputs((current) => ({ ...current, sourceResumeUpdatedAt: '2026-09-01T00:00:03Z' }));
               }
               return '2026-09-01T00:00:03Z';
             },
@@ -400,6 +406,7 @@ const buildMountedHookHarness = async () => {
         };
         globalThis.__mountResumeOptimizationHarness = (mode) => {
           harnessMode = mode;
+          if (mode === 'single-pass') { previewRun.policyVersion = 'json_structure_v1'; appliedRun.policyVersion = 'json_structure_v1'; }
           const container = document.createElement('div');
           document.body.append(container);
           root = createRoot(container);
@@ -431,7 +438,7 @@ const buildMountedHookHarness = async () => {
           globalThis.__resumeOptimizationHarnessFlow.retryRescore()
         );
         globalThis.__startResumeOptimization = () => (
-          globalThis.__resumeOptimizationHarnessFlow.startOptimization()
+          globalThis.__resumeOptimizationHarnessFlow.startOptimization({ selectedSuggestionIds: ['suggestion-1'] })
         );
         globalThis.__reopenResumeOptimization = () => (
           globalThis.__resumeOptimizationHarnessFlow.reopenLatestRun()
@@ -1051,8 +1058,8 @@ test('mounted regeneration waits for cancellation and ignores duplicate clicks',
   await page.waitForFunction(() => document.querySelector('output')?.dataset.uiState === 'preview');
   await page.evaluate(() => {
     const flow = globalThis.__resumeOptimizationHarnessFlow;
-    globalThis.__regenerationPromise = flow.startOptimization({ replaceUnreviewableRun: true });
-    void flow.startOptimization({ replaceUnreviewableRun: true });
+    globalThis.__regenerationPromise = flow.startOptimization({ replaceUnreviewableRun: true, selectedSuggestionIds: ['suggestion-1'] });
+    void flow.startOptimization({ replaceUnreviewableRun: true, selectedSuggestionIds: ['suggestion-1'] });
   });
   await page.waitForFunction(() => typeof globalThis.__releaseRegenerationCancel === 'function');
   assert.deepEqual(await page.evaluate(() => [...globalThis.__regenerationEvents]), ['cancel']);
@@ -1077,7 +1084,7 @@ for (const { stage, confirmClose } of ['auth', 'get', 'cancel', 'flush', 'start'
       // A caller retained before the React update must still see the active operation.
       globalThis.__capturedClose = globalThis.__resumeOptimizationHarnessFlow.closeWorkspace;
       globalThis.__pauseNextOwnerOperation = stage === 'auth';
-      globalThis.__regenerationPromise = globalThis.__resumeOptimizationHarnessFlow.startOptimization({ replaceUnreviewableRun: true });
+      globalThis.__regenerationPromise = globalThis.__resumeOptimizationHarnessFlow.startOptimization({ replaceUnreviewableRun: true, selectedSuggestionIds: ['suggestion-1'] });
     }, stage);
     await page.waitForFunction(() => typeof (globalThis.__releaseRegenerationCancel
       ?? globalThis.__releaseRegenerationCloseStage) === 'function');
@@ -1128,7 +1135,7 @@ test('mounted regeneration drops late cancellation after an owner switch', async
   await page.evaluate(() => globalThis.__mountResumeOptimizationHarness('regenerate-deferred'));
   await page.waitForFunction(() => document.querySelector('output')?.dataset.uiState === 'preview');
   await page.evaluate(() => {
-    globalThis.__regenerationPromise = globalThis.__resumeOptimizationHarnessFlow.startOptimization({ replaceUnreviewableRun: true });
+    globalThis.__regenerationPromise = globalThis.__resumeOptimizationHarnessFlow.startOptimization({ replaceUnreviewableRun: true, selectedSuggestionIds: ['suggestion-1'] });
   });
   await page.waitForFunction(() => typeof globalThis.__releaseRegenerationCancel === 'function');
   await page.evaluate(() => globalThis.__switchResumeOptimizationOwner());
@@ -1159,7 +1166,7 @@ const seedPlanningAttempt = (page, expectedResumeUpdatedAt) => page.evaluate((ti
     resumeId: 'resume-a',
     evaluationSignature: 'S1',
     expectedResumeUpdatedAt: timestamp,
-    idempotencyKey: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    idempotencyKey: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', selectedSuggestionIds: ['suggestion-1'],
   }));
 }, expectedResumeUpdatedAt);
 
@@ -1278,7 +1285,7 @@ test('mounted planning failure exposes the latest error state even to the pre-aw
 
   const observed = await page.evaluate(async () => {
     const capturedFlow = globalThis.__resumeOptimizationHarnessFlow;
-    const result = await capturedFlow.startOptimization();
+    const result = await capturedFlow.startOptimization({ selectedSuggestionIds: ['suggestion-1'] });
     return {
       result,
       capturedUiState: capturedFlow.uiState,
@@ -1354,3 +1361,76 @@ test('mounted observer never reopens a hydrated rescore after an explicit close'
   await page.waitForFunction(() => document.querySelector('output')?.dataset.uiState === 'completed');
   assert.equal(await page.locator('output').getAttribute('data-run-status'), 'completed');
 });
+
+
+test('single-pass apply finishes with zero rescore calls until explicitly requested', async (t) => {
+  const browser = await launchMountedHookBrowser(t); if (!browser) return;
+  t.after(() => browser.close());
+  const page = await createSameOriginHarnessPage(browser);
+  await page.evaluate(() => globalThis.__mountResumeOptimizationHarness('single-pass'));
+  await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.run?.status === 'preview_ready');
+  await page.evaluate(() => globalThis.__selectResumeOptimizationChange());
+  await page.waitForFunction(() => document.querySelector('output')?.dataset.acceptedCount === '1');
+  const result = await page.evaluate(() => globalThis.__applyResumeOptimization());
+  assert.equal(result?.status, 'applied', JSON.stringify(await page.evaluate(() => ({ error: globalThis.__resumeOptimizationHarnessFlow.error, calls: globalThis.__resumeOptimizationHarnessCalls, state: globalThis.__resumeOptimizationHarnessFlow.uiState }))));
+  await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.uiState === 'completed');
+  const before = await page.evaluate(() => ({...globalThis.__resumeOptimizationHarnessCalls}));
+  assert.equal(before.apply, 1); assert.equal(before.generate, 0); assert.equal(before.claim, 0); assert.equal(before.finalize, 0);
+  await page.evaluate(() => { globalThis.__publishScoreSaveVersion = true; });
+  await page.evaluate(() => globalThis.__retryResumeOptimizationRescore());
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const saved = await page.evaluate(() => ({
+    state: globalThis.__resumeOptimizationHarnessFlow.uiState,
+    error: globalThis.__resumeOptimizationHarnessFlow.error,
+    canResume: globalThis.__resumeOptimizationHarnessFlow.canResumeLatestRun,
+  }));
+  assert.deepEqual(saved, { state: 'completed', error: null, canResume: true });
+  const after = await page.evaluate(() => ({...globalThis.__resumeOptimizationHarnessCalls}));
+  assert.equal(after.generate, 1); assert.equal(after.apply, 1); assert.equal(after.claim, 0); assert.equal(after.finalize, 0);
+  // A later, unrelated version is still rejected after the owned version is consumed.
+  await page.evaluate(() => globalThis.__setResumeOptimizationHarnessInputs((current) => ({
+    ...current, sourceResumeUpdatedAt: '2026-09-01T00:00:04Z',
+  })));
+  await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.uiState === 'stale');
+});
+
+for (const switchKind of ['owner', 'resume']) {
+  test(`single-pass rescore drops a late save after ${switchKind} switch`, async (t) => {
+    const browser = await launchMountedHookBrowser(t); if (!browser) return;
+    t.after(() => browser.close());
+    const page = await createSameOriginHarnessPage(browser);
+    await page.evaluate(() => globalThis.__mountResumeOptimizationHarness('single-pass'));
+    await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.run?.status === 'preview_ready');
+    await page.evaluate(() => globalThis.__selectResumeOptimizationChange());
+    await page.waitForFunction(() => document.querySelector('output')?.dataset.acceptedCount === '1');
+    await page.evaluate(() => globalThis.__applyResumeOptimization());
+    await page.evaluate(() => {
+      globalThis.__deferScoreFlush = true;
+      globalThis.__pendingScoreRetry = globalThis.__retryResumeOptimizationRescore();
+    });
+    await page.waitForFunction(() => Boolean(globalThis.__releaseScoreFlush));
+    await page.evaluate((kind) => globalThis.__setResumeOptimizationHarnessInputs((current) => ({
+      ...current,
+      ...(kind === 'owner' ? { authUserKey: 'owner-b' } : { resumeId: 'resume-b' }),
+      evaluation: null, persistedEvaluation: null,
+    })), switchKind);
+    await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.run === null);
+    const result = await page.evaluate(async () => {
+      globalThis.__releaseScoreFlush();
+      return await globalThis.__pendingScoreRetry;
+    });
+    assert.equal(result, null);
+    const state = await page.evaluate(() => ({
+      run: globalThis.__resumeOptimizationHarnessFlow.run,
+      uiState: globalThis.__resumeOptimizationHarnessFlow.uiState,
+      error: globalThis.__resumeOptimizationHarnessFlow.error,
+      calls: globalThis.__resumeOptimizationHarnessCalls,
+    }));
+    assert.equal(state.run, null);
+    assert.equal(state.uiState, 'closed');
+    assert.equal(state.error, null);
+    assert.equal(state.calls.generate, 1);
+    assert.equal(state.calls.apply, 1);
+    assert.equal(state.calls.finalize, 0);
+  });
+}

@@ -1,3 +1,4 @@
+import { ModuleScoreNote } from '../../ResumeEvaluationReport/ScoreAnnotations';
 import React from 'react';
 import { GripVertical } from 'lucide-react';
 import { RICH_TEXT_INLINE_STYLES_CLASS } from '../../../../../utils/richText';
@@ -91,6 +92,7 @@ const SummarySection: React.FC<SummarySectionProps> = ({
             }}
         >
             {renderOverflowMarker('summary')}
+            <ModuleScoreNote moduleType="personal_summary" moduleId="current_resume" readOnly={isReadOnly} />
             {renderSectionHeading('个人评价', 'summary')}
             {summaryComparison ? renderOptimizationTextComparison(summaryComparison, '个人评价') : (
                 <div

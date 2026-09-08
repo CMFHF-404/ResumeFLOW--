@@ -505,7 +505,7 @@ async def _applied_fixture(
         "_validate_current_guidance_receipt",
         new_callable=AsyncMock,
     ):
-        result = await apply_service.apply_resume_optimization(
+        result = await apply_service._apply_resume_optimization_compatible(
             session=session,
             user_id=USER_ID,
             run_id=str(RUN_ID),
@@ -1427,7 +1427,7 @@ class ResumeOptimizationFinalizeTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(
                     apply_service.OptimizationApplyValidationError
                 ):
-                    await apply_service.apply_resume_optimization(
+                    await apply_service._apply_resume_optimization_compatible(
                         session=session,
                         user_id=USER_ID,
                         run_id=str(RUN_ID),
@@ -2731,7 +2731,7 @@ class ResumeOptimizationRevertTests(unittest.IsolatedAsyncioTestCase):
         retry_session = _transaction_session(run, resume, link)
 
         with self.assertRaises(apply_service.OptimizationApplyConflictError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=retry_session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),

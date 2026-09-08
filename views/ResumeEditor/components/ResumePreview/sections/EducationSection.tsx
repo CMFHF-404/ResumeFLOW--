@@ -1,3 +1,4 @@
+import { ModuleScoreNote } from '../../ResumeEvaluationReport/ScoreAnnotations';
 import React from 'react';
 import { Edit3, GripVertical } from 'lucide-react';
 import type { EducationView } from '../../../../../types/resume';
@@ -140,6 +141,7 @@ const EducationSection: React.FC<EducationSectionProps> = ({
                 }}
             >
                 {includeOverflowState ? renderOverflowMarker('education') : null}
+                <ModuleScoreNote moduleType="read_only" moduleId="educations" readOnly={isReadOnly} />
                 {renderSectionHeading('教育背景', 'education')}
                 <div
                     className={`${listSpacingClass} ${LIST_GAP_CLASS}`}

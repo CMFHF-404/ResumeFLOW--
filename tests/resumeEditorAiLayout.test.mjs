@@ -135,7 +135,8 @@ test('analysis overlays a mounted assistant so an unsent draft survives the roun
   assert.match(editor, /const isAssistantSidebarActive = rightSidebarSurface === 'assistant'/);
   assert.match(editor, /aria-hidden=\{!isAssistantSidebarActive\}[\s\S]*?<AIAssistant/);
   assert.match(editor, /inert=\{!isAssistantSidebarActive \? true : undefined\}/);
-  assert.match(editor, /if \(isAssistantSidebarMounted\) \{[\s\S]*setRightSidebarSurface\('assistant'\);[\s\S]*return;[\s\S]*setRightSidebarSurface\(null\);[\s\S]*setWorkspaceLayout\('list'\)/);
+  assert.match(editor, /const handleCloseJDAnalysisDetailsSidebar[\s\S]*lastRightSidebarSurfaceRef.current = 'analysis'[\s\S]*setRightSidebarSurface\(null\)/);
+  assert.match(editor, /rightSidebarContent = isRightSidebarOpen \|\| hasOpenedRightSidebar/);
 });
 
 test('desktop hydration restores only an active optimization observation to the AI rail', () => {

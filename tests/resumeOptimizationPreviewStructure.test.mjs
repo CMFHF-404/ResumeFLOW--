@@ -102,7 +102,7 @@ test('diff and bank components expose safe responsive controls and documented la
   assert.match(overview, /plan\.changes\.filter\(isResumeOptimizationChangeReviewable\)/);
   assert.match(overview, /plan\.changes\.filter\(\(change\) => change\.safetyStatus === 'blocked'\)/);
   assert.match(overview, /buildResumeOptimizationSafetyFindingCopy/);
-  assert.match(overview, /所有改写均经过自动事实边界检查，请在应用前核对；最终效果以应用后的独立审核为准。/);
+  assert.match(overview, /查看所选模块的改写与补充问题，逐项确认后应用。/);
   assert.doesNotMatch(overview, /所有改写都受事实边界约束/);
   assert.doesNotMatch(`${overview}\n${card}`, /预计提升|expectedScoreGain|sortResumeOptimizationChangesByExpectedGain/);
   assert.match(card, /bg-slate/);

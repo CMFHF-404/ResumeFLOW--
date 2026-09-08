@@ -45,16 +45,17 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(openDetailsHandler, /captureMobileAnalysisReturnFocus\(\)/);
   assert.doesNotMatch(openDetailsHandler, /setIsAssistantSidebarMounted\(false\)/);
   const closeDetailsHandler = editor.match(
-    /const handleCloseJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[isAssistantSidebarMounted\]\);/
+    /const handleCloseJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/
   )?.[0] ?? '';
-  assert.match(closeDetailsHandler, /if \(isAssistantSidebarMounted\) \{[\s\S]*setRightSidebarSurface\('assistant'\);[\s\S]*return;/);
+  assert.match(closeDetailsHandler, /lastRightSidebarSurfaceRef.current = 'analysis'/);
+  assert.doesNotMatch(closeDetailsHandler, /setRightSidebarSurface\('assistant'\)/);
   assert.match(closeDetailsHandler, /setRightSidebarSurface\(null\)/);
   assert.match(closeDetailsHandler, /setWorkspaceLayout\('list'\)/);
   assert.match(editor, /onOpenDetailsSidebar: handleOpenJDAnalysisDetailsSidebar/);
   assert.match(editor, /onOpenAnalysisDetails=\{analysisResult \? handleOpenJDAnalysisDetailsSidebar : undefined\}/);
   assert.match(editor, /const isRightSidebarOpen = workspaceLayout !== 'list' && rightSidebarSurface !== null/);
   assert.match(editor, /const isAssistantSidebarActive = rightSidebarSurface === 'assistant'/);
-  assert.match(editor, /const rightSidebarContent = isRightSidebarOpen \? \(/);
+  assert.match(editor, /const rightSidebarContent = isRightSidebarOpen \|\| hasOpenedRightSidebar \? \(/);
   assert.match(editor, /relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950/);
   assert.match(editor, /isAssistantSidebarMounted \? \(/);
   assert.match(editor, /<React\.Suspense/);
