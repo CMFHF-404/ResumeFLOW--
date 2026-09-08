@@ -581,11 +581,10 @@ ${rootSelector} .rf-deephire-header--banner {
   padding-right: 34px !important;
   padding-bottom: 28px !important;
   padding-left: 34px !important;
-  background-image: url("/resume-templates/deephire/deephire-fashion-rings.png") !important;
-  background-position: right top !important;
-  background-repeat: no-repeat !important;
+  background-image: none !important;
 }
-${rootSelector} .rf-deephire-avatar { width: 72px !important; height: 72px !important; border-radius: 0 !important; margin-right: 18px; }
+${rootSelector} .rf-deephire-header-inner { min-height: 120px; align-items: center !important; }
+${rootSelector} .rf-deephire-avatar { width: 120px !important; height: 120px !important; border-radius: 0 !important; margin: 0; }
 ${rootSelector} .rf-deephire-name { font-size: 38px !important; }
 ${rootSelector} .rf-template-section-heading { border: 0 !important; border-bottom: 2px solid #111 !important; background: transparent !important; color: #111 !important; font-size: 18px !important; letter-spacing: .08em !important; padding: 0 0 7px !important; margin-bottom: 12px; }
 ${rootSelector} [data-rf-section-id="certifications"] [data-rf-item-surface] { display: inline-block; width: auto; background: #050505 !important; color: #fff !important; padding: 7px 10px !important; border-radius: 0 !important; }

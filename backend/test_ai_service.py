@@ -4571,6 +4571,9 @@ class AiServiceAssistantStreamingTests(unittest.IsolatedAsyncioTestCase):
             {"type": "thought_status", "summary": "正在分析上下文并组织回复"}
         )
         stream_mock.assert_awaited_once()
+        self.assertEqual(stream_mock.await_args.kwargs["budget_tokens"], 8_192)
+        from app.domain.ai.llm_transport import _gemini3_thinking_level_from_budget
+        self.assertEqual(_gemini3_thinking_level_from_budget(8_192), "medium")
         payload = json.loads(stream_mock.await_args.kwargs["user_parts"][-1]["text"])
         selected = payload["selected_experiences"][0]
         self.assertNotIn("full_text", selected)

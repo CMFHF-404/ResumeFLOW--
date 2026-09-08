@@ -41,7 +41,6 @@ const EXPECTED_DEEPHIRE_TEMPLATES = [
 const SOURCE_BACKED_DECORATIONS = [
   ['deephire-deep-blue', 'public/resume-templates/deephire/deephire-deep-blue-band.png'],
   ['deephire-lucky-red', 'public/resume-templates/deephire/deephire-lucky-dots.png'],
-  ['deephire-fashion-black', 'public/resume-templates/deephire/deephire-fashion-rings.png'],
   ['deephire-youth-energy', 'public/resume-templates/deephire/deephire-youth-accent.png'],
   ['deephire-soft-realm', 'public/resume-templates/deephire/deephire-soft-realm-arc.png'],
   ['deephire-forest', 'public/resume-templates/deephire/deephire-forest-band.png'],

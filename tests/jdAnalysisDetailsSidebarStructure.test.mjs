@@ -23,12 +23,12 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(panel, /role="tabpanel" aria-labelledby="jd-report-tab"/);
   assert.match(panel, /role="tabpanel" aria-labelledby="resume-report-tab"/);
   assert.doesNotMatch(panel, /onOpenAssistantSidebar/);
-  assert.doesNotMatch(panel, /aria-label="返回 AI 助手"/);
+  assert.match(panel, /<ChevronDown className="h-4 w-4"/);
   assert.doesNotMatch(panel, /<Sparkles className="h-4 w-4" \/>/);
   const detailsSidebarHeader = panel.match(
     /aria-labelledby="jd-analysis-details-sidebar-title"[\s\S]*?<div className="min-h-0 flex-1 overflow-y-auto/
   )?.[0] ?? '';
-  assert.match(detailsSidebarHeader, /aria-label="关闭分析报告"/);
+  assert.match(detailsSidebarHeader, /aria-label="返回 AI 助手"/);
   assert.match(detailsSidebarHeader, /onClick=\{handleClose\}/);
   assert.doesNotMatch(detailsSidebarHeader, /onClick=\{handleOpenAssistantSidebar\}/);
 
@@ -67,7 +67,7 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(editor, /isJDAnalysisDetailsSidebarOpen\s*\?\s*'translate-y-0'[\s\S]*:\s*'translate-y-full pointer-events-none'/);
   assert.match(
     editor,
-    /const jdAnalysisDetailsSidebarProps = analysisResult \? \{[\s\S]*?onClose: handleCloseJDAnalysisDetailsSidebar,[\s\S]*?\} satisfies React\.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;/,
+    /const jdAnalysisDetailsSidebarProps = analysisResult \? \{[\s\S]*?onClose: handleReturnFromAnalysisToAssistant,[\s\S]*?\} satisfies React\.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;/,
   );
   assert.equal(
     (editor.match(/<JDAnalysisDetailsSidebar \{\.\.\.jdAnalysisDetailsSidebarProps\} \/>/g) ?? []).length,
@@ -138,7 +138,7 @@ test('mobile editor exposes the shared report in a full-height dialog and uses J
   assert.match(editor, /aria-label="分析报告"/);
   assert.match(editor, /ref=\{mobileAnalysisDialogRef\}/);
   assert.match(editor, /import \{ useMobileJDAnalysisDialog \} from '\.\/hooks\/useMobileJDAnalysisDialog'/);
-  assert.match(editor, /useMobileJDAnalysisDialog\(\{[\s\S]*isOpen: isJDAnalysisDetailsSidebarOpen,[\s\S]*onClose: handleCloseJDAnalysisDetailsSidebar,/);
+  assert.match(editor, /useMobileJDAnalysisDialog\(\{\s*isOpen: isJDAnalysisDetailsSidebarOpen,\s*onClose: handleReturnFromAnalysisToAssistant,\s*\}\)/);
   assert.match(editor, /captureReturnFocus: captureMobileAnalysisReturnFocus/);
   assert.match(editor, /jdAnalysisDetailsSidebarProps && isMobileAnalysisViewport \? \(/);
   assert.match(editor, /h-\[calc\(100dvh-2rem\)\]/);
@@ -155,6 +155,31 @@ test('mobile editor exposes the shared report in a full-height dialog and uses J
   assert.match(dialogHook, /document\.body\.style\.overflow = 'hidden'/);
   assert.match(dialogHook, /returnFocusElement\.focus\(\)/);
   assert.match(dialogHook, /returnFocusElement\.getClientRects\(\)\.length > 0/);
+});
+
+test('report return launches a visible mobile assistant and preserves desktop sidebar navigation', () => {
+  const editor = read('views/ResumeEditor/index.tsx');
+  const body = editor.match(/const handleReturnFromAnalysisToAssistant = useCallback\(\(\) => \{([\s\S]*?)\n    \}, \[handleCloseJDAnalysisDetailsSidebar, handleLaunchResumeAssistant\]\);/)?.[1];
+  assert.ok(body);
+  for (const mobile of [true, false]) {
+    const calls = [];
+    const lastSurface = { current: 'analysis' };
+    const run = new Function('window', 'handleCloseJDAnalysisDetailsSidebar', 'handleLaunchResumeAssistant', 'lastRightSidebarSurfaceRef', 'setIsAssistantSidebarMounted', 'setRightSidebarSurface', 'setWorkspaceLayout', body);
+    run(
+      { matchMedia: (query) => {
+        assert.equal(query, '(max-width: 767px)');
+        return { matches: mobile };
+      } },
+      () => calls.push('close'),
+      () => calls.push('launch'),
+      lastSurface,
+      (value) => calls.push(['mounted', value]),
+      (value) => calls.push(['surface', value]),
+      (value) => calls.push(['layout', value]),
+    );
+    assert.deepEqual(calls, mobile ? ['close', 'launch'] : [['mounted', true], ['surface', 'assistant'], ['layout', 'ai']]);
+    assert.equal(lastSurface.current, mobile ? 'analysis' : 'assistant');
+  }
 });
 
 test('JD analysis panel uses supported compiled Tailwind utilities', () => {

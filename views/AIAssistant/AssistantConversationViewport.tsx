@@ -9,7 +9,7 @@ import {
   readMessageSelectedExperiences,
   readMessageSelectedResume,
 } from './selectionUtils';
-import { ActiveThoughtBlock, MessageItem } from './MessageItem';
+import { MessageItem } from './MessageItem';
 
 type AssistantConversationViewportProps = {
   messageViewportRef: React.RefObject<HTMLDivElement | null>;
@@ -122,10 +122,7 @@ export const AssistantConversationViewport: React.FC<AssistantConversationViewpo
       {isLoadingDetail ? (
         <div className="py-4 text-center text-sm text-slate-400 dark:text-slate-500">正在加载会话...</div>
       ) : null}
-      {activeThought ? (
-        <ActiveThoughtBlock thought={activeThought} />
-      ) : null}
-      {isSending && !activeThought ? (
+      {isSending ? (
         <div className="mb-6 flex justify-start">
           <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 text-xs font-medium text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-300">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />

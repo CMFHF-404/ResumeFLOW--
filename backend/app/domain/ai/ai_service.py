@@ -428,9 +428,9 @@ async def run_assistant_turn(
                     user_parts=_build_assistant_user_parts(payload, resolved_attachments),
                     error_message="AI 助理整理失败，请稍后重试。",
                     request_label=f"assistant_{mode}",
-                    budget_tokens=0,
+                    budget_tokens=8_192,
                     assistant_text_callback=assistant_text_callback,
-                    enable_thinking=False,
+                    enable_thinking=True,
                 )
             except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
                 raise
@@ -439,9 +439,9 @@ async def run_assistant_turn(
                     "[AI Stream] assistant text streaming failed for assistant_%s, falling back to standard assistant turn.",
                     mode,
                 )
-                result = await _call_llm(messages, json_mode=True)
+                result = await _call_llm(messages, json_mode=True, gemini_thinking_level="medium")
         else:
-            result = await _call_llm(messages, json_mode=True)
+            result = await _call_llm(messages, json_mode=True, gemini_thinking_level="medium")
     normalized = _normalize_assistant_result(result, skill_id=skill_id)
     return preserve_assistant_result_star_links(normalized, source_stars)
 
@@ -514,7 +514,7 @@ async def run_assistant_turn_with_thoughts(
             user_parts=_build_assistant_user_parts(payload, resolved_attachments),
             error_message="AI 助理整理失败，请稍后重试。",
             request_label=f"assistant_{mode}",
-            budget_tokens=settings.ai_thinking_budget_polish,
+            budget_tokens=8_192,
             thought_callback=thought_callback,
             assistant_text_callback=assistant_text_callback,
         )

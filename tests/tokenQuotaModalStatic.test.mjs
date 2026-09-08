@@ -8,7 +8,7 @@ test('token quota modal guards zero quota progress', () => {
   const modal = read('components/TokenQuotaModal.tsx');
 
   assert.match(modal, /const limit = Math\.max\(Number\(summary\?\.token_limit \?\? 0\), 0\);/);
-  assert.match(modal, /const usedPercent = limit > 0\s+\? Math\.max\(0, Math\.min\(\(used \/ limit\) \* 100, 100\)\)\s+: 0;/);
+  assert.match(modal, /const remainingPercent = limit > 0\s+\? Math\.max\(0, Math\.min\(\(remaining \/ limit\) \* 100, 100\)\)\s+: 0;/);
 });
 
 test('token quota modal renders unlimited monthly plan state in gold', () => {

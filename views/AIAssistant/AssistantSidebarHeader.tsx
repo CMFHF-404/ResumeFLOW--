@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   FileSearch,
-  History,
+  ChevronDown,
   Maximize2,
   MessageSquarePlus,
   X,
@@ -31,9 +31,18 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
 }) => (
   <div className="shrink-0 border-b border-slate-200/90 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
     <div className="flex min-w-0 items-center justify-between gap-3">
-      <div className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100" title={title}>
-        {title}
-      </div>
+      <button
+        type="button"
+        onClick={onToggleHistory}
+        className="inline-flex min-w-0 items-center gap-1 rounded-lg py-1 text-sm font-semibold text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 dark:text-slate-100"
+        title={title}
+        aria-label={isHistoryOpen ? '关闭对话记录' : '打开对话记录'}
+        aria-controls="assistant-sidebar-history-panel"
+        aria-expanded={isHistoryOpen}
+      >
+        <span className="truncate">{title}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${isHistoryOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
       <div className="flex shrink-0 items-center gap-1">
         {onOpenAnalysisDetails ? (
           <button
@@ -46,20 +55,6 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
             <FileSearch className="h-4 w-4" />
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={onToggleHistory}
-          className={isHistoryOpen
-            ? 'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/25'
-            : SIDEBAR_ACTION_BUTTON_CLASS
-          }
-          title={isHistoryOpen ? '关闭对话记录' : '打开对话记录'}
-          aria-label={isHistoryOpen ? '关闭对话记录' : '打开对话记录'}
-          aria-controls="assistant-sidebar-history-panel"
-          aria-expanded={isHistoryOpen}
-        >
-          <History className="h-4 w-4" />
-        </button>
         {onNewChat ? (
           <button
             type="button"

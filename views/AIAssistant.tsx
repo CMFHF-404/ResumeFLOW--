@@ -106,8 +106,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [activeComposerSkillId, setActiveComposerSkillId] = useState<AssistantSkillId | null>(null);
   const [, setLastAssistantSkillId] = useState<AssistantSkillId | null>(null);
   const [activeThought, setActiveThought] = useState<string>('');
-  const [draftDeepThinkingEnabled, setDraftDeepThinkingEnabled] = useState(false);
-  const [deepThinkingBySessionId, setDeepThinkingBySessionId] = useState<Record<string, boolean>>({});
   const [applyingMessageIds, setApplyingMessageIds] = useState<Set<string>>(new Set());
   const [manualSaveMessageIds, setManualSaveMessageIds] = useState<Set<string>>(new Set());
   const [selectedExperiences, setSelectedExperiences] = useState<AssistantSelectedExperience[]>([]);
@@ -208,21 +206,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const latestSuggestedFollowups = useMemo(() => {
     return deriveLatestSuggestedFollowups(messages);
   }, [messages]);
-  const assistantSidebarTitle = selectedSession?.title?.trim() || 'AI助手';
+  const assistantSidebarTitle = selectedSessionId ? (selectedSession?.title?.trim() || 'AI 助手') : '新对话';
   const shouldShowEmptyAssistantGreeting = !isSidebarSurface && !isLoadingDetail && messages.length === 0 && !activeThought;
-  const isDeepThinkingEnabled = selectedSessionId
-    ? Boolean(deepThinkingBySessionId[selectedSessionId])
-    : draftDeepThinkingEnabled;
-  const handleDeepThinkingChange = useCallback((enabled: boolean) => {
-    if (selectedSessionId) {
-      setDeepThinkingBySessionId((current) => ({
-        ...current,
-        [selectedSessionId]: enabled,
-      }));
-      return;
-    }
-    setDraftDeepThinkingEnabled(enabled);
-  }, [selectedSessionId]);
   const draftMessageItems = useMemo<AssistantDraftMessageItem[]>(() => (
     attachDraftJumpHandlers(
       deriveDraftMessageItems(messages, selectedSession, callbackOnlySessionIdsRef.current),
@@ -401,7 +386,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     if (!nextInput && composerAttachments.length === 0 && selectedExperiences.length === 0 && !selectedResumeForTurn) {
       return;
     }
-    const enableThinking = isDeepThinkingEnabled;
+    const enableThinking = true;
     let activeSessionId = selectedSessionId;
     let activeMode: AssistantMode | undefined = selectedSession?.mode;
     if (!activeSessionId) {
@@ -418,10 +403,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       if (draftLaunchRequest?.callbackOnly) {
         callbackOnlySessionIdsRef.current.add(created.id);
       }
-      setDeepThinkingBySessionId((current) => ({
-        ...current,
-        [created.id]: enableThinking,
-      }));
       draftLaunchRequestRef.current = null;
       activeSessionId = created.id;
       activeMode = created.mode;
@@ -441,7 +422,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       },
       activeMode,
     );
-  }, [activeComposerSkillId, composerAttachments, handleCreateSession, inputValue, isDeepThinkingEnabled, selectedExperiences, selectedResumeForTurn, selectedSession?.mode, selectedSessionId, sendMessage]);
+  }, [activeComposerSkillId, composerAttachments, handleCreateSession, inputValue, selectedExperiences, selectedResumeForTurn, selectedSession?.mode, selectedSessionId, sendMessage]);
 
   const handleSelectSkillPreset = useCallback((skillId: AssistantSkillId, prompt: string) => {
     if (activeComposerSkillId === skillId) {
@@ -620,7 +601,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                 <AssistantSidebarHeader
                   title={assistantSidebarTitle}
                   isHistoryOpen={isSidebarHistoryOpen}
-                  onNewChat={handleSidebarNewChat}
+                  onNewChat={selectedSessionId ? handleSidebarNewChat : undefined}
                   onToggleHistory={() => setIsSidebarHistoryOpen((current) => !current)}
                   onExpandToFullPage={() => onExpandToFullPage?.(selectedSessionId)}
                   onOpenAnalysisDetails={onOpenAnalysisDetails}
@@ -719,10 +700,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onChange={setInputValue}
                   onSubmit={() => void handleSubmit()}
                   isSending={isSending}
-                  isDeepThinkingEnabled={isDeepThinkingEnabled}
-                  shouldExpandDeepThinkingButton={!isSidebarSurface}
                   surface={isSidebarSurface ? 'sidebar' : 'full'}
-                  onDeepThinkingChange={handleDeepThinkingChange}
                   placeholder="随心输入"
                   plusActions={[
                     { key: 'pick-resume', label: '选择简历', onClick: () => void openResumePicker() },

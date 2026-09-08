@@ -72,7 +72,7 @@ test('closed preview return controls are valid focus-restoration targets', () =>
   }
   assert.match(
     detailsSidebar,
-    /data-resume-optimization-focus-return="true"[\s\S]{0,240}aria-label="关闭分析报告"|aria-label="关闭分析报告"[\s\S]{0,240}data-resume-optimization-focus-return="true"/,
+    /data-resume-optimization-focus-return="true"[\s\S]{0,240}aria-label="返回 AI 助手"|aria-label="返回 AI 助手"[\s\S]{0,240}data-resume-optimization-focus-return="true"/,
   );
 });
 

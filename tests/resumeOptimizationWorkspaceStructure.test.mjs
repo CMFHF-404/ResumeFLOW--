@@ -204,7 +204,7 @@ test('CTA-owned workspace close restores analysis in AI layout and never opens i
   );
   assert.match(
     editor,
-    /const focusRestoredAnalysisReport = useCallback\(\(\) => \{[\s\S]*?window\.requestAnimationFrame[\s\S]*?data-resume-optimization-focus-return="true"\]\[aria-label="关闭分析报告"\][\s\S]*?!candidate\.closest\('\[inert\]'\)[\s\S]*?focusTarget\?\.focus\(\{ preventScroll: true \}\)/,
+    /const focusRestoredAnalysisReport = useCallback\(\(\) => \{[\s\S]*?window\.requestAnimationFrame[\s\S]*?data-resume-optimization-focus-return="true"\]\[aria-label="返回 AI 助手"\][\s\S]*?!candidate\.closest\('\[inert\]'\)[\s\S]*?focusTarget\?\.focus\(\{ preventScroll: true \}\)/,
   );
   assert.match(editor, /onRequestClose=\{handleCloseResumeOptimization\}/);
   assert.match(
