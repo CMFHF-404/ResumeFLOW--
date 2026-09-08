@@ -472,14 +472,10 @@ test('report stop action and single-button placeholder stay accessible', () => {
   const panel = read('views/ResumeEditor/components/JDAnalysisPanel.tsx');
   const editor = read('views/ResumeEditor/index.tsx');
 
-  assert.match(report, /aria-label="获取简历改进指导"/);
+  assert.match(report, /aria-label="六维简历评分"/);
   assert.match(report, /停止生成/);
   assert.match(panel, /onStop=\{onStopEvaluation\}/);
-  const placeholder = report.slice(
-    report.indexOf('const placeholderContent'),
-    report.indexOf('if (onGenerate && !isGenerating)')
-  );
-  assert.doesNotMatch(placeholder, /<h4|<p/);
+  assert.match(report, /onClick=\{onGenerate\} disabled=\{isGenerating \|\| isOptimizationBusy\}/);
   assert.match(panel, /onStopEvaluation\?: \(\) => void/);
   assert.match(editor, /onStopEvaluation: stopEvaluation/);
 });
@@ -492,8 +488,8 @@ test('guidance failures retain only a current trusted report and expose safe ret
     hook.indexOf('} finally {'),
   );
 
-  assert.match(hook, /const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次简历改进指导未保存，请重试。"/);
-  assert.match(hook, /const RESUME_EVALUATION_RETAINED_ERROR_MESSAGE =[\s\S]*"本次简历改进指导未保存，已保留上一份可信指导，请重试。"/);
+  assert.match(hook, /const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次六维评分生成失败，请重试。"/);
+  assert.match(hook, /const RESUME_EVALUATION_RETAINED_ERROR_MESSAGE =[\s\S]*"本次六维评分生成失败，已保留上一份报告，请重试。"/);
   assert.match(hook, /export const isCurrentTrustedEvaluation = \([\s\S]*isEvaluationOutdated === false/);
   assert.match(hook, /const hasTrustedEvaluationRef = useRef\(false\)/);
   assert.match(hook, /const trustedEvaluationIdentityRef = useRef\(\{ authUserKey, resumeId \}\)/);
@@ -506,19 +502,19 @@ test('guidance failures retain only a current trusted report and expose safe ret
   assert.doesNotMatch(catchBlock, /cause\.message|setError\(cause|Invalid resume evaluation structure|repair attempt/);
   assert.doesNotMatch(catchBlock, /persistResumeEvaluationResult|onEvaluationComplete/);
   assert.match(catchBlock, /return \{ status: "error" \}/);
-  assert.match(report, /if \(onGenerate && !isGenerating\)/);
+  assert.match(report, /onGenerate && <button[\s\S]*disabled=\{isGenerating \|\| isOptimizationBusy\}/);
   assert.match(report, /role="alert"/);
 });
 
 test('an evaluation invalidated while a request is running is not reported as retained after failure', async () => {
   const error = await runEvaluationFailureScenario({ invalidateWhileRunning: true });
-  assert.equal(error, '本次简历改进指导未保存，请重试。');
-  assert.doesNotMatch(error, /已保留上一份可信指导/);
+  assert.equal(error, '本次六维评分生成失败，请重试。');
+  assert.doesNotMatch(error, /已保留上一份报告/);
 });
 
 test('a still-current trusted evaluation is explicitly reported as retained after failure', async () => {
   const error = await runEvaluationFailureScenario({ invalidateWhileRunning: false });
-  assert.equal(error, '本次简历改进指导未保存，已保留上一份可信指导，请重试。');
+  assert.equal(error, '本次六维评分生成失败，已保留上一份报告，请重试。');
 });
 
 test('an owner switch cannot retain the previous owner report in failure copy', async () => {
@@ -526,8 +522,8 @@ test('an owner switch cannot retain the previous owner report in failure copy', 
     invalidateWhileRunning: false,
     switchOwnerBeforeRequest: true,
   });
-  assert.equal(error, '本次简历改进指导未保存，请重试。');
-  assert.doesNotMatch(error, /已保留上一份可信指导/);
+  assert.equal(error, '本次六维评分生成失败，请重试。');
+  assert.doesNotMatch(error, /已保留上一份报告/);
 });
 
 test('a late evaluation cannot persist onto a different same-score JD result', async () => {
@@ -985,4 +981,16 @@ test('a persistence conflict discovered during owner capture blocks evaluation b
     delete globalThis.__resumeEvaluationOwnerGuard;
     delete globalThis.__evaluateResume;
   }
+});
+
+
+test('current six-dimensional scores stay current after restoration; errors describe JSON without exposing provider text', async () => {
+  const {resolveResumeEvaluationOutdated, resolveResumeEvaluationError} = await importResumeEvaluationHook();
+  const input = {evaluationVersion:'resume_score_v2', boundEvaluationSignature:'current', currentEvaluationSignature:'current', persistedEvaluationIsOutdated:false, hasMissingAttachmentText:false};
+  assert.equal(resolveResumeEvaluationOutdated(input), false);
+  assert.equal(resolveResumeEvaluationOutdated({...input, persistedEvaluationIsOutdated:true}), true);
+  assert.equal(resolveResumeEvaluationOutdated({...input, currentEvaluationSignature:'changed'}), true);
+  assert.equal(resolveResumeEvaluationOutdated({...input, evaluationVersion:'resume_flow_v1'}), true);
+  assert.match(resolveResumeEvaluationError({code:'resume_evaluation_integrity_failed',message:'private provider text'}, true), /JSON.*已保留上一份报告/);
+  assert.doesNotMatch(resolveResumeEvaluationError({code:'resume_evaluation_integrity_failed',message:'private provider text'}, false), /private|已保留/);
 });

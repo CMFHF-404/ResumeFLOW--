@@ -54,6 +54,7 @@ from .run_service import (
     record_run_stale,
 )
 from .safety import verify_plan_changes
+from .simple_planner import is_simple
 from .semantic_review import (
     OptimizationSemanticReviewNormalizationError,
     review_plan_semantics,
@@ -382,6 +383,7 @@ def _freshness_request(run: ResumeOptimizationRun) -> ResumeOptimizationStartReq
         # Bank candidates are suggestions, never rewrite evidence, and are
         # intentionally excluded from answer-time freshness equality.
         include_bank_suggestions=False,
+        selected_suggestion_ids=run.before_snapshot.get("evaluation", {}).get("selectedSuggestionIds", []),
     )
 
 
@@ -436,7 +438,7 @@ def _summary_from_changes(
             allowed.append(change.change_id)
         elif change.safety_status == "blocked":
             blocked.append(change.change_id)
-        else:
+        elif change.safety_status == "pending":
             pending.append(change.change_id)
         findings.extend(
             f"{change.change_id}：{finding}"
@@ -519,7 +521,7 @@ def _terminal_answer_change(change: OptimizationChange) -> OptimizationChange:
             "introduced_terms": [],
             "expected_score_gain": 0,
             "default_selected": False,
-            "safety_status": "pending",
+            "safety_status": "not_reviewed" if change.safety_status == "not_reviewed" else "pending",
             "safety_findings": [],
         },
         deep=True,
@@ -654,42 +656,45 @@ async def create_optimization_plan(
         )
         model_plan = await plan_resume_optimization(frozen)
 
-        await _emit_progress(
-            progress_callback,
-            node="verify_changes",
-            title=_PLAN_PROGRESS_TITLES["verify_changes"],
-            request_id=resolved_request_id,
-        )
-        model_plan = await review_plan_semantics(
-            plan=model_plan, source_documents=frozen.source_documents,
-        )
-        verified_changes, safety_summary = verify_plan_changes(
-            plan=model_plan,
-            source_documents=frozen.source_documents,
-        )
-        result_plan = _plan_with_verified_changes(
-            model_plan,
-            changes=verified_changes,
-            safety_summary=safety_summary,
-        )
-        from .coverage import refresh_coverage
-        refresh_coverage(result_plan)
-        analysis_result, bank_metadata = _bank_suggestion_inputs(frozen)
-        bank_suggestions = build_bank_suggestions(
-            analysis_result=analysis_result,
-            selected_master_ids=set(frozen.selected_master_experience_ids),
-            bank_experience_metadata=bank_metadata,
-            limit=load_settings().resume_optimization_max_bank_suggestions,
-        )
-        result_plan = result_plan.model_copy(
-            update={
-                "bank_suggestions": [
-                    suggestion.model_copy(deep=True)
-                    for suggestion in bank_suggestions
-                ]
-            },
-            deep=True,
-        )
+        if is_simple(frozen):
+            result_plan = model_plan
+        else:
+            await _emit_progress(
+                progress_callback,
+                node="verify_changes",
+                title=_PLAN_PROGRESS_TITLES["verify_changes"],
+                request_id=resolved_request_id,
+            )
+            model_plan = await review_plan_semantics(
+                plan=model_plan, source_documents=frozen.source_documents,
+            )
+            verified_changes, safety_summary = verify_plan_changes(
+                plan=model_plan,
+                source_documents=frozen.source_documents,
+            )
+            result_plan = _plan_with_verified_changes(
+                model_plan,
+                changes=verified_changes,
+                safety_summary=safety_summary,
+            )
+            from .coverage import refresh_coverage
+            refresh_coverage(result_plan)
+            analysis_result, bank_metadata = _bank_suggestion_inputs(frozen)
+            bank_suggestions = build_bank_suggestions(
+                analysis_result=analysis_result,
+                selected_master_ids=set(frozen.selected_master_experience_ids),
+                bank_experience_metadata=bank_metadata,
+                limit=load_settings().resume_optimization_max_bank_suggestions,
+            )
+            result_plan = result_plan.model_copy(
+                update={
+                    "bank_suggestions": [
+                        suggestion.model_copy(deep=True)
+                        for suggestion in bank_suggestions
+                    ]
+                },
+                deep=True,
+            )
 
         # The AI call happened outside a transaction.  Reload and compare the
         # full start snapshot under a short Run->Resume lock immediately before
@@ -1087,7 +1092,10 @@ async def answer_optimization_questions(
                 answers=[a for a in merged_answers if a.question_id in question_ids],
             )
         combined_rewrites = (rewrites if answered_affected_ids else []) + terminal_cleanups
-        if combined_rewrites:
+        if is_simple(frozen):
+            verified_rewrites = combined_rewrites
+            reviewed_rewrites = OptimizationPlan(changes=combined_rewrites)
+        elif combined_rewrites:
             reviewed_rewrites = await review_plan_semantics(
                 plan=OptimizationPlan(changes=combined_rewrites, questions=existing_plan.questions,
                     coverage=[deepcopy(c) for c in existing_plan.coverage if any(

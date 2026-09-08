@@ -125,9 +125,9 @@ const isAbortError = (error: unknown) => (
   && (error as { name?: unknown }).name === "AbortError"
 );
 
-const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次简历改进指导未保存，请重试。";
+const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次六维评分生成失败，请重试。";
 const RESUME_EVALUATION_RETAINED_ERROR_MESSAGE =
-  "本次简历改进指导未保存，已保留上一份可信指导，请重试。";
+  "本次六维评分生成失败，已保留上一份报告，请重试。";
 const RESUME_EVALUATION_MISSING_ATTACHMENT_MESSAGE =
   "当前 JD 附件正文不可用，请重新上传并完成 JD 分析后再生成简历改进指导。";
 const RESUME_EVALUATION_MISSING_MATCH_MESSAGE =
@@ -157,11 +157,19 @@ export const resolveResumeEvaluationOutdated = ({
   persistedEvaluationIsOutdated?: boolean;
   hasMissingAttachmentText: boolean;
 }) => (
-  evaluationVersion !== GUIDANCE_AUDIT_EVALUATION_VERSION
+  (evaluationVersion !== 'resume_score_v2' && evaluationVersion !== GUIDANCE_AUDIT_EVALUATION_VERSION)
   || boundEvaluationSignature !== currentEvaluationSignature
   || persistedEvaluationIsOutdated === true
   || hasMissingAttachmentText
 );
+
+export const resolveResumeEvaluationError = (cause: unknown, hasReport: boolean) => {
+  const code = typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null;
+  if (code === 'resume_evaluation_integrity_failed') {
+    return `AI 返回的 JSON 格式或必要字段无效，请重试。${hasReport ? '已保留上一份报告。' : ''}`;
+  }
+  return hasReport ? RESUME_EVALUATION_RETAINED_ERROR_MESSAGE : RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE;
+};
 
 /**
  * The expensive six-dimension request intentionally owns a separate run id
@@ -395,9 +403,7 @@ export const useResumeEvaluation = ({
       }
       if (isCurrent()) {
         setError(
-          hasTrustedEvaluationRef.current
-            ? RESUME_EVALUATION_RETAINED_ERROR_MESSAGE
-            : RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE
+          resolveResumeEvaluationError(cause, hasTrustedEvaluationRef.current)
         );
       }
       return { status: "error" };

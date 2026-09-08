@@ -269,6 +269,7 @@ test('start and answer use exact stream paths, snake-case bodies, owner guard, s
       evaluation_signature: 'evaluation-signature',
       expected_resume_updated_at: '2026-09-01T03:00:00.123456Z',
       include_bank_suggestions: true,
+      selected_suggestion_ids: [],
     });
     assert.deepEqual(call.headers, { 'Idempotency-Key': IDEMPOTENCY_KEY });
     assert.equal(call.signal, controller.signal);

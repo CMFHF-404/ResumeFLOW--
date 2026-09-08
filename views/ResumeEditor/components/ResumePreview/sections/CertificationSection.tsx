@@ -1,3 +1,4 @@
+import { ModuleScoreNote } from '../../ResumeEvaluationReport/ScoreAnnotations';
 import React from 'react';
 import { Edit3, GripVertical } from 'lucide-react';
 import type { CertificationView } from '../../../../../types/resume';
@@ -141,6 +142,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                 }}
             >
                 {includeOverflowState ? renderOverflowMarker('certifications') : null}
+                <ModuleScoreNote moduleType="read_only" moduleId="certifications" readOnly={isReadOnly} />
                 {renderSectionHeading('证书资质', 'certifications')}
                 <div
                     className={`${listSpacingClass} ${LIST_GAP_CLASS}`}

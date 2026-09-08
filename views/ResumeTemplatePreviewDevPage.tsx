@@ -1,3 +1,4 @@
+import ResumeScoreReviewFixture from './ResumeScoreReviewFixture';
 import React from 'react';
 import { RESUME_TEMPLATE_DEFINITIONS } from '../constants/resumeTemplates';
 import ResumePdfDocument from './ResumeEditor/components/ResumePdfDocument';
@@ -184,6 +185,7 @@ const buildOptimizationReviewChanges = (): ResumeOptimizationChange[] => [
 
 const ResumeTemplatePreviewDevPage: React.FC = () => {
   const [template] = React.useState(readRequestedTemplate);
+  const scoreReview = new URLSearchParams(window.location.search).has('scoreReview');
   const [showOptimizationReview] = React.useState(isOptimizationReviewFixtureRequested);
   const [guidanceReviewMode] = React.useState(readGuidanceReviewMode);
   const [acceptedChangeIds, setAcceptedChangeIds] = React.useState<string[]>([]);
@@ -253,6 +255,7 @@ const ResumeTemplatePreviewDevPage: React.FC = () => {
 
     const markReady = async () => {
       try {
+        if (scoreReview) { document.title = "六维评分与模块优化"; document.body.dataset.rfTemplatePreviewReady = "true"; return; }
         if (guidanceReviewMode) {
           document.title = guidanceReviewMode === 'history'
             ? '历史指导报告预览'
@@ -311,6 +314,8 @@ const ResumeTemplatePreviewDevPage: React.FC = () => {
   if (!snapshot || !template) {
     return <main className="p-6 text-sm text-red-700">未知模板 ID，无法生成预览图。</main>;
   }
+
+  if (scoreReview) return <ResumeScoreReviewFixture snapshot={snapshot} />;
 
   if (guidanceReviewMode) {
     const isHistoricalGuidance = guidanceReviewMode === 'history';

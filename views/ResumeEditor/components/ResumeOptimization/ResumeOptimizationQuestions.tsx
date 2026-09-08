@@ -88,7 +88,7 @@ export const ResumeOptimizationQuestions: React.FC<ResumeOptimizationQuestionsPr
         >
             <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
                 <div>
-                    <p className="text-sm font-bold text-slate-950 dark:text-white">补齐可验证事实</p>
+                    <p className="text-sm font-bold text-slate-950 dark:text-white">补充相关信息</p>
                     <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
                         不确定时可选择“无法回答”；系统不会自动替你提交空缺。
                     </p>

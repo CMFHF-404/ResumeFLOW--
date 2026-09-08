@@ -203,7 +203,7 @@ test('pure flow guards map terminal hydration, allowed selection, and busy gates
   );
 
   const guidanceEvaluation = {
-    evaluationVersion: 'guidance_audit_v1',
+    evaluationVersion: 'resume_score_v2', scoringVersion: 'single_pass_v1',
     auditReceipt: {
       receiptId: 'receipt-1', inputHash: 'input-hash', tasksHash: 'tasks-hash',
       judgmentsHash: 'judgments-hash', rubricHash: 'rubric-hash', schemaHash: 'schema-hash',
@@ -348,7 +348,7 @@ test('apply and retry chain uses self-owned committed tokens and never replays a
   assert.match(applyBlock, /waitForCommittedSource/);
   assert.match(rescoreBlock, /latestGenerateEvaluationRef\.current\(\)/);
   assert.match(rescoreBlock, /waitForPersistedEvaluationReceipt/);
-  const reportFlushIndex = rescoreBlock.indexOf('latestFlushResumeConfigRef.current');
+  const reportFlushIndex = rescoreBlock.indexOf('latestFlushResumeConfigRef.current', rescoreBlock.indexOf('const rescoreStartedAt'));
   const preFinalizeGuardIndex = rescoreBlock.indexOf('assertCurrent', reportFlushIndex);
   assert.ok(rescoreBlock.indexOf('waitForPersistedEvaluationReceipt') < reportFlushIndex);
   assert.ok(reportFlushIndex < rescoreBlock.indexOf('markSelfOwnedResumeTimestamp', reportFlushIndex));
@@ -667,7 +667,7 @@ test('flow stores safe progress nodes and never trusts server progress titles', 
     ['freeze_snapshot', '冻结当前简历版本'],
     ['prepare_context', '整理六维问题与经历信息'],
     ['plan_changes', '生成优化方案'],
-    ['verify_changes', '检查事实边界'],
+    ['verify_changes', '读取优化结果'],
     ['persist_run', '保存优化方案'],
     ['rewrite_answers', '根据补充信息更新方案'],
   ].map(([node, expected]) => resolveResumeOptimizationProgressTitle(node) === expected), Array(6).fill(true));

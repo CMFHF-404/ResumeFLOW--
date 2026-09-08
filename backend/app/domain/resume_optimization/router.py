@@ -356,7 +356,7 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
             isinstance(run.before_snapshot, dict)
             and isinstance(run.before_snapshot.get("evaluation"), dict)
             and run.before_snapshot["evaluation"].get("scoringVersion")
-            == "guidance_audit_v1"
+            in {"guidance_audit_v1", "single_pass_v1"}
         )
         source_before_score = (
             source_before_score_from_run(run, allow_legacy=True)

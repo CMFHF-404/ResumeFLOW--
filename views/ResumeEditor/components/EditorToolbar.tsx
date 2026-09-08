@@ -324,7 +324,18 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                                             : 'text-slate-400 hover:bg-white/75 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200',
                                     ].join(' ')}
                                 >
-                                    <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+                                    <Icon className="h-[18px] w-[18px]" aria-hidden="true">
+                                        {option.id !== 'list' ? (
+                                            <rect
+                                                x="15"
+                                                y="3"
+                                                width="6"
+                                                height="18"
+                                                rx="1"
+                                                className="fill-emerald-100 stroke-emerald-600 dark:fill-emerald-900 dark:stroke-emerald-400"
+                                            />
+                                        ) : null}
+                                    </Icon>
                                     <span
                                         role="tooltip"
                                         className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-50 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-white dark:text-slate-950"

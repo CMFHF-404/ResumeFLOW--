@@ -8,6 +8,7 @@ type ResumePdfDocumentProps = {
   previewContentRef?: React.RefObject<HTMLDivElement | null>;
   className?: string;
   previewScope?: ResumePreviewProps['previewScope'];
+  readOnly?: boolean;
   optimizationComparison?: ResumePreviewProps['optimizationComparison'];
 };
 
@@ -20,6 +21,7 @@ const ResumePdfDocument: React.FC<ResumePdfDocumentProps> = ({
   className = 'rf-print-preview-shell',
   previewScope = 'print',
   optimizationComparison,
+  readOnly = true,
 }) => {
   const fallbackPreviewRef = React.useRef<HTMLDivElement | null>(null);
   const fallbackPreviewContentRef = React.useRef<HTMLDivElement | null>(null);
@@ -58,7 +60,7 @@ const ResumePdfDocument: React.FC<ResumePdfDocumentProps> = ({
         sortedCertifications={snapshot.sortedCertifications}
         selectedCertIds={selectedCertIds}
         selectedSkillGroups={snapshot.selectedSkillGroups}
-        readOnly
+        readOnly={readOnly}
         isDragging={false}
         draggedItemKey={null}
         draggedSectionId={null}

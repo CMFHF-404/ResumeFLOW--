@@ -408,8 +408,12 @@ def _accepted_changes(
         )
 
     plan = _strict_final_plan(run)
+    simple = run.policy_version == "json_structure_v1"
+    if simple:
+        from .simple_planner import validate_stored_plan
+        validate_stored_plan(run, plan)
     verified_by_id: dict[str, OptimizationChange] | None = None
-    if enforce_current_safety:
+    if enforce_current_safety and not simple:
         projected = project_plan_with_current_safety(run, plan=plan)
         verified_by_id = {
             change.change_id: change for change in projected.changes
@@ -422,7 +426,7 @@ def _accepted_changes(
     for change in plan.changes:
         if change.change_id not in accepted_change_ids:
             continue
-        if change.safety_status != "allowed":
+        if not simple and change.safety_status != "allowed":
             raise OptimizationApplyValidationError(
                 "Only persisted safety-allowed changes may be applied"
             )
@@ -444,7 +448,7 @@ def _accepted_changes(
             raise OptimizationApplyValidationError(
                 "Applicable changes require a targeted value"
             )
-        if enforce_current_safety and change.module_type in {
+        if enforce_current_safety and not simple and change.module_type in {
             OptimizationModuleType.EXPERIENCE_STAR,
             OptimizationModuleType.PERSONAL_SUMMARY,
         } and (
@@ -559,6 +563,9 @@ def project_plan_with_current_safety(
     if not actionable:
         return copied
 
+    if run.policy_version == "json_structure_v1":
+        from .simple_planner import validate_stored_plan
+        return validate_stored_plan(run, copied)
     source_documents = _current_safety_source_documents(run, plan=copied)
     verified_changes, _ = verify_plan_changes(
         plan=copied,
@@ -817,6 +824,8 @@ def build_apply_patch(
             )
         targets.add(target)
         value = deepcopy(change.targeted_value)
+        if run.policy_version == "json_structure_v1" and isinstance(value, str):
+            value = _frontend_sanitized_html(value)
 
         if change.module_type == OptimizationModuleType.EXPERIENCE_STAR:
             if not isinstance(value, str):
@@ -844,7 +853,7 @@ def build_apply_patch(
                 raise OptimizationApplyValidationError(
                     "Experience change before value no longer matches the frozen snapshot"
                 )
-            if change.field_path == "star.a" and enforce_current_safety:
+            if change.field_path == "star.a" and enforce_current_safety and run.policy_version != "json_structure_v1":
                 value = normalize_action_paragraph_endings(value)
                 if enforce_current_safety and not preserves_rich_text_structure(
                     change.before_value,
@@ -1494,13 +1503,14 @@ async def _persist_stale_after_rollback(
         await _write_stale(stale_session, stale_run)
 
 
-async def apply_resume_optimization(
+async def _apply_resume_optimization_compatible(
     *,
     session: AsyncSession,
     user_id: str,
     run_id: str,
     payload: ResumeOptimizationApplyRequest,
     stale_session_factory: Any | None = None,
+    _require_current_policy: bool = False,
 ) -> OptimizationApplyResult:
     expected = _require_aware_timestamp(
         payload.expected_resume_updated_at,
@@ -1522,6 +1532,8 @@ async def apply_resume_optimization(
 
     try:
         run = await _lock_run(session, user_id=user_id, run_id=run_id)
+        if _require_current_policy and run.policy_version != "json_structure_v1":
+            raise OptimizationApplyStaleError()
         resume = await _lock_resume(session, user_id=user_id, run=run)
 
         try:
@@ -1535,7 +1547,7 @@ async def apply_resume_optimization(
             snapshot = _validated_snapshot(run)
             if (
                 snapshot.get("evaluation", {}).get("scoringVersion")
-                != _GUIDANCE_SCORING_VERSION
+                not in {"single_pass_v1", _GUIDANCE_SCORING_VERSION}
             ):
                 raise OptimizationApplyStaleError()
         except OptimizationApplyStaleError:
@@ -1562,11 +1574,8 @@ async def apply_resume_optimization(
             raise OptimizationApplyStaleError()
         try:
             _validate_current_report(run, resume, snapshot)
-            await _validate_current_guidance_receipt(
-                user_id=user_id,
-                resume=resume,
-                snapshot=snapshot,
-            )
+            if run.policy_version != "json_structure_v1":
+                await _validate_current_guidance_receipt(user_id=user_id, resume=resume, snapshot=snapshot)
         except OptimizationApplyStaleError:
             await persist_stale()
             raise
@@ -4567,3 +4576,9 @@ async def revert_resume_optimization(
         except Exception:
             pass
         raise
+
+
+async def apply_resume_optimization(*, session, user_id, run_id, payload, stale_session_factory=None):
+    """Public write entry: historical unapplied proposals must be regenerated."""
+    return await _apply_resume_optimization_compatible(session=session, user_id=user_id, run_id=run_id,
+        payload=payload, stale_session_factory=stale_session_factory, _require_current_policy=True)

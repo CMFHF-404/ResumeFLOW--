@@ -291,7 +291,7 @@ def _run(
         resume_id=RESUME_ID,
         status=status.value,
         optimizer_version=OPTIMIZER_VERSION,
-        policy_version=POLICY_VERSION,
+        policy_version="evidence_semantic_v2",
         prompt_version=PROMPT_VERSION,
         source_resume_updated_at=BASE_TIME,
         source_evaluation_signature=_base_frontend_evaluation_signature(),
@@ -2007,7 +2007,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
             link,
             fail_on_flush=fail_on_flush,
         )
-        result = await apply_service.apply_resume_optimization(
+        result = await apply_service._apply_resume_optimization_compatible(
             session=session,
             user_id=USER_ID,
             run_id=str(RUN_ID),
@@ -2023,7 +2023,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         session = _transaction_session(run, resume, _link())
 
         with self.assertRaises(apply_service.OptimizationApplyStaleError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2051,7 +2051,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         session = _transaction_session(run, resume, _link())
 
         with self.assertRaises(apply_service.OptimizationApplyStaleError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2097,6 +2097,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
             target_status=ResumeOptimizationStatus.PREVIEW_READY,
         )
         self.assertEqual(completed.answers_json, {})
+        completed.policy_version = "evidence_semantic_v2"  # This fixture exercises legacy persisted plans.
         preview = _run_to_read(completed).model_dump(mode="json")
         self.assertEqual(len(preview["result"]["changes"]), 1)
         for key in ("coverage", "cleanup_fallbacks", "planning_tasks"):
@@ -2162,7 +2163,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         before_overrides = deepcopy(link.overrides_json)
 
         with self.assertRaises(apply_service.OptimizationApplyValidationError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2186,7 +2187,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         before_overrides = deepcopy(link.overrides_json)
 
         with self.assertRaises(apply_service.OptimizationApplyValidationError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2223,7 +2224,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
             apply_service.OptimizationApplyValidationError,
             "current safety",
         ):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2870,7 +2871,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         before_config = deepcopy(resume.config)
 
         with self.assertRaises(apply_service.OptimizationApplyStaleError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2891,7 +2892,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         original_overrides = deepcopy(link.overrides_json)
 
         with self.assertRaises(apply_service.OptimizationApplyStaleError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2911,7 +2912,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         session = _transaction_session(run, resume, link)
 
         with self.assertRaises(apply_service.OptimizationApplyStaleError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2930,7 +2931,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         session = _transaction_session(run, resume, link)
 
         with self.assertRaises(apply_service.OptimizationApplyValidationError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -2969,7 +2970,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
                 session = _transaction_session(run, resume, link)
 
                 with self.assertRaises(apply_service.OptimizationApplyStaleError):
-                    await apply_service.apply_resume_optimization(
+                    await apply_service._apply_resume_optimization_compatible(
                         session=session,
                         user_id=USER_ID,
                         run_id=str(RUN_ID),
@@ -3117,7 +3118,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         before = deepcopy(link.overrides_json)
 
         with self.assertRaises(apply_service.OptimizationApplyStaleError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -3136,7 +3137,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         session = _transaction_session(run, resume, link)
 
         with self.assertRaises(apply_service.OptimizationApplyStaleError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -3164,7 +3165,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaisesRegex(
                     RuntimeError, "injected apply flush failure"
                 ):
-                    await apply_service.apply_resume_optimization(
+                    await apply_service._apply_resume_optimization_compatible(
                         session=session,
                         user_id=USER_ID,
                         run_id=str(RUN_ID),
@@ -3186,7 +3187,7 @@ class ResumeOptimizationApplyTransactionTests(unittest.IsolatedAsyncioTestCase):
         before_config = deepcopy(resume.config)
 
         with self.assertRaises(apply_service.OptimizationApplyConflictError):
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -3783,7 +3784,7 @@ class ResumeOptimizationApplyPostgresTests(unittest.IsolatedAsyncioTestCase):
             f"'{VERSION_ID}'::uuid"
         )
         async with self.sessions() as session:
-            await apply_service.apply_resume_optimization(
+            await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),
@@ -3830,7 +3831,7 @@ class ResumeOptimizationApplyPostgresTests(unittest.IsolatedAsyncioTestCase):
 
         async with self.sessions() as session:
             with self.assertRaises(apply_service.OptimizationApplyStaleError):
-                await apply_service.apply_resume_optimization(
+                await apply_service._apply_resume_optimization_compatible(
                     session=session,
                     user_id=USER_ID,
                     run_id=str(RUN_ID),
@@ -3883,7 +3884,7 @@ class ResumeOptimizationApplyPostgresTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(DBAPIError) as raised:
             async with self.sessions() as session:
-                await apply_service.apply_resume_optimization(
+                await apply_service._apply_resume_optimization_compatible(
                     session=session,
                     user_id=USER_ID,
                     run_id=str(RUN_ID),
@@ -3911,7 +3912,7 @@ class ResumeOptimizationApplyPostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_isolated_postgres_concurrent_apply_has_one_winner(self) -> None:
         async def attempt():
             async with self.sessions() as session:
-                return await apply_service.apply_resume_optimization(
+                return await apply_service._apply_resume_optimization_compatible(
                     session=session,
                     user_id=USER_ID,
                     run_id=str(RUN_ID),
@@ -3941,7 +3942,7 @@ class ResumeOptimizationApplyPostgresTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_isolated_postgres_concurrent_rescore_claim_has_one_winner(self) -> None:
         async with self.sessions() as session:
-            applied = await apply_service.apply_resume_optimization(
+            applied = await apply_service._apply_resume_optimization_compatible(
                 session=session,
                 user_id=USER_ID,
                 run_id=str(RUN_ID),

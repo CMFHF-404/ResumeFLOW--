@@ -375,7 +375,7 @@ type JDAnalysisPanelProps = {
     isOptimizationBusy?: boolean;
     canStartOptimization?: boolean;
     optimizationDisabledReason?: string | null;
-    onStartOptimization?: () => void;
+    onStartOptimization?: (ids: string[]) => void;
     thinkingText?: string;
     onStopAnalyze?: () => void;
     onOpenDetailsSidebar?: () => void;
@@ -396,7 +396,7 @@ type JDAnalysisDetailsModalProps = {
     isOptimizationBusy: boolean;
     canStartOptimization: boolean;
     optimizationDisabledReason?: string | null;
-    onStartOptimization?: () => void;
+    onStartOptimization?: (ids: string[]) => void;
     copyStatus: StrategyCopyStatus;
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
@@ -482,7 +482,7 @@ type JDAnalysisDetailsContentProps = {
     isOptimizationBusy: boolean;
     canStartOptimization: boolean;
     optimizationDisabledReason?: string | null;
-    onStartOptimization?: () => void;
+    onStartOptimization?: (ids: string[]) => void;
     copyStatus: StrategyCopyStatus;
     manualCopyText: string;
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
@@ -591,7 +591,7 @@ type JDAnalysisDetailsSidebarProps = {
     isOptimizationBusy: boolean;
     canStartOptimization: boolean;
     optimizationDisabledReason?: string | null;
-    onStartOptimization?: () => void;
+    onStartOptimization?: (ids: string[]) => void;
     onClose: () => void;
     onOpenAgentPluginConfig?: () => void;
 };

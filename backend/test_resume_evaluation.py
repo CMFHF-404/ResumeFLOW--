@@ -2612,7 +2612,7 @@ class SplitResumeEvaluationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_mock.await_args.kwargs["lane"], "default")
         self.assertEqual(call_mock.await_args.kwargs["gemini_thinking_level"], "low")
         thought_callback.assert_awaited_once_with(
-            {"type": "thought", "summary": "正在生成简历改进指导并独立审核依据"}
+            {"type": "thought", "summary": "正在生成六维评分与模块改进建议"}
         )
 
 

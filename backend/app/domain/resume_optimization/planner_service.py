@@ -1287,6 +1287,9 @@ async def _plan_resume_optimization_v3(
 
 @runtime_budget.ai_wall_clock_limited
 async def plan_resume_optimization(context: FrozenOptimizationContext) -> OptimizationPlan:
+    from .simple_planner import is_simple, plan
+    if is_simple(context):
+        return await plan(context)
     from .planner_tasks import build_tasks, task_payload, task_schema, assemble_plan, TASK_PROMPT
     tasks, retained = build_tasks(
         context, max_questions=load_settings().resume_optimization_max_questions,
@@ -1384,6 +1387,9 @@ async def rewrite_answered_modules(
     existing_plan: OptimizationPlan,
     answers: list[OptimizationAnswer],
 ) -> list[OptimizationChange]:
+    from .simple_planner import is_simple, rewrite
+    if is_simple(context):
+        return await rewrite(context, existing_plan, answers)
     answers_by_question = _unique_answers_by_question(answers)
     questions_by_id = {
         question.question_id: question for question in existing_plan.questions

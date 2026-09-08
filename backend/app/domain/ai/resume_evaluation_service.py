@@ -1542,8 +1542,8 @@ async def _analyze_resume_evaluation_consensus_v3(text, resume_text, jd_match_pe
 
 
 async def _analyze_resume_evaluation_consensus(text, resume_text, jd_match_percentage=None):
-    from .guidance_evaluation import generate_guidance
-    return await generate_guidance(text, resume_text, jd_match_percentage)
+    from .resume_score import generate_score
+    return await generate_score(text, resume_text, jd_match_percentage)
 
 
 async def analyze_resume_evaluation(
@@ -1568,7 +1568,7 @@ async def _analyze_resume_evaluation_with_thoughts_once(
 ) -> Dict[str, Any]:
     await _emit_thought(
         thought_callback,
-        {"type": "thought", "summary": "正在生成简历改进指导并独立审核依据"},
+        {"type": "thought", "summary": "正在生成六维评分与模块改进建议"},
     )
     return await _analyze_resume_evaluation_consensus(
         text,

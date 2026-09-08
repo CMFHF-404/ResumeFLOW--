@@ -352,6 +352,7 @@ export const resumeOptimizationService = {
       '/api/resume-optimizations/stream',
       {
         resume_id: resumeId,
+        selected_suggestion_ids: uniqueIds(payload.selectedSuggestionIds ?? [], "selectedSuggestionIds"),
         evaluation_signature: requiredText(
           payload.evaluationSignature,
           'evaluationSignature',

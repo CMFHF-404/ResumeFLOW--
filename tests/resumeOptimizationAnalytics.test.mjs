@@ -185,21 +185,13 @@ test('event constants and tracker source use explicit safe property construction
   assert.match(optimizationSource, /SAFE_RESUME_OPTIMIZATION_FAILURE_CODE/);
 });
 
-test('CTA impression is visibility-gated and deduped while exact Token copy precedes click', () => {
-  const report = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx');
-  const copy = '本次优化按实际模型用量消耗 Token，改写会保持在可核实的事实边界内。';
-  const copyIndex = report.indexOf(copy);
-  const buttonIndex = report.indexOf('根据指导优化', copyIndex);
-  assert.ok(copyIndex >= 0 && copyIndex < buttonIndex);
+test('numeric scoring CTA records only aggregate visibility and selection clicks', () => {
+  const report = read('views/ResumeEditor/components/ResumeEvaluationReport/ResumeScoreReport.tsx');
   assert.match(report, /IntersectionObserver/);
   assert.match(report, /ctaViewTrackedRef/);
-  assert.match(
-    report,
-    /!canStartOptimization \|\| isOutdated \|\| isOptimizationBusy[\s\S]*return undefined/,
-  );
   assert.match(report, /trackResumeOptimizationCtaView\(\)/);
-  assert.match(report, /trackResumeOptimizationCtaClick\(\)[\s\S]*onStartOptimization\?\.\(\)/);
-  assert.doesNotMatch(report, /beforeScore|report\.overallScore/);
+  assert.match(report, /trackResumeOptimizationCtaClick\(\)/);
+  assert.ok(report.indexOf('本次优化按实际模型用量消耗 Token。') < report.indexOf('优化所选模块'));
 });
 
 test('hook emits aggregate events at frozen mutation boundaries without leaking identifiers', () => {

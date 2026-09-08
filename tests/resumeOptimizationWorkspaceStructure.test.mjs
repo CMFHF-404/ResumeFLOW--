@@ -129,11 +129,11 @@ test('editor moves optimization into the AI layout and keeps mobile modal compat
   );
   const capture = wrapper.indexOf('document.activeElement');
   const openOptimization = wrapper.indexOf("setRightSidebarSurface('optimization')");
-  const setAiLayout = wrapper.indexOf("setWorkspaceLayout('ai')");
+  const setAiLayout = wrapper.indexOf("setWorkspaceLayout('ai')", capture);
   const nextFrame = wrapper.indexOf('requestAnimationFrame');
   const start = wrapper.indexOf('startOptimization');
   const startResultBlock = wrapper.slice(
-    wrapper.indexOf('const startedRun = await resumeOptimizationFlow.startOptimization()'),
+    wrapper.indexOf('const startedRun = await resumeOptimizationFlow.startOptimization({ selectedSuggestionIds })'),
     wrapper.indexOf('return startedRun;') + 'return startedRun;'.length,
   );
   assert.ok(capture >= 0 && capture < setAiLayout && setAiLayout < openOptimization && openOptimization < nextFrame && nextFrame < start);
@@ -145,7 +145,7 @@ test('editor moves optimization into the AI layout and keeps mobile modal compat
   assert.match(flow, /const getLatestUiState = useCallback\(\(\) => latestUiStateRef\.current, \[\]\)/);
   const reopenBlock = wrapper.slice(
     wrapper.indexOf('hasResumableResumeOptimizationRun'),
-    wrapper.indexOf('const startedRun = await resumeOptimizationFlow.startOptimization()'),
+    wrapper.indexOf('const startedRun = await resumeOptimizationFlow.startOptimization({ selectedSuggestionIds })'),
   );
   assert.match(reopenBlock, /const reopenedRun = await resumeOptimizationFlow\.reopenLatestRun\(\)/);
   assert.match(reopenBlock, /!reopenedRun && resumeOptimizationFlow\.getLatestUiState\(\) === 'closed'/);

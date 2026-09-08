@@ -632,7 +632,7 @@ class _ContextFixture:
                 ],
                 expected_resume_updated_at=self.resume.updated_at.isoformat(),
             )
-            result = await context_service.build_frozen_optimization_context(
+            result = await context_service.build_legacy_frozen_optimization_context(
                 session=self.session,
                 user_id=USER_ID,
                 request=resolved_request,
@@ -1292,7 +1292,7 @@ class ResumeOptimizationContextTests(unittest.IsolatedAsyncioTestCase):
             new=AsyncMock(side_effect=ResumeNotFoundError("Resume not found")),
         ):
             with self.assertRaises(context_service.OptimizationContextNotFoundError) as caught:
-                await context_service.build_frozen_optimization_context(
+                await context_service.build_legacy_frozen_optimization_context(
                     object(), USER_ID, _request()
                 )
 

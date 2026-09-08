@@ -75,7 +75,7 @@ test('dimension aliases remain shared with optimization display formatting', () 
   assert.equal(normalizeEvaluationDimension('unknown'), '');
 });
 
-test('report surfaces actionable guidance and never renders a radar or quality digits', () => {
+test('report preserves legacy guidance and dispatches the new numeric radar', () => {
   const source = readFileSync(
     new URL('../views/ResumeEditor/components/ResumeEvaluationReport/ResumeEvaluationReport.tsx', import.meta.url),
     'utf8'
@@ -84,8 +84,10 @@ test('report surfaces actionable guidance and never renders a radar or quality d
   assert.match(source, /优先改善/);
   assert.match(source, /可以直接整理/);
   assert.match(source, /需要补充信息/);
-  assert.match(source, /历史数值报告不能用于新的优化/);
-  assert.doesNotMatch(source, /overallScore|scoreCalculation|subscores|buildRadarPoints|六维评分明细/);
+  assert.match(source, /查看历史文字指导（无数值评分）/);
+  assert.doesNotMatch(source, /RESUME GUIDANCE|根据指导优化/);
+  assert.match(source, /ResumeScoreReport/);
+  assert.match(source, /ScoreRadar/);
 });
 
 test('missing report exposes a keyboard-accessible explicit generation action', () => {
@@ -94,12 +96,12 @@ test('missing report exposes a keyboard-accessible explicit generation action', 
     'utf8'
   );
   assert.match(source, /type="button"/);
-  assert.match(source, /获取简历改进指导/);
-  assert.match(source, /基于六大维度给出有证据支持的改进建议/);
-  assert.match(source, /重新生成简历改进指导/);
+  assert.match(source, /生成六维评分/);
+  assert.match(source, /评分同时标注可优化模块和改进方向/);
+  assert.match(source, /重新进行六维评分/);
   assert.match(source, /aria-busy=\{isGenerating\}/);
-  assert.match(source, /disabled=\{isGenerating\}/);
+  assert.match(source, /disabled=\{isGenerating \|\| isOptimizationBusy\}/);
   assert.match(source, /focus-visible:ring-2/);
-  assert.match(source, /aria-label="获取简历改进指导"/);
+  assert.match(source, /aria-label="六维简历评分"/);
   assert.match(source, /停止生成/);
 });

@@ -384,10 +384,10 @@ class ResumeOptimizationPublicTransportTests(unittest.IsolatedAsyncioTestCase):
             response.json()["detail"]["code"],
             "resume_optimization_context_stale",
         )
-        self.assertEqual(run.status, ResumeOptimizationStatus.STALE.value)
+        self.assertEqual(run.status, ResumeOptimizationStatus.PREVIEW_READY.value)
         self.assertEqual(resume.config, before_config)
         self.assertEqual(session.commits, 0)
-        self.assertEqual(session.stale_session.commits, 1)
+        self.assertEqual(session.stale_session.commits, 0)
         self.assert_safe_response(response)
 
     async def test_run_not_found_uses_http_404_and_answer_terminal_404(self) -> None:

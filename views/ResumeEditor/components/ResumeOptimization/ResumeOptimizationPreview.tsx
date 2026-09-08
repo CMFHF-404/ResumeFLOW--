@@ -59,7 +59,7 @@ export const ResumeOptimizationPreview: React.FC<ResumeOptimizationPreviewProps>
                     对照确认每一项修改
                 </h3>
                 <p className="mt-2 text-[12px] leading-6 text-slate-500 dark:text-slate-400">
-                    可安全应用的修改可供确认；安全阻断的项目会说明原因并保留原文。
+                    逐项比较原文与改写，选择采用优化或保留原文。
                 </p>
             </div>
 

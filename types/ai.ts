@@ -158,7 +158,17 @@ export type GuidanceAuditEvaluation = {
   jdMatch: number | null;
 };
 
-export type ResumeEvaluation = LegacyResumeEvaluation | GuidanceAuditEvaluation;
+export type ResumeScoreSuggestion = {
+  suggestionId: string; moduleType: string; moduleId: string; fieldPath: string;
+  dimension: ResumeEvaluationDimensionName; problem: string; direction: string; label: string; editable: boolean;
+};
+export type ResumeScoreEvaluation = {
+  evaluationVersion: 'resume_score_v2'; scoringVersion: 'single_pass_v1'; evaluationScope: 'full_resume';
+  overallScore: number; summary: string;
+  dimensions: { dimension: ResumeEvaluationDimensionName; score: number; comment: string }[];
+  suggestions: ResumeScoreSuggestion[]; jdMatch: number | null;
+};
+export type ResumeEvaluation = LegacyResumeEvaluation | GuidanceAuditEvaluation | ResumeScoreEvaluation;
 
 export const isGuidanceAuditEvaluation = (
   evaluation: ResumeEvaluation | null | undefined,

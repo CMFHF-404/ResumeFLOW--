@@ -1,0 +1,11 @@
+{
+  "fixtureOnly": true,
+  "desktop": true,
+  "mobile": true,
+  "emptySelectionCalls": 0,
+  "planningCalls": 1,
+  "skippedAnswerCalls": 0,
+  "applyCallsToAI": 0,
+  "exportAnnotationNodes": 0,
+  "pageErrors": []
+}

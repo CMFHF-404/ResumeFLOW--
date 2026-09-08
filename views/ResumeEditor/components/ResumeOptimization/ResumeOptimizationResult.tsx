@@ -54,6 +54,14 @@ export const ResumeOptimizationResult: React.FC<ResumeOptimizationResultProps> =
         onRevert();
     };
 
+    if (run.policyVersion === 'json_structure_v1') return <section aria-label="优化结果" className="space-y-4 p-4">
+        <h3 className="text-lg font-bold">{run.status === 'reverted' ? '已撤销本次优化' : '所选修改已应用'}</h3>
+        <p className="text-sm">已接受 {acceptedCount} 项修改。原评分已过期，可按需重新评分。</p>
+        {error && <p role="alert" className="text-sm text-amber-700">{error}</p>}
+        {isApplied && <button type="button" disabled={busy} onClick={onRetry} className="min-h-11 rounded-lg bg-emerald-600 px-4 text-sm text-white disabled:opacity-50">重新评分</button>}
+        {canRevert && <button type="button" disabled={busy} onClick={requestRevert} className="ml-2 min-h-11 rounded-lg border px-4 text-sm">撤销本次应用</button>}
+    </section>;
+
     return (
         <section aria-labelledby="resume-optimization-result-title" className="space-y-5">
             <div className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-slate-50 p-5 dark:border-emerald-900/65 dark:from-emerald-950/35 dark:via-slate-950 dark:to-slate-950">

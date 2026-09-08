@@ -1,3 +1,4 @@
+import { ModuleScoreNote } from './ResumeEvaluationReport/ScoreAnnotations';
 import React from 'react';
 import {
     User,
@@ -1736,6 +1737,9 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     );
 
     const renderHeaderBlock = () => (
+        <>
+        <ModuleScoreNote moduleType="read_only" moduleId="profile" readOnly={isReadOnly || isPrintPreview} />
+        <div className="absolute left-0 top-0"><ModuleScoreNote moduleType="section_order" moduleId="sections" readOnly={isReadOnly || isPrintPreview} /></div>
         <HeaderBlock
             activeTemplate={activeTemplate}
             profile={profile}
@@ -1751,6 +1755,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             renderOverflowMarker={renderOverflowMarker}
             renderAvatarFrame={renderAvatarFrame}
         />
+        </>
     );
     const renderSectionByPlan = (plan: ResumePreviewSectionPlan) => {
         if (plan.kind === 'summary') {

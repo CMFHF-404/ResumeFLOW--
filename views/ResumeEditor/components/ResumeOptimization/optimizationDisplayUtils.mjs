@@ -1230,7 +1230,7 @@ export const hasPreservedResumeOptimizationRichText = (beforeValue, targetedValu
 };
 
 export const isResumeOptimizationChangeReviewable = (change) => (
-  change?.safetyStatus === 'allowed'
+  ['allowed', 'not_reviewed'].includes(change?.safetyStatus)
   && (change?.actionKind === 'rewrite_now' || change?.actionKind === 'ask_user')
   && change?.targetedValue !== null
   && change?.targetedValue !== undefined

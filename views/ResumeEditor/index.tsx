@@ -1,3 +1,4 @@
+import { ScoreAnnotationProvider } from './components/ResumeEvaluationReport/ScoreAnnotations';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
@@ -305,6 +306,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [factorySidebarTab, setFactorySidebarTab] = useState<ResumeFactoryTab>('edit');
     const [workspaceLayout, setWorkspaceLayout] = useState<ResumeEditorWorkspaceLayout>('list');
     const [rightSidebarSurface, setRightSidebarSurface] = useState<RightSidebarSurface>(null);
+    const [hasOpenedRightSidebar, setHasOpenedRightSidebar] = useState(false);
+    const lastRightSidebarSurfaceRef = useRef<Exclude<RightSidebarSurface, null>>('assistant');
+    const workspaceLayoutRequestRef = useRef(0);
+    useEffect(() => {
+        if (rightSidebarSurface) {
+            lastRightSidebarSurfaceRef.current = rightSidebarSurface;
+            setHasOpenedRightSidebar(true);
+        }
+    }, [rightSidebarSurface]);
     const [isAssistantSidebarMounted, setIsAssistantSidebarMounted] = useState(false);
     const isJDAnalysisDetailsSidebarOpen = rightSidebarSurface === 'analysis';
     const [isResumeOptimizationLayoutTransitioning, setIsResumeOptimizationLayoutTransitioning] = useState(false);
@@ -580,6 +590,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setPersistedJDAnalysisSnapshot(undefined);
     }, [resumeId]);
     useEffect(() => {
+        lastRightSidebarSurfaceRef.current = 'assistant';
+        workspaceLayoutRequestRef.current += 1;
+        setHasOpenedRightSidebar(false);
         setAssistantSidebarLaunchRequest(null);
         setIsAssistantSidebarMounted(false);
         setRightSidebarSurface(null);
@@ -1013,7 +1026,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         skillGroups.flatMap((group) => group.skills.map((skillItem) => [skillItem.id, skillItem.name])),
     ), [skillGroups]);
     const hasResumableResumeOptimizationRun = resumeOptimizationFlow.canResumeLatestRun;
-    const handleStartResumeOptimization = useCallback(async () => {
+    const handleStartResumeOptimization = useCallback(async (selectedSuggestionIds: string[] = []) => {
+        if (!selectedSuggestionIds.length && !hasResumableResumeOptimizationRun) {
+            setWorkspaceLayout('ai'); setRightSidebarSurface('analysis');
+            return null;
+        }
         if (!canPersistCurrentJDAnalysis()) {
             showToastError('请先处理未同步的本地 JD 分析。');
             return null;
@@ -1037,6 +1054,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             }
             if (
                 hasResumableResumeOptimizationRun
+                && selectedSuggestionIds.length === 0
                 && resumeOptimizationFlow.run?.status !== 'planning'
             ) {
                 const reopenedRun = await resumeOptimizationFlow.reopenLatestRun();
@@ -1046,7 +1064,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 }
                 return reopenedRun;
             }
-            const startedRun = await resumeOptimizationFlow.startOptimization();
+            const startedRun = await resumeOptimizationFlow.startOptimization({ selectedSuggestionIds });
             if (!startedRun && resumeOptimizationFlow.getLatestUiState() === 'closed') {
                 setRightSidebarSurface(analysisResult ? 'analysis' : null);
                 setWorkspaceLayout(analysisResult ? 'ai' : 'list');
@@ -1573,19 +1591,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         showToastInfo,
     ]);
     const handleCloseAssistantSidebar = useCallback(() => {
-        setAssistantSidebarLaunchRequest(null);
-        setIsAssistantSidebarMounted(false);
+        lastRightSidebarSurfaceRef.current = 'assistant';
         setRightSidebarSurface(null);
         setWorkspaceLayout('list');
     }, []);
     const handleCloseJDAnalysisDetailsSidebar = useCallback(() => {
-        if (isAssistantSidebarMounted) {
-            setRightSidebarSurface('assistant');
-            return;
-        }
+        lastRightSidebarSurfaceRef.current = 'analysis';
         setRightSidebarSurface(null);
         setWorkspaceLayout('list');
-    }, [isAssistantSidebarMounted]);
+    }, []);
     const {
         captureReturnFocus: captureMobileAnalysisReturnFocus,
         isMobileAnalysisViewport,
@@ -1630,29 +1644,50 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [analysisResult, handleCloseJDAnalysisDetailsSidebar, rightSidebarSurface]);
     const handleWorkspaceLayoutChange = useCallback(async (nextLayout: ResumeEditorWorkspaceLayout) => {
+        const requestId = ++workspaceLayoutRequestRef.current;
         if (nextLayout === workspaceLayout && (nextLayout === 'list' || rightSidebarSurface !== null)) return;
         if (rightSidebarSurface === 'optimization') {
             if (isResumeOptimizationBusy) return;
             const didClose = await resumeOptimizationFlow.closeWorkspace();
-            if (!didClose) return;
+            if (!didClose || workspaceLayoutRequestRef.current !== requestId) return;
             resumeOptimizationShouldRestoreReportRef.current = false;
             resumeOptimizationReturnFocusRef.current = null;
         }
         if (nextLayout === 'list') {
-            setAssistantSidebarLaunchRequest(null);
-            setIsAssistantSidebarMounted(false);
+            if (rightSidebarSurface) lastRightSidebarSurfaceRef.current = rightSidebarSurface;
             setRightSidebarSurface(null);
             setWorkspaceLayout('list');
             return;
         }
         setWorkspaceLayout(nextLayout);
         if (rightSidebarSurface === null || rightSidebarSurface === 'optimization') {
-            openResumeAssistantSidebar();
+            const previousSurface = rightSidebarSurface === null ? lastRightSidebarSurfaceRef.current : 'assistant';
+            if (previousSurface === 'analysis' && analysisResult) {
+                setRightSidebarSurface('analysis');
+            } else if (previousSurface === 'optimization' && resumeOptimizationFlow.canResumeLatestRun) {
+                const reopenedRun = await resumeOptimizationFlow.reopenLatestRun();
+                if (workspaceLayoutRequestRef.current !== requestId) return;
+                if (reopenedRun) {
+                    setWorkspaceLayout('ai');
+                    setRightSidebarSurface('optimization');
+                } else {
+                    setRightSidebarSurface(analysisResult ? 'analysis' : null);
+                    if (!analysisResult) setWorkspaceLayout('list');
+                }
+            } else if (isAssistantSidebarMounted) {
+                setRightSidebarSurface('assistant');
+            } else {
+                openResumeAssistantSidebar();
+            }
         }
     }, [
+        analysisResult,
+        isAssistantSidebarMounted,
         isResumeOptimizationBusy,
         openResumeAssistantSidebar,
         resumeOptimizationFlow.closeWorkspace,
+        resumeOptimizationFlow.canResumeLatestRun,
+        resumeOptimizationFlow.reopenLatestRun,
         rightSidebarSurface,
         workspaceLayout,
     ]);
@@ -2372,8 +2407,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         onClose: handleCloseJDAnalysisDetailsSidebar,
         onOpenAgentPluginConfig,
     } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;
-    const rightSidebarContent = isRightSidebarOpen ? (
-        <div className="relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950">
+    const rightSidebarContent = isRightSidebarOpen || hasOpenedRightSidebar ? (
+        <div aria-hidden={!isRightSidebarOpen} inert={!isRightSidebarOpen ? true : undefined} className="relative h-full min-h-0 w-full overflow-hidden bg-white dark:bg-slate-950">
             {isAssistantSidebarMounted ? (
                 <div
                     aria-hidden={!isAssistantSidebarActive}
@@ -2432,6 +2467,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         </div>
     ) : null;
     return (
+        <ScoreAnnotationProvider onLocate={isMobileAnalysisViewport ? handleCloseJDAnalysisDetailsSidebar : undefined} suggestions={!isEvaluationOutdated && analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v2' ? analysisResult.resumeEvaluation.suggestions : []}
+            reportKey={JSON.stringify([resumeId, evaluationSignature, analysisResult?.resumeEvaluation, isEvaluationOutdated])}>
         <div
             ref={mobileEditorScrollContainerRef}
             data-rf-mobile-editor-scroll-root
@@ -2700,6 +2737,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 onCancel={cancelPersonalSummaryOverwrite}
             />
         </div>
+        </ScoreAnnotationProvider>
     );
 };
 export default ResumeEditor;
