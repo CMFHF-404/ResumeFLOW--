@@ -591,8 +591,14 @@ class AIAssistantSession(SQLModel, table=True):
     entry_source: str = Field(default="direct")
     context_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     latest_preview: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class AIAssistantMessage(SQLModel, table=True):
@@ -603,7 +609,10 @@ class AIAssistantMessage(SQLModel, table=True):
     role: str
     message_type: str
     content_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class AIAssistantImageBlob(SQLModel, table=True):
@@ -613,7 +622,10 @@ class AIAssistantImageBlob(SQLModel, table=True):
     session_id: uuid.UUID = Field(foreign_key="ai_assistant_sessions.id", index=True)
     mime_type: str = Field(default="", nullable=False)
     payload_base64: str = Field(sa_column=Column(Text, nullable=False))
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 from .domain.resume.models import Resume, ResumeExperienceLink
