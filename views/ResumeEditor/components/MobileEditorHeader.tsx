@@ -22,9 +22,7 @@ import {
     SUMMARY_CLAMP_STYLE,
     useMobileAnalysisCardMotion,
 } from './mobileHeaderUtils';
-import JDAttachmentUploader, {
-    JDAttachmentPreview,
-} from './JDAttachmentUploader';
+import JDAttachmentUploader from './JDAttachmentUploader';
 import { isAcceptedJDAttachmentFile } from '../../../utils/jdAttachment';
 import { useJDAnalysisMotion } from './jdAnalysisMotion';
 
@@ -483,6 +481,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                             <JDAttachmentUploader
                                                 file={jdFile}
                                                 onFileSelect={onFileSelect}
+                                                onClear={onFileClear}
                                                 disabled={isAnalyzing}
                                             />
                                             <button
@@ -499,13 +498,6 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                         </div>
                                     )}
                                 </div>
-                                {jdFile && (
-                                    <JDAttachmentPreview
-                                        file={jdFile}
-                                        onClear={onFileClear}
-                                        disabled={isAnalyzing}
-                                    />
-                                )}
                             </div>
                         ) : (
                             <div className="mb-3 [perspective:1600px]">

@@ -50,7 +50,8 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
             ].join(' ')}
         >
             <div className={[
-                'h-full w-[var(--factory-sidebar-width)] shrink-0 transition-[transform,opacity] duration-[220ms] ease-out motion-reduce:transition-none',
+                // Animate the content width with its clipping rail so layout changes do not jump before the rail catches up.
+                'h-full w-[var(--factory-sidebar-width)] shrink-0 transition-[width,transform,opacity] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
                 lastExpandedLayout.current === 'triple' ? 'invisible xl:visible' : '',
                 hideFactorySidebar ? '-translate-x-4 opacity-0' : 'translate-x-0 opacity-100',
             ].join(' ')}>
@@ -65,7 +66,7 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
             data-rf-right-sidebar
             className={[
                 'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
-                'border-border-light dark:border-border-dark transition-all duration-300 ease-in-out',
+                'border-border-light dark:border-border-dark transition-[width,opacity] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
                 showRightSidebar
                     ? 'w-[390px] opacity-100 md:border-l shadow-[0_18px_60px_-36px_rgba(15,23,42,0.55)]'
                     : 'w-0 opacity-0 md:border-l-0 pointer-events-none'
@@ -76,7 +77,7 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
                 flexShrink: 0,
             }}
         >
-            <div className="h-full shrink-0" style={{ width: rightSidebarWidth }}>
+            <div className="h-full shrink-0 transition-[width] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none" style={{ width: rightSidebarWidth }}>
                 {rightSidebar}
             </div>
         </div>

@@ -34,9 +34,7 @@ import {
     normalizeStrategyTitles,
     type RequirementItem,
 } from './JDAnalysisPanel/analysisUtils';
-import JDAttachmentUploader, {
-    JDAttachmentPreview,
-} from './JDAttachmentUploader';
+import JDAttachmentUploader from './JDAttachmentUploader';
 import { isAcceptedJDAttachmentFile } from '../../../utils/jdAttachment';
 import { useJDAnalysisMotion } from './jdAnalysisMotion';
 
@@ -1297,6 +1295,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                     <JDAttachmentUploader
                                         file={jdFile}
                                         onFileSelect={onFileSelect}
+                                        onClear={onFileClear}
                                         disabled={isAnalyzing}
                                     />
                                     <button
@@ -1315,13 +1314,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                 </div>
                             ) : null}
                         </div>
-                        {jdFile ? (
-                            <JDAttachmentPreview
-                                file={jdFile}
-                                onClear={onFileClear}
-                                disabled={isAnalyzing}
-                            />
-                        ) : (
+                        {!jdFile && (
                             <p className="text-[11px] leading-5 text-gray-400 dark:text-gray-500">
                                 支持点击附件图标、拖拽文件到文本框，或直接在文本框里粘贴图片。{hasMissingAttachmentContext ? ' 当前缓存依赖的附件已丢失，重新上传后可继续更新分析。' : ''}
                             </p>

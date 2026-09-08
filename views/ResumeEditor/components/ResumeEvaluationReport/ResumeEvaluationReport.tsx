@@ -93,7 +93,9 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
                 : hasHistoricalScores ? '这是历史数值报告。重新评分后可选择需要优化的模块。' : '评分同时标注可优化模块和改进方向。'}
         </p>
         {(onGenerate || (isGenerating && onStop)) && <button type="button" onClick={isGenerating ? onStop : onGenerate} disabled={isGenerating ? !onStop : isOptimizationBusy}
-            className="mt-3 min-h-[44px] w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50">
+            className={`mt-3 min-h-[44px] w-full rounded-lg px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${isGenerating
+                ? 'bg-red-600 hover:bg-red-700 focus-visible:ring-red-500'
+                : 'bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-500'}`}>
             {isGenerating ? '停止生成' : hasHistoricalScores ? '重新进行六维评分' : '生成六维评分'}
         </button>}
         {isGenerating && thinkingText && <p className="mt-2 text-xs text-slate-500">{thinkingText}</p>}
