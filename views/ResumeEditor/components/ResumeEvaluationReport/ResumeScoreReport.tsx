@@ -44,7 +44,9 @@ export function ResumeScoreReport({ report, outdated, enabled, busy, canStart, d
         <div className="flex shrink-0 items-center gap-2">
           {(onGenerate || (generating && onStop)) && <button type="button" aria-label={generating ? '停止生成' : '重新评分'} title={generating ? '停止生成' : '重新评分'}
             disabled={generating ? !onStop : busy} onClick={generating ? onStop : onGenerate}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800">
+            className={`flex h-11 w-11 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 disabled:opacity-40 ${generating
+              ? 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500'
+              : 'text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:ring-emerald-500 dark:text-slate-400 dark:hover:bg-slate-800'}`}>
             {generating ? <Square aria-hidden="true" className="h-4 w-4" /> : <RefreshCw aria-hidden="true" className="h-4 w-4" />}
           </button>}
           <span className="text-4xl font-bold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-400">{report.overallScore}<small className="ml-1 text-xs font-medium">分</small></span>

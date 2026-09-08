@@ -16,85 +16,28 @@ export {
 type JDAttachmentUploaderProps = {
     file: File | null;
     onFileSelect: (file: File) => Promise<void>;
-    disabled?: boolean;
-};
-
-type JDAttachmentPreviewProps = {
-    file: File;
     onClear: () => void;
     disabled?: boolean;
-};
-
-export const JDAttachmentPreview: React.FC<JDAttachmentPreviewProps> = ({
-    file,
-    onClear,
-    disabled,
-}) => {
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const isImage = isJDAttachmentImageFile(file);
-
-    useEffect(() => {
-        if (!isImage) {
-            setPreviewUrl((prev) => {
-                if (prev) {
-                    URL.revokeObjectURL(prev);
-                }
-                return null;
-            });
-            return;
-        }
-
-        const nextPreviewUrl = URL.createObjectURL(file);
-        setPreviewUrl((prev) => {
-            if (prev) {
-                URL.revokeObjectURL(prev);
-            }
-            return nextPreviewUrl;
-        });
-
-        return () => {
-            URL.revokeObjectURL(nextPreviewUrl);
-        };
-    }, [file, isImage]);
-
-    return (
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs shadow-sm dark:border-emerald-800/40 dark:bg-emerald-900/10">
-            {isImage && previewUrl ? (
-                <img
-                    src={previewUrl}
-                    alt="JD 附件预览"
-                    className="h-8 w-8 shrink-0 rounded object-cover"
-                />
-            ) : (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-white/80 dark:bg-gray-900/70">
-                    {isImage
-                        ? <ImageIcon className="h-4 w-4 text-emerald-600/70" />
-                        : <FileText className="h-4 w-4 text-emerald-600/70" />}
-                </div>
-            )}
-            <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-emerald-900 dark:text-emerald-100">{file.name}</p>
-                <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/70">已作为 JD 附件，分析后会自动转成可持久化文本</p>
-            </div>
-            <button
-                type="button"
-                onClick={onClear}
-                disabled={disabled}
-                aria-label="移除附件"
-                className="shrink-0 rounded-md p-1 text-emerald-700/70 transition-colors hover:bg-emerald-100 hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-emerald-900/40 dark:hover:text-emerald-100"
-            >
-                <X className="h-3.5 w-3.5" />
-            </button>
-        </div>
-    );
 };
 
 const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
     file,
     onFileSelect,
+    onClear,
     disabled,
 }) => {
     const inputRef = useRef<HTMLInputElement>(null);
+    const [preview, setPreview] = useState<{ file: File; url: string } | null>(null);
+
+    useEffect(() => {
+        if (!file || !isJDAttachmentImageFile(file)) {
+            setPreview(null);
+            return;
+        }
+        const url = URL.createObjectURL(file);
+        setPreview({ file, url });
+        return () => URL.revokeObjectURL(url);
+    }, [file]);
 
     useEffect(() => {
         if (!file && inputRef.current) {
@@ -117,12 +60,13 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
     }, [onFileSelect]);
 
     return (
-        <>
+        <span className="relative inline-flex shrink-0">
             <button
                 type="button"
                 onClick={handleClick}
                 disabled={disabled}
-                aria-label="上传 JD 附件"
+                aria-label={file ? `替换 JD 附件：${file.name}` : '上传 JD 附件'}
+                title={file ? file.name : '上传 JD 附件'}
                 className={[
                     'inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors',
                     file
@@ -131,8 +75,23 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
                     disabled ? 'cursor-not-allowed opacity-60' : '',
                 ].join(' ')}
             >
-                <Paperclip className="h-3.5 w-3.5" />
+                {file ? (isJDAttachmentImageFile(file)
+                    ? preview?.file === file
+                        ? <img src={preview.url} alt="JD 附件预览" className="h-full w-full rounded-[5px] object-contain" />
+                        : <ImageIcon aria-hidden="true" className="h-4 w-4" />
+                    : <FileText aria-hidden="true" className="h-4 w-4" />)
+                    : <Paperclip aria-hidden="true" className="h-3.5 w-3.5" />}
             </button>
+            {file && <button
+                type="button"
+                onClick={onClear}
+                disabled={disabled}
+                aria-label="移除附件"
+                title="移除附件"
+                className="absolute -right-1.5 -top-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full border border-emerald-200 bg-white text-emerald-700 shadow-sm hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-700 dark:bg-gray-900 dark:text-emerald-300"
+            >
+                <X aria-hidden="true" className="h-3 w-3" />
+            </button>}
             <input
                 ref={inputRef}
                 type="file"
@@ -141,7 +100,7 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
                 disabled={disabled}
                 onChange={handleInputChange}
             />
-        </>
+        </span>
     );
 };
 

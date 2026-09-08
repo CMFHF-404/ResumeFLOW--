@@ -44,7 +44,7 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
   assert.match(workspace, /const rightSidebarWidth = layoutMode === 'ai' \? AI_RIGHT_SIDEBAR_WIDTH : DEFAULT_RIGHT_SIDEBAR_WIDTH/);
   assert.match(workspace, /style=\{\{\s*width: showRightSidebar \? rightSidebarWidth : 0,\s*opacity: showRightSidebar \? 1 : 0,\s*flexShrink: 0,\s*\}\}/);
   assert.match(workspace, /: 'w-0 opacity-0 md:border-l-0 pointer-events-none'/);
-  assert.match(workspace, /<div className="h-full shrink-0" style=\{\{ width: rightSidebarWidth \}\}>/);
+  assert.match(workspace, /<div className="h-full shrink-0 [^"]*transition-\[width\][^"]*" style=\{\{ width: rightSidebarWidth \}\}>/);
   assert.doesNotMatch(workspace, /h-full w-\[390px\] shrink-0 2xl:w-\[420px\]/);
   assert.match(workspace, /\{rightSidebar\}/);
   assert.doesNotMatch(workspace, /layoutMode="drawer"/);
