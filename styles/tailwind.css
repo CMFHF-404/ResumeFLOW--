@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Browser chrome may resize the visual viewport; it must not resize the
+   mobile editor's reading surface. Screen-only rules leave printing alone. */
+@media screen and (max-width: 767.98px) {
+  html[data-rf-editor-viewport="true"],
+  html[data-rf-editor-viewport="true"] body,
+  html[data-rf-editor-viewport="true"] #root {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior-y: contain;
+  }
+
+  .rf-app-viewport[data-editor-viewport="true"],
+  .rf-editor-viewport {
+    overflow: hidden;
+  }
+
+  [data-rf-mobile-editor-scroll-root] {
+    overscroll-behavior-y: contain;
+  }
+
+  @supports (height: 100svh) {
+    .rf-app-viewport[data-editor-viewport="true"] {
+      height: 100svh;
+      min-height: 100svh;
+    }
+  }
+}
+
 
 @keyframes rf-report-panel-enter {
   from { opacity: 0; transform: translateY(4px); }

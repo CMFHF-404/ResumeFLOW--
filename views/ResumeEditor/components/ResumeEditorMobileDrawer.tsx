@@ -16,6 +16,7 @@ type ResumeEditorMobileDrawerProps = {
     hasOpened: boolean;
     page: MobileWorkbenchPage;
     suspended?: boolean;
+    busy?: boolean;
     onOpen: (page?: MobileWorkbenchPage) => void;
     onClose: () => void;
     sidebarProps: Omit<EditorSidebarProps, 'layoutMode' | 'showJDPanel'>;
@@ -24,12 +25,12 @@ type ResumeEditorMobileDrawerProps = {
 };
 
 const ResumeEditorMobileDrawer: React.FC<ResumeEditorMobileDrawerProps> = ({
-    isOpen, isVisible, hasOpened, page, suspended = false, onOpen, onClose, sidebarProps, analysis, assistant,
+    isOpen, isVisible, hasOpened, page, suspended = false, busy = false, onOpen, onClose, sidebarProps, analysis, assistant,
 }) => {
     const dialogRef = useRef<HTMLDivElement>(null);
     const returnFocusRef = useRef<HTMLElement | null>(null);
     const [viewport, setViewport] = useState<{ top: number; height: number } | null>(null);
-    const active = isOpen && !suspended;
+    const active = isOpen && !suspended && !busy;
     useEffect(() => {
         const vv = window.visualViewport;
         const update = () => setViewport(vv ? { top: vv.offsetTop, height: vv.height } : null);
@@ -79,9 +80,9 @@ const ResumeEditorMobileDrawer: React.FC<ResumeEditorMobileDrawerProps> = ({
         };
     }, [active, onClose]);
     return <>
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 md:hidden">
+        <div data-mobile-workbench-dock className="pointer-events-none absolute inset-x-0 bottom-0 z-20 md:hidden">
             <div className="pointer-events-auto rounded-t-[28px] border border-b-0 border-white/70 bg-white/75 px-4 pb-[calc(env(safe-area-inset-bottom)+6px)] pt-1 shadow-[0_-12px_36px_rgba(15,23,42,0.10)] backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/80">
-                <button type="button" onClick={() => onOpen()} aria-haspopup="dialog" aria-expanded={active} className="mx-auto flex min-h-12 w-full max-w-sm flex-col items-center justify-center gap-2 rounded-2xl py-1 text-sm font-semibold text-slate-800 transition-colors hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-slate-100 dark:hover:bg-white/5">
+                <button type="button" disabled={busy} onClick={() => onOpen()} aria-haspopup="dialog" aria-expanded={active} className="mx-auto flex min-h-12 w-full max-w-sm flex-col items-center justify-center gap-2 rounded-2xl py-1 text-sm font-semibold text-slate-800 transition-colors hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-wait disabled:opacity-50 dark:text-slate-100 dark:hover:bg-white/5">
                     <span aria-hidden="true" className="h-1 w-10 rounded-full bg-slate-400/45 dark:bg-slate-500/60" />
                     <span className="inline-flex items-center gap-2"><PanelsTopLeft className="h-4 w-4 text-primary" />工作台</span>
                 </button>
