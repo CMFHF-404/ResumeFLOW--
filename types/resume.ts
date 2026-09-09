@@ -111,6 +111,7 @@ export type ExperienceSectionHeaderProps = {
   };
 
 export type ExperienceListSectionProps = {
+  compact?: boolean;
   title: string;
   items: ResumeExperienceView[];
   selectedIds: Set<string>;
@@ -136,6 +137,7 @@ export type ExperienceListSectionProps = {
 };
 
 export type ExperienceCardProps = {
+  compact?: boolean;
   item: ResumeExperienceView;
   isSelected: boolean;
   themeStyles: ExperienceListThemeStyles;

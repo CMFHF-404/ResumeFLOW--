@@ -19,6 +19,7 @@ export type ChatInputBoxProps = {
   onSubmit: () => void;
   isSending: boolean;
   surface?: 'full' | 'sidebar';
+  showDisclaimer?: boolean;
   placeholder?: string;
   plusActions?: { key: string; label: string; onClick?: () => void }[];
   onAddAttachments?: (files: File[]) => void;
@@ -79,6 +80,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
   onSubmit,
   isSending,
   surface = 'full',
+  showDisclaimer = true,
   placeholder = '有问题，尽管问',
   plusActions = [],
   onAddAttachments,
@@ -427,9 +429,9 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           </div>
         </div>
       </div>
-      <div className="mt-3 px-1 text-center text-xs text-slate-400 dark:text-slate-500">
+      {showDisclaimer ? <div className="mt-3 px-1 text-center text-xs text-slate-400 dark:text-slate-500">
         AI 可能会犯错。请核对重要信息。
-      </div>
+      </div> : null}
     </div>
   );
 };

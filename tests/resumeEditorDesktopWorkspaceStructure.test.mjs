@@ -11,7 +11,7 @@ test('ResumeEditor delegates desktop sidebar and preview workspace shell', () =>
 
   assert.match(editor, /ResumeEditorDesktopWorkspace/);
   assert.match(editor, /factorySidebarProps=\{factorySidebarProps\}/);
-  assert.match(editor, /layoutAdjustProps=\{layoutAdjustProps\}/);
+  assert.match(editor, /layoutAdjustProps=\{mobileTemplates\.active \? \{ \.\.\.layoutAdjustProps, isOpen: false \} : layoutAdjustProps\}/);
   assert.match(editor, /previewProps=\{editorPreviewPropsWithOptimization\}/);
   assert.match(editor, /const isRightSidebarOpen = workspaceLayout !== 'list' && rightSidebarSurface !== null/);
   assert.match(editor, /isRightSidebarOpen=\{isRightSidebarOpen\}/);

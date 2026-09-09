@@ -131,7 +131,7 @@ test('analysis overlays a mounted assistant so an unsent draft survives the roun
 
   assert.match(editor, /const \[isAssistantSidebarMounted, setIsAssistantSidebarMounted\] = useState\(false\)/);
   assert.match(editor, /setIsAssistantSidebarMounted\(true\)[\s\S]*setRightSidebarSurface\('assistant'\)/);
-  assert.match(editor, /isAssistantSidebarMounted \? \(/);
+  assert.match(editor, /isAssistantSidebarMounted && !isMobileAnalysisViewport \? \(/);
   assert.match(editor, /const isAssistantSidebarActive = rightSidebarSurface === 'assistant'/);
   assert.match(editor, /aria-hidden=\{!isAssistantSidebarActive\}[\s\S]*?<AIAssistant/);
   assert.match(editor, /inert=\{!isAssistantSidebarActive \? true : undefined\}/);

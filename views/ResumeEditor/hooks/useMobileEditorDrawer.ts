@@ -3,7 +3,10 @@ import { waitForNextFrame } from '../snapshotUtils';
 
 const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 320;
 
+export type MobileWorkbenchPage = 'information' | 'analysis' | 'assistant';
+
 type UseMobileEditorDrawerOptions = {
+    ownerKey?: string;
     mobileDrawerOpenRequest: number;
     onMobileDrawerOpenRequestConsumed?: () => void;
     scrollContainerRef: RefObject<HTMLDivElement>;
@@ -11,11 +14,18 @@ type UseMobileEditorDrawerOptions = {
 };
 
 export const useMobileEditorDrawer = ({
+    ownerKey,
     mobileDrawerOpenRequest,
     onMobileDrawerOpenRequestConsumed,
     scrollContainerRef,
     setSidebarTab,
 }: UseMobileEditorDrawerOptions) => {
+    const [stateOwnerKey, setStateOwnerKey] = useState(ownerKey);
+    const isOwnerMatched = stateOwnerKey === ownerKey;
+    const [page, setPage] = useState<MobileWorkbenchPage>('information');
+    const [reportTab, setReportTab] = useState<'jd' | 'resume'>('jd');
+    const [hasOpened, setHasOpened] = useState(false);
+    const [hasOpenedAssistant, setHasOpenedAssistant] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
     const timerRef = useRef<number | null>(null);
@@ -33,7 +43,10 @@ export const useMobileEditorDrawer = ({
         cancelOpenFrameRef.current = null;
     }, []);
 
-    const open = useCallback(() => {
+    const open = useCallback((target?: MobileWorkbenchPage) => {
+        if (target) setPage(target);
+        if (target === 'assistant') setHasOpenedAssistant(true);
+        setHasOpened(true);
         clearDrawerTimer();
         clearOpenFrame();
         setIsOpen(true);
@@ -61,6 +74,15 @@ export const useMobileEditorDrawer = ({
     }, [clearDrawerTimer, clearOpenFrame]);
 
     useEffect(() => {
+        dismissImmediately();
+        setStateOwnerKey(ownerKey);
+        setPage('information');
+        setReportTab('jd');
+        setHasOpened(false);
+        setHasOpenedAssistant(false);
+    }, [ownerKey, dismissImmediately]);
+
+    useEffect(() => {
         if (mobileDrawerOpenRequest <= 0 || typeof window === 'undefined') {
             return;
         }
@@ -69,7 +91,7 @@ export const useMobileEditorDrawer = ({
             return;
         }
         setSidebarTab('experience');
-        open();
+        open('information');
     }, [mobileDrawerOpenRequest, onMobileDrawerOpenRequestConsumed, open, setSidebarTab]);
 
     useEffect(() => {
@@ -111,8 +133,13 @@ export const useMobileEditorDrawer = ({
     }, [clearDrawerTimer, clearOpenFrame]);
 
     return {
-        isOpen,
-        isVisible,
+        page: isOwnerMatched ? page : 'information' as const,
+        reportTab: isOwnerMatched ? reportTab : 'jd' as const,
+        setReportTab,
+        hasOpened: isOwnerMatched && hasOpened,
+        hasOpenedAssistant: isOwnerMatched && hasOpenedAssistant,
+        isOpen: isOwnerMatched && isOpen,
+        isVisible: isOwnerMatched && isVisible,
         open,
         close,
         dismissImmediately,

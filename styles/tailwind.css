@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Browser chrome may resize the visual viewport; it must not resize the
+   mobile editor's reading surface. Screen-only rules leave printing alone. */
+@media screen and (max-width: 767.98px) {
+  html[data-rf-editor-viewport="true"],
+  html[data-rf-editor-viewport="true"] body,
+  html[data-rf-editor-viewport="true"] #root {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior-y: contain;
+  }
+
+  .rf-app-viewport[data-editor-viewport="true"],
+  .rf-editor-viewport {
+    overflow: hidden;
+  }
+
+  [data-rf-mobile-editor-scroll-root] {
+    overscroll-behavior-y: contain;
+  }
+
+  @supports (height: 100svh) {
+    .rf-app-viewport[data-editor-viewport="true"] {
+      height: 100svh;
+      min-height: 100svh;
+    }
+  }
+}
+
 
 @keyframes rf-report-panel-enter {
   from { opacity: 0; transform: translateY(4px); }
@@ -27,4 +55,68 @@
 @media (prefers-reduced-motion: reduce) {
   .rf-polish-panel-enter, .rf-polish-panel-exit { animation: none; }
   .rf-polish-panel-exit { opacity: 0; }
+}
+
+@keyframes rf-workbench-page-enter {
+  from { opacity: .3; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rf-workbench-page-enter {
+  animation: rf-workbench-page-enter 200ms cubic-bezier(.22,1,.36,1);
+}
+@media (max-width: 767px) {
+  [data-template-selection="true"] [data-editor-preview-stage] { padding-bottom: 16px; }
+  .rf-editor-viewport { view-transition-name: rf-template-workspace; }
+  .rf-mobile-editor-header, [data-mobile-template-toolbar] { view-transition-name: rf-template-header; }
+  [data-rf-preview-scope="editor"] { view-transition-name: rf-template-preview; }
+  [data-mobile-workbench-dock], [data-mobile-template-strip] { view-transition-name: rf-template-dock; }
+}
+
+/* The paper keeps its identity while the two sets of controls change around it. */
+::view-transition-group(rf-template-workspace),
+::view-transition-group(rf-template-header),
+::view-transition-group(rf-template-preview),
+::view-transition-group(rf-template-dock) {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(.22,1,.36,1);
+}
+::view-transition-group(rf-template-header),
+::view-transition-group(rf-template-dock) { z-index: 2; }
+::view-transition-group(rf-template-preview) { z-index: 1; }
+::view-transition-old(rf-template-header),
+::view-transition-old(rf-template-dock) { animation: rf-template-controls-out 140ms ease-out both; }
+::view-transition-new(rf-template-header),
+::view-transition-new(rf-template-dock) { animation: rf-template-controls-in 220ms 60ms both; }
+::view-transition-old(rf-template-preview) { animation: rf-template-controls-out 100ms ease-out both; }
+::view-transition-new(rf-template-preview) { animation: rf-template-controls-in 200ms 80ms both; }
+html[data-mobile-template-transition]::view-transition-old(root),
+html[data-mobile-template-transition]::view-transition-new(root) { animation: none; }
+html[data-mobile-template-transition]::view-transition { pointer-events: none; }
+@keyframes rf-template-controls-out { to { opacity: 0; } }
+@keyframes rf-template-controls-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 0s; animation-delay: 0s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-workbench-page-enter { animation: none; }
+}
+
+@keyframes rf-overlay-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rf-template-drawer-enter { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes rf-template-drawer-exit { from { transform: translateY(0); } to { transform: translateY(100%); } }
+[data-template-customization-motion="enter"] { animation: rf-overlay-enter 220ms ease-out both; }
+[data-template-customization-motion="exit"] { animation: rf-overlay-exit 220ms ease-in both; }
+[data-template-customization-motion="enter"] [role="dialog"] { animation: rf-template-drawer-enter 280ms cubic-bezier(.22,1,.36,1) both; }
+[data-template-customization-motion="exit"] [role="dialog"] { animation: rf-template-drawer-exit 220ms cubic-bezier(.4,0,1,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  [data-template-customization-motion], [data-template-customization-motion] [role="dialog"] { animation: none; }
+}
+@keyframes rf-overlay-exit { from { opacity: 1; } to { opacity: 0; } }
+.rf-overlay-enter { animation: rf-overlay-enter 180ms ease-out; }
+.rf-overlay-exit { animation: rf-overlay-exit 160ms ease-in both; }
+[data-modal-motion="enter"] [data-quota-dialog] { animation: rf-polish-panel-enter 200ms cubic-bezier(.22,1,.36,1); }
+[data-modal-motion="exit"] [data-quota-dialog] { animation: rf-polish-panel-exit 160ms ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .rf-overlay-enter, .rf-overlay-exit,
+  [data-modal-motion] [data-quota-dialog] { animation: none; }
 }

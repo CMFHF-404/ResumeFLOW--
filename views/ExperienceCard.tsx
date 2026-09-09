@@ -6,7 +6,7 @@ import type { PolishMode } from '../services/aiService';
 import MonthPicker from '../components/MonthPicker';
 import RichTextEditor from '../components/RichTextEditor';
 import { resolveCardMotionClass } from '../components/cardMotion';
-import { parseYearMonthValue } from '../utils/dateUtils';
+import { buildExperienceDate, parseYearMonthValue } from '../utils/dateUtils';
 import { stripRichTextToText } from '../utils/richText';
 import type {
   ExperienceDraftCardData,
@@ -143,7 +143,7 @@ const CollapsedExperienceCard: React.FC<{
         </div>
         <div className="flex shrink-0 items-center gap-2 text-right">
           <span className="block text-sm font-mono text-gray-500 dark:text-gray-400">
-            {data.start_date} - {data.end_date || '至今'}
+            {buildExperienceDate(data.start_date, data.end_date)}
           </span>
           <button
             onClick={handleDelete}
@@ -179,7 +179,7 @@ const CollapsedExperienceCard: React.FC<{
             {data.title}
           </p>
           <p className="shrink-0 whitespace-nowrap text-right text-sm font-mono text-gray-500 dark:text-gray-400">
-            {data.start_date} - {data.end_date || '至今'}
+            {buildExperienceDate(data.start_date, data.end_date)}
           </p>
         </div>
         <p className="col-span-full pt-1 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
