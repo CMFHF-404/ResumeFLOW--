@@ -186,7 +186,15 @@ class PaymentCatalogTests(unittest.IsolatedAsyncioTestCase):
                 ("unlimited_year", 22980),
             ],
         )
-        self.assertEqual(response.products[0].token_amount, 100_000)
+        self.assertEqual(response.products[0].token_amount, 200_000)
+        self.assertEqual(
+            [(item.name, item.token_amount) for item in response.products[:3]],
+            [("200K Token 包", 200_000), ("1M Token 包", 1_000_000), ("2M Token 包", 2_000_000)],
+        )
+        self.assertEqual(
+            [option.tokens for option in payment_service.billing_service.get_purchase_options()],
+            [item.token_amount for item in response.products[:3]],
+        )
         self.assertEqual(
             [item.unlimited_duration_days for item in response.products[3:]],
             [30, 90, 365],
@@ -296,17 +304,17 @@ class EntitlementServiceTests(unittest.IsolatedAsyncioTestCase):
             user_id="user-1",
             grant=EntitlementGrant(
                 option_id="tokens_500k",
-                label="500K Token 包",
+                label="1M Token 包",
                 benefit_type="tokens",
-                token_amount=500_000,
+                token_amount=1_000_000,
             ),
             source="yifut_payment",
             source_id="order-1",
             status="payment_succeeded",
         )
         self.assertTrue(result.created)
-        self.assertEqual(wallet.token_limit, 501_000)
-        self.assertEqual(wallet.remaining_tokens, 500_400)
+        self.assertEqual(wallet.token_limit, 1_001_000)
+        self.assertEqual(wallet.remaining_tokens, 1_000_400)
         self.assertEqual(wallet.used_tokens, 600)
         self.assertEqual(len([item for item in session.added if isinstance(item, AITokenPurchaseEvent)]), 1)
 
@@ -393,8 +401,8 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
 
         order = next(item for item in session.added if isinstance(item, PaymentOrder))
         self.assertEqual((created.sku, created.amount_fen), ("tokens_100k", 198))
-        self.assertEqual((order.amount_fen, order.token_amount), (198, 100_000))
-        self.assertEqual(order.entitlement_snapshot_json["token_amount"], 100_000)
+        self.assertEqual((order.amount_fen, order.token_amount), (198, 200_000))
+        self.assertEqual(order.entitlement_snapshot_json["token_amount"], 200_000)
 
     def test_token_package_prices_do_not_reward_splitting_orders(self) -> None:
         token_products = [item for item in payment_catalog.PRODUCTS if item.category == "tokens"]
@@ -417,11 +425,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 merchant_order_no=f"RF-LIST-{value}",
                 idempotency_key=f"list-{value}",
                 sku="tokens_100k",
-                product_name="100K Token 包",
+                product_name="200K Token 包",
                 amount_fen=198,
                 currency="CNY",
                 benefit_type="tokens",
-                token_amount=100_000,
+                token_amount=200_000,
                 entitlement_snapshot_json={"description": "100,000 Token，永久有效", "private": "hidden"},
                 expires_at=created_at + timedelta(minutes=30),
                 created_at=created_at,
@@ -553,11 +561,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-CANCEL-1",
             idempotency_key="cancel-1",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             expires_at=boundary + timedelta(seconds=1),
         )
         session = _FakeSession([_ExecuteResult(cancellable)])
@@ -591,11 +599,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-EXPIRE-BOUNDARY",
             idempotency_key="expire-boundary",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             expires_at=boundary,
         )
         expiry_session = _FakeSession([_ExecuteResult(expiring)])
@@ -615,11 +623,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-PAID-CANCEL",
             idempotency_key="paid-cancel",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             expires_at=utc_now_aware() + timedelta(minutes=20),
             status="paid",
         )
@@ -645,10 +653,10 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-GET-LOCK-ORDER",
             idempotency_key="get-lock-order",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             expires_at=utc_now_aware() + timedelta(minutes=10),
         )
         session = _FakeSession([_ExecuteResult(order)])
@@ -758,7 +766,9 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             )
         order = next(item for item in session.added if isinstance(item, PaymentOrder))
         self.assertEqual(created.sku, "tokens_500k")
-        self.assertEqual((order.amount_fen, order.currency, order.token_amount), (990, "CNY", 500_000))
+        self.assertEqual(created.product_name, "1M Token 包")
+        self.assertEqual(order.entitlement_snapshot_json["name"], "1M Token 包")
+        self.assertEqual((order.amount_fen, order.currency, order.token_amount), (990, "CNY", 1_000_000))
         self.assertEqual(order.entitlement_snapshot_json["amount_fen"], 990)
         self.assertEqual(session.commits, 1)
 
@@ -781,10 +791,10 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-CONTEXT-OLDER",
             idempotency_key="context-older",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             status="expired",
             state_version=3,
             expires_at=utc_now_aware(),
@@ -796,10 +806,10 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-CONTEXT-LATEST",
             idempotency_key="context-latest",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             status="fulfilled",
             state_version=2,
             expires_at=utc_now_aware(),
@@ -854,11 +864,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-RATE-LIMIT-OLD",
             idempotency_key="rate-limit-old",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="cancelled",
             cancelled_at=now - timedelta(minutes=1),
@@ -906,11 +916,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-RATE-LIMIT-DUE",
             idempotency_key="rate-limit-due",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="pending",
             expires_at=now - timedelta(seconds=1),
@@ -954,11 +964,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-RATE-LIMIT-ACTIVE",
             idempotency_key="active-original",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="pending",
             expires_at=now + timedelta(minutes=20),
@@ -1003,10 +1013,10 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-CALLBACK-FIRST",
             idempotency_key="old-key",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             status="expired",
             state_version=4,
             expires_at=utc_now_aware(),
@@ -1093,10 +1103,10 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-NONLATEST-OLD",
             idempotency_key="nonlatest-old",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             status="expired",
             state_version=1,
             expires_at=now,
@@ -1107,10 +1117,10 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-NONLATEST-LATEST",
             idempotency_key="nonlatest-latest",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             status="fulfilled",
             state_version=2,
             expires_at=now,
@@ -1214,11 +1224,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-REUSE-TERMINAL",
             idempotency_key="first-attempt",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="cancelled",
             cancelled_at=now - timedelta(minutes=1),
@@ -1267,11 +1277,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-ALIAS-REPLAY",
             idempotency_key="K1",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="expired",
             expires_at=now - timedelta(minutes=1),
@@ -1335,11 +1345,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-LEGACY-KEY",
             idempotency_key="legacy-key",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="fulfilled",
             expires_at=utc_now_aware(),
@@ -1360,7 +1370,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
     async def test_terminal_repurchase_uses_the_current_product_snapshot(self) -> None:
         current_snapshot = _snapshot_for("tokens_100k")
         cases = (
-            ("price", {**current_snapshot, "amount_fen": 197}, 197, 100_000),
+            ("price", {**current_snapshot, "amount_fen": 197}, 197, 200_000),
             ("benefit", {**current_snapshot, "token_amount": 99_000}, 198, 99_000),
         )
         for label, snapshot, amount_fen, token_amount in cases:
@@ -1370,7 +1380,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                     merchant_order_no=f"RF-CATALOG-{label.upper()}",
                     idempotency_key=f"old-{label}",
                     sku="tokens_100k",
-                    product_name="100K Token 包",
+                    product_name="200K Token 包",
                     amount_fen=amount_fen,
                     currency="CNY",
                     benefit_type="tokens",
@@ -1403,7 +1413,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotEqual(replacement.id, str(order.id))
                 self.assertEqual(order.status, "expired")
                 self.assertEqual(replacement_order.amount_fen, 198)
-                self.assertEqual(replacement_order.token_amount, 100_000)
+                self.assertEqual(replacement_order.token_amount, 200_000)
                 self.assertEqual(
                     replacement_order.entitlement_snapshot_json,
                     current_snapshot,
@@ -1416,11 +1426,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-BLOCK-DIFFERENT-SKU",
             idempotency_key="first-attempt",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="expired",
             expires_at=utc_now_aware() - timedelta(minutes=1),
@@ -1453,11 +1463,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                 merchant_order_no=f"RF-LEGACY-{index}",
                 idempotency_key=f"legacy-{index}",
                 sku="tokens_100k",
-                product_name="100K Token 包",
+                product_name="200K Token 包",
                 amount_fen=198,
                 currency="CNY",
                 benefit_type="tokens",
-                token_amount=100_000,
+                token_amount=200_000,
                 status="expired",
                 expires_at=now - timedelta(minutes=index),
             )
@@ -1489,11 +1499,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-REUSE-LATE-CALLBACK",
             idempotency_key="first-attempt",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="expired",
             expires_at=now - timedelta(minutes=1),
@@ -1572,11 +1582,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-RACED",
             idempotency_key="same-key",
             sku="tokens_1m",
-            product_name="1M Token 包",
+            product_name="2M Token 包",
             amount_fen=1_890,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=1_000_000,
+            token_amount=2_000_000,
             expires_at=utc_now_aware() + timedelta(minutes=20),
         )
         session = _IntegrityRaceSession(
@@ -1606,11 +1616,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-RACED-SAME-SKU",
             idempotency_key="same-key",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             entitlement_snapshot_json=_snapshot_for("tokens_500k"),
             expires_at=utc_now_aware() + timedelta(minutes=20),
         )
@@ -1645,11 +1655,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-RACED-DIFFERENT-KEY",
             idempotency_key="other-key",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             entitlement_snapshot_json=_snapshot_for("tokens_500k"),
             status="paid",
             paid_at=utc_now_aware(),
@@ -1734,11 +1744,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-ORDER-1",
             idempotency_key="idem-1",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             entitlement_snapshot_json=_snapshot_for("tokens_500k"),
             expires_at=now + timedelta(minutes=20),
         )
@@ -1763,6 +1773,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.method, "POST")
         self.assertEqual(response.fields["fee_mode"], "0")
         self.assertEqual(response.fields["money"], "9.90")
+        self.assertEqual(response.fields["name"], "1M Token 包")
         self.assertNotIn("type", response.fields)
         self.assertEqual(captured["notify_url"], "https://api.example.com/api/billing/payments/yifut/notify")
         self.assertEqual(captured["return_url"], f"https://app.example.com/?payment_order={order.id}")
@@ -1789,11 +1800,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                     merchant_order_no=f"RF-ORIGIN-{uuid.uuid4().hex}",
                     idempotency_key=f"origin-{uuid.uuid4().hex}",
                     sku="tokens_500k",
-                    product_name="500K Token 包",
+                    product_name="1M Token 包",
                     amount_fen=990,
                     currency="CNY",
                     benefit_type="tokens",
-                    token_amount=500_000,
+                    token_amount=1_000_000,
                     entitlement_snapshot_json=_snapshot_for("tokens_500k"),
                     expires_at=now + timedelta(minutes=20),
                 )
@@ -1831,11 +1842,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-CHECKOUT-REOPEN",
             idempotency_key="checkout-reopen",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="expired",
             expires_at=now - timedelta(minutes=1),
@@ -1864,7 +1875,9 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
     async def test_checkout_blocks_catalog_drift_before_reopen_or_signing(self) -> None:
         current_snapshot = _snapshot_for("tokens_100k")
         for label, snapshot, amount_fen, token_amount in (
-            ("price", {**current_snapshot, "amount_fen": 197}, 197, 100_000),
+            ("previous_offer", {**current_snapshot, "name": "100K Token 包", "token_amount": 100_000,
+                                 "description": "100,000 Token，永久有效"}, 198, 100_000),
+            ("price", {**current_snapshot, "amount_fen": 197}, 197, 200_000),
             ("benefit", {**current_snapshot, "token_amount": 99_000}, 198, 99_000),
         ):
             with self.subTest(label=label):
@@ -1873,7 +1886,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
                     merchant_order_no=f"RF-CHECKOUT-CATALOG-{label.upper()}",
                     idempotency_key=f"checkout-{label}",
                     sku="tokens_100k",
-                    product_name="100K Token 包",
+                    product_name="200K Token 包",
                     amount_fen=amount_fen,
                     currency="CNY",
                     benefit_type="tokens",
@@ -1911,11 +1924,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-CHECKOUT-LEGACY-TARGET",
             idempotency_key="legacy-target",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             entitlement_snapshot_json=_snapshot_for("tokens_100k"),
             status="expired",
             expires_at=now - timedelta(minutes=2),
@@ -1925,11 +1938,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-CHECKOUT-LEGACY-OTHER",
             idempotency_key="legacy-other",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             status="cancelled",
             expires_at=now - timedelta(minutes=1),
             cancelled_at=now - timedelta(minutes=1),
@@ -1957,11 +1970,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-ORDER-1",
             idempotency_key="idem-1",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             expires_at=utc_now_aware() + timedelta(minutes=20),
         )
         valid = {
@@ -2032,11 +2045,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-ORDER-PAID",
             idempotency_key="idem-paid",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             expires_at=now - timedelta(minutes=1),
             status="expired",
         )
@@ -2068,7 +2081,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(fulfilled.status, "fulfilled")
         self.assertEqual(fulfilled.state_version, 2)
-        self.assertEqual(wallet.remaining_tokens, 500_400)
+        self.assertEqual(wallet.remaining_tokens, 1_000_400)
         self.assertEqual(wallet.used_tokens, 600)
         self.assertEqual(len([item for item in session.added if isinstance(item, AITokenPurchaseEvent)]), 1)
         webhook = next(item for item in session.added if isinstance(item, PaymentWebhookEvent))
@@ -2086,7 +2099,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(duplicate.status, "fulfilled")
         self.assertEqual(duplicate.state_version, 2)
-        self.assertEqual(wallet.remaining_tokens, 500_400)
+        self.assertEqual(wallet.remaining_tokens, 1_000_400)
         self.assertEqual(
             len([item for item in duplicate_session.added if isinstance(item, AITokenPurchaseEvent)]),
             0,
@@ -2099,11 +2112,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-CANCELLED-LATE-PAID",
             idempotency_key="cancelled-late-paid",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             expires_at=now - timedelta(minutes=1),
             status="cancelled",
             cancelled_at=now - timedelta(minutes=2),
@@ -2171,11 +2184,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-SIGNED-CALLBACK",
             idempotency_key="signed-callback",
             sku="tokens_500k",
-            product_name="500K Token 包",
+            product_name="1M Token 包",
             amount_fen=990,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=500_000,
+            token_amount=1_000_000,
             expires_at=now + timedelta(minutes=20),
         )
         wallet = AITokenWallet(
@@ -2212,7 +2225,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             result = await payment_service.process_notification(session, payload)
 
         self.assertEqual(result.status, "fulfilled")
-        self.assertEqual(wallet.remaining_tokens, 500_025)
+        self.assertEqual(wallet.remaining_tokens, 1_000_025)
         self.assertFalse(payment_service.payments_enabled(settings))
         lock_statements = _locking_statements(session)
         _assert_no_key_user_lock(self, lock_statements[0])
@@ -2278,10 +2291,10 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-SYNC-UNPAID-LOCK",
             idempotency_key="sync-unpaid-lock",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             status="pending",
             expires_at=utc_now_aware() + timedelta(minutes=10),
         )
@@ -2311,11 +2324,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-SYNC-ERROR-CODE",
             idempotency_key="sync-error-code",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             status="pending",
             expires_at=now - timedelta(minutes=1),
         )
@@ -2347,11 +2360,11 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             merchant_order_no="RF-SYNC-RACE",
             idempotency_key="sync-race",
             sku="tokens_100k",
-            product_name="100K Token 包",
+            product_name="200K Token 包",
             amount_fen=198,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             expires_at=now - timedelta(minutes=1),
             status="pending",
         )
@@ -2365,7 +2378,7 @@ class PaymentCheckoutTests(unittest.IsolatedAsyncioTestCase):
             amount_fen=queried_order.amount_fen,
             currency="CNY",
             benefit_type="tokens",
-            token_amount=100_000,
+            token_amount=200_000,
             expires_at=queried_order.expires_at,
             status="fulfilled",
             fulfilled_at=now,

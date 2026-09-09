@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">原子简历</string>
+    <string name="loading">正在打开原子简历…</string>
+    <string name="load_failed">页面暂时无法打开，请检查网络后重试。</string>
+    <string name="payment_load_failed">支付页面暂时无法打开。请返回网站，在订单记录中确认支付状态后继续付款。</string>
+    <string name="retry">重新加载</string>
+    <string name="home">返回首页</string>
+    <string name="update_webview">请更新 Android System WebView 或 Chrome 后重试文件下载。</string>
+    <string name="download_failed">文件保存失败，请重试。</string>
+    <string name="download_busy">请先完成当前文件保存。</string>
+    <string name="download_preparing">正在准备文件…</string>
+    <string name="download_saved">文件已保存</string>
+    <string name="download_open">打开文件</string>
+    <string name="done">完成</string>
+    <string name="link_unavailable">无法打开此链接。</string>
+    <string name="picker_unavailable">无法打开系统文件选择器。</string>
+    <string name="browser_update_required">当前浏览器内核过旧，无法打开原子简历。请更新 Chrome 或 Android System WebView 至 107 或更高版本，然后重新打开应用。</string>
+    <string name="browser_update">更新浏览器内核</string>
+    <string name="browser_recheck">重新检查</string>
+</resources>

@@ -33,30 +33,31 @@ TEST_PRODUCT = PaymentProduct(
 )
 
 
+# SKUs are stable identifiers; names and entitlement snapshots reflect current offers.
 PRODUCTS: tuple[PaymentProduct, ...] = (
     PaymentProduct(
         sku="tokens_100k",
-        name="100K Token 包",
+        name="200K Token 包",
         category="tokens",
         amount_fen=198,
-        token_amount=100_000,
-        description="100,000 Token，永久有效",
+        token_amount=200_000,
+        description="200,000 Token，永久有效",
     ),
     PaymentProduct(
         sku="tokens_500k",
-        name="500K Token 包",
+        name="1M Token 包",
         category="tokens",
         amount_fen=990,
-        token_amount=500_000,
-        description="500,000 Token，永久有效",
+        token_amount=1_000_000,
+        description="1,000,000 Token，永久有效",
     ),
     PaymentProduct(
         sku="tokens_1m",
-        name="1M Token 包",
+        name="2M Token 包",
         category="tokens",
         amount_fen=1_890,
-        token_amount=1_000_000,
-        description="1,000,000 Token，永久有效",
+        token_amount=2_000_000,
+        description="2,000,000 Token，永久有效",
     ),
     PaymentProduct(
         sku="unlimited_month",

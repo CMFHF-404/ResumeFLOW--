@@ -97,7 +97,7 @@ class BillingPurchaseTests(unittest.IsolatedAsyncioTestCase):
         options = billing_service.get_purchase_options()
 
         self.assertEqual([option.id for option in options], ["tokens_100k", "tokens_500k", "tokens_1m"])
-        self.assertEqual([option.tokens for option in options], [100_000, 500_000, 1_000_000])
+        self.assertEqual([option.tokens for option in options], [200_000, 1_000_000, 2_000_000])
         self.assertTrue(all(option.is_placeholder for option in options))
 
     async def test_placeholder_purchase_stacks_remaining_balance_as_new_limit(self) -> None:
@@ -115,16 +115,16 @@ class BillingPurchaseTests(unittest.IsolatedAsyncioTestCase):
             "tokens_500k",
         )
 
-        self.assertEqual(wallet.token_limit, 502_500)
-        self.assertEqual(wallet.remaining_tokens, 502_500)
+        self.assertEqual(wallet.token_limit, 1_002_500)
+        self.assertEqual(wallet.remaining_tokens, 1_002_500)
         self.assertEqual(wallet.used_tokens, 0)
-        self.assertEqual(summary.token_limit, 502_500)
-        self.assertEqual(summary.remaining_tokens, 502_500)
+        self.assertEqual(summary.token_limit, 1_002_500)
+        self.assertEqual(summary.remaining_tokens, 1_002_500)
         purchases = [item for item in session.added if isinstance(item, AITokenPurchaseEvent)]
         self.assertEqual(len(purchases), 1)
         self.assertEqual(purchases[0].before_remaining_tokens, 2_500)
-        self.assertEqual(purchases[0].after_remaining_tokens, 502_500)
-        self.assertEqual(purchases[0].after_token_limit, 502_500)
+        self.assertEqual(purchases[0].after_remaining_tokens, 1_002_500)
+        self.assertEqual(purchases[0].after_token_limit, 1_002_500)
 
     async def test_placeholder_purchase_locks_wallet_row_before_replacing_balance(self) -> None:
         wallet = AITokenWallet(
