@@ -34,22 +34,22 @@ UsageCallback = Optional[Callable[[Dict[str, Any]], Optional[Awaitable[None]]]]
 PURCHASE_OPTIONS: tuple[TokenPurchaseOption, ...] = (
     TokenPurchaseOption(
         id="tokens_100k",
-        label="100k tokens",
-        tokens=100_000,
+        label="200K tokens",
+        tokens=200_000,
         price_label="占位购买",
         description="适合少量 JD 分析与润色",
     ),
     TokenPurchaseOption(
         id="tokens_500k",
-        label="500k tokens",
-        tokens=500_000,
+        label="1M tokens",
+        tokens=1_000_000,
         price_label="占位购买",
         description="适合连续整理多份简历",
     ),
     TokenPurchaseOption(
         id="tokens_1m",
-        label="1M tokens",
-        tokens=1_000_000,
+        label="2M tokens",
+        tokens=2_000_000,
         price_label="占位购买",
         description="适合高频 AI 助理与 Agent API",
     ),
