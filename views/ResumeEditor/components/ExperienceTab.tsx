@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ArrowLeft, Briefcase, CheckCircle2, FolderKanban, Sparkles, Wand2, X } from 'lucide-react';
+import { useExitContent } from '../../../hooks/useUiMotion';
 import MonthPicker from '../../../components/MonthPicker';
 import RichTextEditor from '../../../components/RichTextEditor';
 import type { ExperienceActions, ExperienceTabProps, StarFieldKey } from '../../../types/resume';
 import { ADD_PROJECT_EXPERIENCE_LABEL, ADD_WORK_EXPERIENCE_LABEL } from '../constants';
 import MatchScoreFilter from './MatchScoreFilter';
-import CertificationListSection from './CertificationListSection';
+const CertificationListSection = React.lazy(() => import('./CertificationListSection'));
 import ExperienceListSection from './ExperienceList/ListSection';
 import PersonalSummaryPanel from './PersonalSummaryPanel';
 import SkillListSection from './SkillListSection';
@@ -118,6 +119,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     onResetCertificationSort,
 }) => {
     const isDrawerLayout = layoutMode === 'drawer';
+    const displayedBatchToolbar = useExitContent(batchPolishToolbar ?? null);
     const listScrollSnapshotRef = useRef<number | null>(null);
     const shouldRestoreScrollRef = useRef(false);
     const prevEditingExpIdRef = useRef<string | null>(experience.editingExpId);
@@ -514,10 +516,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         );
     }
 
-    const desktopBatchPolishOverlay = batchPolishToolbar && !isDrawerLayout ? (
-        <>
+    const desktopBatchPolishOverlay = displayedBatchToolbar && !isDrawerLayout ? (
+        <div aria-hidden={!batchPolishToolbar || undefined} inert={!batchPolishToolbar ? true : undefined}>
             <div
-                className="fixed inset-0 z-[55] bg-slate-950/18 md:hidden"
+                className="fixed inset-0 z-[55] bg-slate-950/18 transition-opacity duration-150 md:hidden"
+                style={{ opacity: batchPolishToolbar ? 1 : 0 }}
                 onClick={(event) => {
                     event.stopPropagation();
                     onDismissBatchPolishToolbar?.();
@@ -527,7 +530,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 className="fixed inset-x-4 top-[max(16px,env(safe-area-inset-top))] bottom-[max(16px,env(safe-area-inset-bottom))] z-[60] flex items-center justify-center md:absolute md:inset-x-auto md:left-auto md:right-0 md:top-[calc(100%+12px)] md:bottom-auto md:z-30 md:mt-0 md:block md:w-[560px] md:max-h-[48vh]"
                 onClick={(event) => event.stopPropagation()}
             >
-                <div className="flex max-h-full w-full max-w-[36rem] flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.18)] md:max-h-[48vh]">
+                <div className={`flex max-h-full w-full max-w-[36rem] flex-col overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.18)] md:max-h-[48vh] ${batchPolishToolbar ? 'rf-polish-panel-enter' : 'rf-polish-panel-exit'}`} data-batch-polish-motion={batchPolishToolbar ? 'enter' : 'exit'}>
                     <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.95),rgba(255,255,255,0.98))] px-4 py-3">
                         <div className="min-w-0">
                             <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
@@ -556,11 +559,11 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                         ) : null}
                     </div>
                     <div className="min-h-0 flex flex-1 flex-col overflow-hidden p-3">
-                        {batchPolishToolbar}
+                        {displayedBatchToolbar}
                     </div>
                 </div>
             </div>
-        </>
+        </div>
     ) : null;
 
     return (
@@ -623,6 +626,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 {desktopBatchPolishOverlay}
             </div>
             <PersonalSummaryPanel
+                compact
                 value={personalSummary}
                 isVisible={isSummaryVisible}
                 isGenerating={isGeneratingPersonalSummary}
@@ -635,10 +639,9 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
             {matchScoreFilter > 0 && hiddenSummary.hiddenTotal > 0 ? (
                 <div className="mx-1 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[11px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
                     <div className="flex items-start justify-between gap-3">
-                        <span>
-                            当前匹配分数低于 {matchScoreFilter}% 的项不满足筛选条件
-                            {hiddenSummary.text ? ` ${hiddenSummary.text}` : '全部内容'}
-                    </span>
+                        <span className={isDrawerLayout ? 'min-w-0 truncate' : undefined} title={hiddenSummary.text}>
+                            {isDrawerLayout ? `已隐藏 ${hiddenSummary.hiddenTotal} 项低于 ${matchScoreFilter}% 的内容` : <>当前匹配分数低于 {matchScoreFilter}% 的项不满足筛选条件{hiddenSummary.text ? ` ${hiddenSummary.text}` : '全部内容'}</>}
+                        </span>
                         <button
                             type="button"
                             onClick={() => {
@@ -658,6 +661,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 </div>
             ) : null}
             <ExperienceListSection
+                compact={isDrawerLayout}
                 title="工作经历"
                 items={filteredWorkItems}
                 emptyMessage={buildFilterHiddenMessage('工作经历', '条', hiddenSummary.workHidden, matchScoreFilter)}
@@ -682,6 +686,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 onResetSort={onResetWorkSort}
             />
             <ExperienceListSection
+                compact={isDrawerLayout}
                 title="项目经历"
                 items={filteredProjectItems}
                 emptyMessage={buildFilterHiddenMessage('项目经历', '条', hiddenSummary.projectHidden, matchScoreFilter)}
@@ -705,6 +710,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 onDismissPolishToolbar={onDismissPolishExperienceToolbar}
                 onResetSort={onResetProjectSort}
             />
+            <React.Suspense fallback={<div className="h-20 animate-pulse rounded-xl bg-gray-50 dark:bg-gray-900" aria-label="正在加载证书" />}>
             <CertificationListSection
                 title="证书资质"
                 items={filteredCertifications}
@@ -726,6 +732,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                 onResetSort={handleResetCertificationSort}
                 disabled={hasBlockingPolishState}
             />
+            </React.Suspense>
             <SkillListSection
                 title="专业技能"
                 groups={filteredSkillGroups}

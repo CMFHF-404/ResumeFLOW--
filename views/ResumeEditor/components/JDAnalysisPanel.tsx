@@ -190,7 +190,13 @@ const SameTypeJobStrategyCard: React.FC<SameTypeJobStrategyCardProps> = ({
     );
 };
 
-type JDInterpretationCardProps = {
+type JDReportRefreshProps = {
+    onAnalyze: () => void;
+    isAnalyzing: boolean;
+    isAnalyzeDisabled: boolean;
+};
+
+type JDInterpretationCardProps = JDReportRefreshProps & {
     analysisResult: JDAnalysisResult;
 };
 
@@ -216,7 +222,7 @@ const SCORE_CONFIDENCE_LABELS = {
     low: '低',
 } as const;
 
-const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisResult }) => {
+const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisResult, onAnalyze, isAnalyzing, isAnalyzeDisabled }) => {
     const interpretation = analysisResult.jdInterpretation;
     const profileTags = buildProfileTags(interpretation);
     const coreResponsibilities = getArray<RequirementItem>(interpretation?.coreResponsibilities);
@@ -232,7 +238,20 @@ const JDInterpretationCard: React.FC<JDInterpretationCardProps> = ({ analysisRes
             <div className="flex items-center justify-between gap-3">
                 <div>
                     <p className="mb-1 text-[10px] font-semibold tracking-widest text-emerald-700 dark:text-emerald-400">岗位匹配</p>
-                    <h4 className="text-base font-bold text-slate-900 dark:text-white">JD 分析报告</h4>
+                    <div className="flex items-center gap-1.5">
+                        <h4 className="text-base font-bold text-slate-900 dark:text-white">JD 分析报告</h4>
+                        <button
+                            type="button"
+                            onClick={onAnalyze}
+                            disabled={isAnalyzing || isAnalyzeDisabled}
+                            aria-label="重新分析 JD"
+                            title="重新分析 JD"
+                            aria-busy={isAnalyzing}
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-emerald-950 dark:hover:text-emerald-300"
+                        >
+                            <RefreshCw aria-hidden="true" className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
+                        </button>
+                    </div>
                 </div>
                 {jdMatch === null ? (
                     <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">待分析</span>
@@ -379,7 +398,7 @@ type JDAnalysisPanelProps = {
     onOpenDetailsSidebar?: () => void;
 };
 
-type JDAnalysisDetailsModalProps = {
+type JDAnalysisDetailsModalProps = JDReportRefreshProps & {
     isOpen: boolean;
     analysisResult: JDAnalysisResult | null;
     jdText: string;
@@ -401,7 +420,7 @@ type JDAnalysisDetailsModalProps = {
     onClose: () => void;
 };
 
-const useJDStrategyCopyState = (onOpenAgentPluginConfig?: () => void) => {
+export const useJDStrategyCopyState = (onOpenAgentPluginConfig?: () => void) => {
     const [strategyCopyStatus, setStrategyCopyStatus] = useState<StrategyCopyStatus>('idle');
     const [manualStrategyCopyText, setManualStrategyCopyText] = useState('');
     const copyStatusResetTimerRef = useRef<number | null>(null);
@@ -466,7 +485,8 @@ const useJDStrategyCopyState = (onOpenAgentPluginConfig?: () => void) => {
     };
 };
 
-type JDAnalysisDetailsContentProps = {
+type JDAnalysisDetailsContentProps = JDReportRefreshProps & {
+    reportTab?: 'jd' | 'resume';
     analysisResult: JDAnalysisResult;
     jdText: string;
     isOutdated: boolean;
@@ -486,7 +506,11 @@ type JDAnalysisDetailsContentProps = {
     onCopyText: (text: string, mode: 'queries' | 'agent') => void;
 };
 
-const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
+export const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
+    reportTab,
+    onAnalyze,
+    isAnalyzing,
+    isAnalyzeDisabled,
     analysisResult,
     jdText,
     isOutdated,
@@ -510,10 +534,10 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
     const shouldShowJdAnalysis = Boolean(jdText.trim())
         && (!isCurrentEvaluation || evaluation.jdMatch !== null);
     const [activeReport, setActiveReport] = useState<'jd' | 'resume'>(() => shouldShowJdAnalysis ? 'jd' : 'resume');
-    const selectedReport = shouldShowJdAnalysis ? activeReport : 'resume';
+    const selectedReport = reportTab ?? (shouldShowJdAnalysis ? activeReport : 'resume');
     return (
       <div>
-        <div className="relative mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-900" role="tablist" aria-label="分析报告类型">
+        {!reportTab ? <div className="relative mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-900" role="tablist" aria-label="分析报告类型">
             <div aria-hidden="true" className="pointer-events-none absolute inset-1">
                 <div className={`h-full w-1/2 rounded-lg bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none dark:bg-slate-800 ${selectedReport === 'resume' ? 'translate-x-full' : 'translate-x-0'}`} />
             </div>
@@ -540,11 +564,11 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
             >
                 简历诊断报告
             </button>
-        </div>
+        </div> : null}
         {selectedReport === 'jd' ? (
             <section id="jd-report-panel" role="tabpanel" aria-labelledby="jd-report-tab" className="rf-report-panel-enter space-y-4">
                 {isOutdated ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-relaxed text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">这是较早版本简历的历史 JD 分析，请重新分析后再据此判断。</div> : null}
-                <JDInterpretationCard analysisResult={analysisResult} />
+                <JDInterpretationCard analysisResult={analysisResult} onAnalyze={onAnalyze} isAnalyzing={isAnalyzing} isAnalyzeDisabled={isAnalyzeDisabled} />
                 <CapabilityEvidenceCard analysisResult={analysisResult} />
                 <SameTypeJobStrategyCard
                     interpretation={analysisResult.jdInterpretation}
@@ -578,7 +602,7 @@ const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
     );
 };
 
-type JDAnalysisDetailsSidebarProps = {
+type JDAnalysisDetailsSidebarProps = JDReportRefreshProps & {
     analysisResult: JDAnalysisResult | null;
     jdText: string;
     isOutdated: boolean;
@@ -598,6 +622,9 @@ type JDAnalysisDetailsSidebarProps = {
 };
 
 export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> = ({
+    onAnalyze,
+    isAnalyzing,
+    isAnalyzeDisabled,
     analysisResult,
     jdText,
     isOutdated,
@@ -661,6 +688,9 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-4 py-4">
                 <JDAnalysisDetailsContent
+                    onAnalyze={onAnalyze}
+                    isAnalyzing={isAnalyzing}
+                    isAnalyzeDisabled={isAnalyzeDisabled}
                     analysisResult={analysisResult}
                     jdText={jdText}
                     isOutdated={isOutdated}
@@ -685,6 +715,9 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
 };
 
 const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
+    onAnalyze,
+    isAnalyzing,
+    isAnalyzeDisabled,
     isOpen,
     analysisResult,
     jdText,
@@ -743,6 +776,9 @@ const JDAnalysisDetailsModal: React.FC<JDAnalysisDetailsModalProps> = ({
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-5 py-4">
                     <JDAnalysisDetailsContent
+                    onAnalyze={onAnalyze}
+                    isAnalyzing={isAnalyzing}
+                    isAnalyzeDisabled={isAnalyzeDisabled}
                         analysisResult={analysisResult}
                         jdText={jdText}
                         isOutdated={isOutdated}
@@ -1364,6 +1400,9 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
             </div>
         </div>
             <JDAnalysisDetailsModal
+                onAnalyze={onAnalyze}
+                isAnalyzing={isAnalyzing}
+                isAnalyzeDisabled={isEvaluating || !hasJdContext || hasMissingAttachmentContext}
                 isOpen={isDetailsModalOpen}
                 analysisResult={analysisResult}
                 jdText={jdContextText}

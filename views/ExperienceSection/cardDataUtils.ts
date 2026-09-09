@@ -36,7 +36,7 @@ export const buildExperienceCardData = (item: ExperienceListItem): ExperienceCar
     org: item.latest_version?.org || '',
     title: item.latest_version?.title || '',
     start_date: item.latest_version?.start_date || '',
-    end_date: item.latest_version?.end_date || '',
+    end_date: item.latest_version?.is_current ? '至今' : item.latest_version?.end_date || '',
     star: buildStarFieldState({ star } as ExperienceCardData),
     editMode: 'expert',
     simpleText: '',
@@ -104,11 +104,14 @@ export const buildStarPolishPayload = (data: ExperienceCardData) => {
   };
 };
 
+const isPresentDate = (value: string) => ['至今', 'Present'].includes(value.trim());
+
 export const buildVersionPayload = (data: ExperienceCardData) => ({
   title: data.title,
   org: data.org || undefined,
   start_date: convertDateToISO(data.start_date),
   end_date: convertDateToISO(data.end_date),
+  is_current: isPresentDate(data.end_date),
   star: buildStarFieldState(data),
 });
 
@@ -149,6 +152,7 @@ export const applyOptimisticSave = (
           org: data.org,
           start_date: convertDateToISO(data.start_date),
           end_date: convertDateToISO(data.end_date),
+          is_current: isPresentDate(data.end_date),
           star: data.star,
         } as any,
       };

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 type AssistantSidebarHeaderProps = {
+  compact?: boolean;
   title: string;
   isHistoryOpen: boolean;
   onNewChat?: () => void;
@@ -21,6 +22,7 @@ const SIDEBAR_ACTION_BUTTON_CLASS = 'pointer-events-auto inline-flex h-8 w-8 ite
 const SIDEBAR_ANALYSIS_BUTTON_CLASS = 'pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 dark:text-emerald-300 dark:hover:text-emerald-200';
 
 export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
+  compact = false,
   title,
   isHistoryOpen,
   onNewChat,
@@ -29,7 +31,7 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
   onOpenAnalysisDetails,
   onClose,
 }) => (
-  <div className="shrink-0 border-b border-slate-200/90 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
+  <div className={`shrink-0 border-b border-slate-200/90 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 ${compact ? 'px-3 py-1 [&_button]:min-h-11 [&_button]:min-w-11' : 'px-4 py-3'}`}>
     <div className="flex min-w-0 items-center justify-between gap-3">
       <button
         type="button"
@@ -44,7 +46,7 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${isHistoryOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       <div className="flex shrink-0 items-center gap-1">
-        {onOpenAnalysisDetails ? (
+        {onOpenAnalysisDetails && !compact ? (
           <button
             type="button"
             onClick={onOpenAnalysisDetails}
@@ -66,7 +68,7 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
             <MessageSquarePlus className="h-4 w-4" />
           </button>
         ) : null}
-        <button
+        {!compact ? <button
           type="button"
           onClick={onExpandToFullPage}
           className={SIDEBAR_ACTION_BUTTON_CLASS}
@@ -74,8 +76,8 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
           aria-label="展开到 AI 助手"
         >
           <Maximize2 className="h-4 w-4" />
-        </button>
-        <button
+        </button> : null}
+        {!compact ? <button
           type="button"
           onClick={onClose}
           className={SIDEBAR_ACTION_BUTTON_CLASS}
@@ -83,7 +85,7 @@ export const AssistantSidebarHeader: React.FC<AssistantSidebarHeaderProps> = ({
           aria-label="关闭 AI 侧栏"
         >
           <X className="h-4 w-4" />
-        </button>
+        </button> : null}
       </div>
     </div>
   </div>

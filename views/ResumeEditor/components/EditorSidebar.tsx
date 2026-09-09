@@ -164,7 +164,7 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
                         className={`flex flex-1 items-center justify-center gap-2 border-b-2 py-3 text-xs font-medium transition-colors sm:text-sm ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
                         onClick={() => {
                             onSelectTab('profile');
-                            onProfileTabSelected();
+                            if (layoutMode !== 'drawer') onProfileTabSelected();
                         }}
                     >
                         <User className="w-4 h-4" /> 个人档案
@@ -172,6 +172,14 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
                 </div>
                 <EditingSuggestionNav {...editingSuggestion} />
             </div>
+            {layoutMode === 'drawer' ? <div className="relative min-h-0 flex-1">
+                <div hidden={sidebarTab !== 'profile'} inert={sidebarTab !== 'profile' ? true : undefined} className="absolute inset-0 overflow-y-auto overscroll-contain p-3">
+                    <ProfileTab {...profileTabProps} />
+                </div>
+                <div ref={scrollContainerRef} hidden={sidebarTab !== 'experience'} inert={sidebarTab !== 'experience' ? true : undefined} className="absolute inset-0 overflow-y-auto overscroll-contain p-3">
+                    <ExperienceTab {...experienceTabProps} layoutMode={layoutMode} scrollContainerRef={scrollContainerRef} />
+                </div>
+            </div> : <>
             <div
                 ref={scrollContainerRef}
                 className="flex-1 space-y-4 overflow-y-auto bg-gray-50/30 p-4 dark:bg-black/20 md:p-5"
@@ -186,6 +194,7 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
                     />
                 )}
             </div>
+            </>}
         </aside>
     );
 };
