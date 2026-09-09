@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, FileText, Wand2 } from 'lucide-react';
+import { useAnimatedDialogSize } from '../../../hooks/useUiMotion';
 import RichTextEditor from '../../../components/RichTextEditor';
 import { stripRichTextToText } from '../../../utils/richText';
 
 type PersonalSummaryPanelProps = {
+    compact?: boolean;
     value: string;
     isVisible: boolean;
     isGenerating: boolean;
@@ -15,6 +17,7 @@ type PersonalSummaryPanelProps = {
 };
 
 const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
+    compact = false,
     value,
     isVisible,
     isGenerating,
@@ -24,7 +27,9 @@ const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
     onVisibilityChange,
     onGenerate,
 }) => {
-    const [isCollapsed, setIsCollapsed] = useState(() => !stripRichTextToText(value).trim());
+    const [isCollapsed, setIsCollapsed] = useState(() => compact || !stripRichTextToText(value).trim());
+    const bodyRef = useRef<HTMLDivElement>(null);
+    useAnimatedDialogSize(bodyRef, true);
     const hasValue = stripRichTextToText(value).trim().length > 0;
     const previousHasValueRef = useRef(hasValue);
 
@@ -32,11 +37,11 @@ const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
         if (!hasValue && previousHasValueRef.current) {
             setIsCollapsed(true);
         }
-        if (hasValue && !previousHasValueRef.current) {
+        if (hasValue && !previousHasValueRef.current && !compact) {
             setIsCollapsed(false);
         }
         previousHasValueRef.current = hasValue;
-    }, [hasValue]);
+    }, [hasValue, compact]);
 
     return (
         <section className="space-y-3">
@@ -62,6 +67,16 @@ const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
                 </div>
             </div>
 
+            <div ref={bodyRef} className="overflow-hidden rounded-xl" data-personal-summary-body>
+            {compact && isCollapsed ? <div className="flex items-start gap-2 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+                <button type="button" disabled={disabled} aria-label={isVisible ? '取消显示个人评价' : '显示个人评价'} aria-pressed={isVisible} onClick={() => onVisibilityChange(!isVisible)} className="inline-flex min-h-11 min-w-11 items-center justify-center self-start">
+                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded border ${isVisible ? 'border-primary bg-primary text-white' : 'border-gray-300 text-transparent'}`}><Check className="h-3.5 w-3.5" /></span>
+                </button>
+                <button type="button" onClick={() => setIsCollapsed(false)} aria-label="编辑个人评价" className="min-h-11 min-w-0 flex-1 text-left">
+                    <span className="line-clamp-3 text-sm leading-6 text-gray-700 dark:text-gray-200">{stripRichTextToText(value).trim() || '添加个人评价，概括适合本岗位的优势。'}</span>
+                    <span className="mt-1 block text-xs font-medium text-primary">展开编辑</span>
+                </button>
+            </div> : null}
             {!isCollapsed ? (
                 <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <div className="mb-3 flex items-start justify-between gap-3">
@@ -120,6 +135,7 @@ const PersonalSummaryPanel: React.FC<PersonalSummaryPanelProps> = ({
                     </div>
                 </div>
             ) : null}
+            </div>
         </section>
     );
 };

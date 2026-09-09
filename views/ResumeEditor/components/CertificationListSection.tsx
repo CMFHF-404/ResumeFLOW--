@@ -257,27 +257,9 @@ const CertificationDisplayCard: React.FC<{
                 onToggleSelection(cert.id);
             }}
         >
-            <div className="flex items-start gap-3 group/card">
-                <div className="flex flex-col items-center pt-1 shrink-0">
-                    <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => onToggleSelection(cert.id)}
-                        className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                        onClick={(event) => event.stopPropagation()}
-                        disabled={disabled}
-                    />
-                </div>
-                <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-1">
-                        <h4
-                            className={`font-bold text-sm truncate ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-200'}`}
-                        >
-                            {cert.name}
-                        </h4>
-                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <div className="absolute right-2 top-0 flex items-center gap-1 md:top-2">
                             <button
-                                className="p-1 text-gray-300 rounded hover:text-red-500 hover:bg-red-50"
+                                className="inline-flex h-11 w-11 items-center justify-center rounded-md text-gray-500 hover:text-red-500 hover:bg-red-50 md:h-7 md:w-7"
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     onDelete(cert.id);
@@ -289,7 +271,7 @@ const CertificationDisplayCard: React.FC<{
                                 <Trash2 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                                className="p-1 text-gray-300 rounded hover:text-amber-600 hover:bg-amber-50"
+                                className="inline-flex h-11 w-11 items-center justify-center rounded-md text-gray-500 hover:text-amber-600 hover:bg-amber-50 md:h-7 md:w-7"
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     onBeginEdit(cert.id);
@@ -301,15 +283,31 @@ const CertificationDisplayCard: React.FC<{
                                 <Edit3 className="w-3.5 h-3.5" />
                             </button>
                         </div>
-                    </div>
-                    {cert.issuer ? (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">{cert.issuer}</p>
-                    ) : null}
-                    <div className="flex items-center justify-between mt-2">
-                        <p className="text-[10px] text-gray-400 font-mono">{cert.date}</p>
-                        {typeof matchRate === 'number' && matchRate > 0 ? (
-                            <MatchBadge score={matchRate} trend={matchTrend} />
-                        ) : null}
+            <div className="flex items-start gap-3 group/card">
+                <label className="relative flex h-5 w-5 shrink-0 items-center justify-center before:absolute before:-inset-3" onClick={event => event.stopPropagation()}>
+                    <input
+                        aria-label={`选择证书：${cert.name}`}
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelection(cert.id)}
+                        className="relative z-10 w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                        onClick={(event) => event.stopPropagation()}
+                        disabled={disabled}
+                    />
+                </label>
+                <div className="flex-1 min-w-0">
+                    <h4
+                        className={`min-w-0 truncate pr-24 text-sm font-semibold leading-5 md:pr-16 ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-200'}`}
+                        title={cert.name}
+                    >
+                        {cert.name}
+                    </h4>
+                    <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                            {cert.issuer ? <p className="min-w-0 truncate text-xs leading-5 text-gray-500 dark:text-gray-400" title={cert.issuer}>{cert.issuer}</p> : null}
+                            {cert.date ? <span className={`whitespace-nowrap text-[10px] leading-5 text-gray-400 font-mono ${cert.issuer ? 'border-l border-gray-300 pl-2 dark:border-gray-600' : ''}`}>{cert.date}</span> : null}
+                        </div>
+                        {typeof matchRate === 'number' && matchRate > 0 ? <MatchBadge score={matchRate} trend={matchTrend} /> : null}
                     </div>
                 </div>
             </div>

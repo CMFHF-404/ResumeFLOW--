@@ -31,6 +31,7 @@ const EXPERIENCE_THEME_STYLES: Record<
 import { useState } from 'react';
 
 const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
+    compact = false,
     title,
     items,
     selectedIds,
@@ -97,6 +98,7 @@ const ExperienceListSection: React.FC<ExperienceListSectionProps> = ({
             />
             {!isCollapsed && items.map((item) => (
                 <ExperienceCard
+                    compact={compact}
                     key={item.id}
                     item={item}
                     isSelected={selectedIds.has(item.id)}

@@ -28,3 +28,25 @@
   .rf-polish-panel-enter, .rf-polish-panel-exit { animation: none; }
   .rf-polish-panel-exit { opacity: 0; }
 }
+
+@keyframes rf-workbench-page-enter {
+  from { opacity: .3; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rf-workbench-page-enter {
+  animation: rf-workbench-page-enter 200ms cubic-bezier(.22,1,.36,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-workbench-page-enter { animation: none; }
+}
+
+@keyframes rf-overlay-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rf-overlay-exit { from { opacity: 1; } to { opacity: 0; } }
+.rf-overlay-enter { animation: rf-overlay-enter 180ms ease-out; }
+.rf-overlay-exit { animation: rf-overlay-exit 160ms ease-in both; }
+[data-modal-motion="enter"] [data-quota-dialog] { animation: rf-polish-panel-enter 200ms cubic-bezier(.22,1,.36,1); }
+[data-modal-motion="exit"] [data-quota-dialog] { animation: rf-polish-panel-exit 160ms ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .rf-overlay-enter, .rf-overlay-exit,
+  [data-modal-motion] [data-quota-dialog] { animation: none; }
+}

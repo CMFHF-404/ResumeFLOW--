@@ -1,4 +1,6 @@
 import React from 'react';
+import AnimatedModalPresence from './AnimatedModalPresence';
+import { useAnimatedDialogSize } from '../hooks/useUiMotion';
 import { ArrowLeft, CreditCard, Gauge, KeyRound, LoaderCircle, RefreshCw, X } from 'lucide-react';
 import {
   billingService,
@@ -271,6 +273,7 @@ const paymentStatusCopy = (status: PaymentUiStatus) => {
 };
 
 const PurchaseCatalog: React.FC<{
+  onLayoutChange: () => void;
   products: BillingProduct[];
   paymentsEnabled: boolean;
   isLoading: boolean;
@@ -279,8 +282,9 @@ const PurchaseCatalog: React.FC<{
   isPurchaseContextReady: boolean;
   paymentStatus: PaymentUiStatus;
   onPurchase: (product: BillingProduct) => void;
-}> = ({ products, paymentsEnabled, isLoading, isPurchasing, isCheckoutSubmitting, isPurchaseContextReady, paymentStatus, onPurchase }) => {
+}> = ({ products, paymentsEnabled, isLoading, isPurchasing, isCheckoutSubmitting, isPurchaseContextReady, paymentStatus, onPurchase, onLayoutChange }) => {
   const [activeTab, setActiveTab] = React.useState<BillingProduct['category']>('tokens');
+  React.useLayoutEffect(onLayoutChange, [activeTab, onLayoutChange]);
   const tokenTabRef = React.useRef<HTMLButtonElement | null>(null);
   const unlimitedTabRef = React.useRef<HTMLButtonElement | null>(null);
   const activeProducts = products.filter((product) => product.category === activeTab);
@@ -424,10 +428,11 @@ const PurchaseCatalog: React.FC<{
         </div>
       )}
       <div
+        key={activeTab}
         id="billing-plan-panel"
         role="tabpanel"
         aria-labelledby={`billing-tab-${activeTab}`}
-        className="animate-in fade-in slide-in-from-bottom-1 duration-200"
+        className="rf-report-panel-enter"
       >
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {activeProducts.map(renderProduct)}
@@ -766,6 +771,8 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
   const checkoutInFlightGenerationRef = React.useRef<number | null>(null);
   const checkoutAbortControllerRef = React.useRef<AbortController | null>(null);
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const [, notifyCatalogLayout] = React.useReducer((value: number) => value + 1, 0);
+  useAnimatedDialogSize(dialogRef, isOpen);
   const purchaseButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const backButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const restorePurchaseButtonFocusRef = React.useRef(false);
@@ -1728,12 +1735,12 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+    <AnimatedModalPresence isOpen={isOpen}>
+    {isOpen ? <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
       <div
         ref={dialogRef}
+        data-quota-dialog
         role="dialog"
         aria-modal="true"
         aria-labelledby="token-quota-dialog-title"
@@ -1813,7 +1820,7 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
         {activeView === 'overview' ? (
           /* 额度概览与套餐页条件卸载，避免不可见控件仍进入键盘焦点 */
-          <div className="min-h-0 space-y-4 overflow-y-auto p-4" data-quota-view="overview">
+          <div className="min-h-0 space-y-4 overflow-y-auto p-4 rf-report-panel-enter" data-quota-view="overview" key="overview">
             <QuotaDashboard
               summary={summary}
               onOpenPurchase={openPurchaseView}
@@ -1839,8 +1846,9 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
             </div>
           </div>
         ) : activeView === 'purchase' ? (
-          <div className="min-h-0 space-y-5 overflow-y-auto p-4 sm:p-5" data-quota-view="purchase">
+          <div className="min-h-0 space-y-5 overflow-y-auto p-4 sm:p-5 rf-report-panel-enter" data-quota-view="purchase" key="purchase">
             <PurchaseCatalog
+              onLayoutChange={notifyCatalogLayout}
               products={products}
               paymentsEnabled={paymentsEnabled}
               isLoading={isLoadingProducts}
@@ -1887,7 +1895,7 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
 
           </div>
         ) : (
-          <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
+          <div className="min-h-0 overflow-y-auto p-4 sm:p-5 rf-report-panel-enter" key="orders">
             <PaymentOrdersPanel
               orders={orders}
               isLoading={isLoadingOrders}
@@ -1914,7 +1922,8 @@ const TokenQuotaModal: React.FC<TokenQuotaModalProps> = ({
           </form>
         )}
       </div>
-    </div>
+    </div> : null}
+    </AnimatedModalPresence>
   );
 };
 

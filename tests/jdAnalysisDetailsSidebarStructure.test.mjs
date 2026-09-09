@@ -40,7 +40,7 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(editor, /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{/);
   assert.match(editor, /setRightSidebarSurface\('analysis'\)/);
   const openDetailsHandler = editor.match(
-    /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[analysisResult, captureMobileAnalysisReturnFocus\]\);/
+    /const handleOpenJDAnalysisDetailsSidebar = useCallback\(\(\) => \{[\s\S]*?\}, \[analysisResult, captureMobileAnalysisReturnFocus, mobileEditorDrawer\.open\]\);/
   )?.[0] ?? '';
   assert.match(openDetailsHandler, /captureMobileAnalysisReturnFocus\(\)/);
   assert.doesNotMatch(openDetailsHandler, /setIsAssistantSidebarMounted\(false\)/);
@@ -52,12 +52,12 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   assert.match(closeDetailsHandler, /setRightSidebarSurface\(null\)/);
   assert.match(closeDetailsHandler, /setWorkspaceLayout\('list'\)/);
   assert.match(editor, /onOpenDetailsSidebar: handleOpenJDAnalysisDetailsSidebar/);
-  assert.match(editor, /onOpenAnalysisDetails=\{analysisResult \? handleOpenJDAnalysisDetailsSidebar : undefined\}/);
+  assert.match(editor, /onOpenAnalysisDetails=\{isMobileAnalysisViewport \|\| analysisResult \? handleOpenJDAnalysisDetailsSidebar : undefined\}/);
   assert.match(editor, /const isRightSidebarOpen = workspaceLayout !== 'list' && rightSidebarSurface !== null/);
   assert.match(editor, /const isAssistantSidebarActive = rightSidebarSurface === 'assistant'/);
   assert.match(editor, /const rightSidebarContent = isRightSidebarOpen \|\| hasOpenedRightSidebar \? \(/);
   assert.match(editor, /relative h-full min-h-0 w-full overflow-clip bg-white dark:bg-slate-950/);
-  assert.match(editor, /isAssistantSidebarMounted \? \(/);
+  assert.match(editor, /isAssistantSidebarMounted && !isMobileAnalysisViewport \? \(/);
   assert.match(editor, /<React\.Suspense/);
   assert.match(editor, /aria-hidden=\{!isAssistantSidebarActive\}/);
   assert.match(editor, /inert=\{!isAssistantSidebarActive \? true : undefined\}/);
@@ -71,7 +71,7 @@ test('JD analysis details open in the editor right sidebar on desktop', () => {
   );
   assert.equal(
     (editor.match(/<JDAnalysisDetailsSidebar \{\.\.\.jdAnalysisDetailsSidebarProps\} \/>/g) ?? []).length,
-    2,
+    1,
   );
   assert.match(editor, /isRightSidebarOpen=\{isRightSidebarOpen\}/);
   assert.match(editor, /rightSidebar=\{rightSidebarContent\}/);
@@ -123,61 +123,41 @@ test('analysis details hide every JD-specific section when the live JD context i
   );
 });
 
-test('mobile editor exposes the shared report in a full-height dialog and uses JD-match percentage units', () => {
+test('mobile reports share a near-full-height workbench without a second dialog', () => {
   const editor = read('views/ResumeEditor/index.tsx');
-  const mobile = read('views/ResumeEditor/components/MobileEditorHeader.tsx');
-  const dialogHook = read('views/ResumeEditor/hooks/useMobileJDAnalysisDialog.ts');
-
-  assert.match(mobile, /onOpenAnalysisDetails\?: \(\) => void/);
-  assert.match(mobile, /JD 匹配/);
-  assert.match(mobile, /查看报告/);
-  assert.match(mobile, /analysisResult\.matchPercentage \?\? 0[\s\S]*?%/);
-  assert.doesNotMatch(mobile, /analysisResult\.matchPercentage \?\? 0[\s\S]{0,120}分/);
-  assert.doesNotMatch(mobile, /StaleBadge/);
-  assert.match(editor, /role="dialog"/);
-  assert.match(editor, /aria-label="分析报告"/);
-  assert.match(editor, /ref=\{mobileAnalysisDialogRef\}/);
-  assert.match(editor, /import \{ useMobileJDAnalysisDialog \} from '\.\/hooks\/useMobileJDAnalysisDialog'/);
-  assert.match(editor, /useMobileJDAnalysisDialog\(\{\s*isOpen: isJDAnalysisDetailsSidebarOpen,\s*onClose: handleReturnFromAnalysisToAssistant,\s*\}\)/);
-  assert.match(editor, /captureReturnFocus: captureMobileAnalysisReturnFocus/);
-  assert.match(editor, /jdAnalysisDetailsSidebarProps && isMobileAnalysisViewport \? \(/);
-  assert.match(editor, /h-\[calc\(100dvh-2rem\)\]/);
-  assert.match(editor, /md:hidden/);
-  assert.match(editor, /onOpenAnalysisDetails=\{analysisResult \? handleOpenJDAnalysisDetailsSidebar : undefined\}/);
-  assert.doesNotMatch(editor, /document\.body\.style\.overflow = 'hidden'/);
-
-  assert.match(dialogHook, /export const MOBILE_ANALYSIS_MEDIA_QUERY = '\(max-width: 767px\)'/);
-  assert.match(dialogHook, /mediaQuery\.addEventListener\('change', syncViewport\)/);
-  assert.match(dialogHook, /mediaQuery\.removeEventListener\('change', syncViewport\)/);
-  assert.match(dialogHook, /!isOpen \|\| !isMobileAnalysisViewport/);
-  assert.match(dialogHook, /event\.key === 'Escape'/);
-  assert.match(dialogHook, /element\.inert = true/);
-  assert.match(dialogHook, /document\.body\.style\.overflow = 'hidden'/);
-  assert.match(dialogHook, /returnFocusElement\.focus\(\)/);
-  assert.match(dialogHook, /returnFocusElement\.getClientRects\(\)\.length > 0/);
+  const drawer = read('views/ResumeEditor/components/ResumeEditorMobileDrawer.tsx');
+  const reports = read('views/ResumeEditor/components/MobileWorkbenchReports.tsx');
+  assert.match(drawer, /role="dialog" aria-modal="true"/);
+  assert.match(drawer, /100dvh/);
+  assert.match(drawer, /visualViewport/);
+  assert.match(drawer, /event.key === 'Escape'/);
+  assert.match(drawer, /returnFocusRef/);
+  assert.match(editor, /analysis=\{<MobileWorkbenchReports/);
+  assert.doesNotMatch(editor, /ref=\{mobileAnalysisDialogRef\}/);
+  assert.match(reports, /<JDAnalysisDetailsContent reportTab="jd"/);
+  assert.match(reports, /<ResumeEvaluationReport/);
 });
 
 test('report return launches a visible mobile assistant and preserves desktop sidebar navigation', () => {
   const editor = read('views/ResumeEditor/index.tsx');
-  const body = editor.match(/const handleReturnFromAnalysisToAssistant = useCallback\(\(\) => \{([\s\S]*?)\n    \}, \[handleCloseJDAnalysisDetailsSidebar, handleLaunchResumeAssistant\]\);/)?.[1];
+  const body = editor.match(/const handleReturnFromAnalysisToAssistant = useCallback\(\(\) => \{([\s\S]*?)\n    \}, \[mobileEditorDrawer\.open\]\);/)?.[1];
   assert.ok(body);
   for (const mobile of [true, false]) {
     const calls = [];
     const lastSurface = { current: 'analysis' };
-    const run = new Function('window', 'handleCloseJDAnalysisDetailsSidebar', 'handleLaunchResumeAssistant', 'lastRightSidebarSurfaceRef', 'setIsAssistantSidebarMounted', 'setRightSidebarSurface', 'setWorkspaceLayout', body);
+    const run = new Function('window', 'mobileEditorDrawer', 'lastRightSidebarSurfaceRef', 'setIsAssistantSidebarMounted', 'setRightSidebarSurface', 'setWorkspaceLayout', body);
     run(
       { matchMedia: (query) => {
         assert.equal(query, '(max-width: 767px)');
         return { matches: mobile };
       } },
-      () => calls.push('close'),
-      () => calls.push('launch'),
+      { open: page => calls.push(['workbench', page]) },
       lastSurface,
       (value) => calls.push(['mounted', value]),
       (value) => calls.push(['surface', value]),
       (value) => calls.push(['layout', value]),
     );
-    assert.deepEqual(calls, mobile ? ['close', 'launch'] : [['mounted', true], ['surface', 'assistant'], ['layout', 'ai']]);
+    assert.deepEqual(calls, mobile ? [['workbench', 'assistant']] : [['mounted', true], ['surface', 'assistant']]);
     assert.equal(lastSurface.current, mobile ? 'analysis' : 'assistant');
   }
 });
