@@ -1,4 +1,5 @@
 import React from 'react';
+import TemplateCustomizationPresence from './TemplateCustomizationPresence';
 import {
   ArrowLeft,
   Check,
@@ -53,6 +54,7 @@ type TemplateSelectorModalProps = {
     skillTagSeparator: string;
   }) => Promise<void>;
   initialEditingTemplateId?: ResumeTemplateId | null;
+  surface?: 'modal' | 'drawer';
 };
 
 const EXPERIENCE_LIST_MARKER_STYLE_OPTIONS: Array<{
@@ -349,7 +351,9 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
   onSelectTemplate,
   onSaveTemplatePreset,
   initialEditingTemplateId = null,
+  surface = 'modal',
 }) => {
+  const dialogRef = React.useRef<HTMLDivElement>(null);
   const [editingTemplateId, setEditingTemplateId] = React.useState<ResumeTemplateId | null>(null);
   const [editingSectionOrder, setEditingSectionOrder] = React.useState<string[]>(() => [...DEFAULT_SECTION_ORDER]);
   const [editingThemeColorPresetId, setEditingThemeColorPresetId] = React.useState<ResumeThemeColorPresetId>(
@@ -406,7 +410,8 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
     setEditingTemplateId(null);
     setPresetError('');
     setDraggingSectionId(null);
-  }, [isSavingPreset]);
+    if (surface === 'drawer') onClose();
+  }, [isSavingPreset, surface, onClose]);
 
   const clearTouchLongPressTimer = React.useCallback(() => {
     if (touchLongPressTimerRef.current !== null) {
@@ -485,12 +490,9 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
       }
       return;
     }
-    if (!draggingSectionId) {
-      return;
-    }
-    event.preventDefault();
-    reorderByPointerPosition(touch.clientX, touch.clientY);
-  }, [clearTouchLongPressTimer, draggingSectionId, reorderByPointerPosition]);
+    // React touch listeners are passive. The window's non-passive listener
+    // owns scroll prevention and reordering after the long press activates.
+  }, [clearTouchLongPressTimer, draggingSectionId]);
 
   const handleSavePreset = React.useCallback(async () => {
     if (!editingTemplateId || isSavingPreset) {
@@ -507,6 +509,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
         skillTagSeparator: editingSkillTagSeparator,
       });
       setEditingTemplateId(null);
+      if (surface === 'drawer') onClose();
     } catch {
       setPresetError('保存失败，请稍后重试。');
     } finally {
@@ -520,6 +523,8 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
     editingSkillTagSeparator,
     isSavingPreset,
     onSaveTemplatePreset,
+    onClose,
+    surface,
   ]);
 
   const handleModalClose = React.useCallback(() => {
@@ -528,6 +533,38 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
     }
     onClose();
   }, [isSavingPreset, onClose]);
+
+  const closeRef = React.useRef(handleModalClose);
+  closeRef.current = handleModalClose;
+  const isDrawerContentReady = editingTemplateId !== null;
+  React.useEffect(() => {
+    if (!isOpen || surface !== 'drawer') return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter(el => el.getClientRects().length);
+    const timer = window.setTimeout(() => (focusable()[0] ?? dialog).focus({ preventScroll: true }), 0);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRef.current(); }
+      if (event.key === 'Tab') {
+        const items = focusable(); const first = items[0]; const last = items.at(-1);
+        if (!first) { event.preventDefault(); dialog.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      }
+    };
+    const onFocus = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) (focusable()[0] ?? dialog).focus({ preventScroll: true });
+    };
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('focusin', onFocus);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('focusin', onFocus);
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, [isOpen, surface, isDrawerContentReady]);
 
   React.useEffect(() => {
     if (!isOpen) {
@@ -629,16 +666,15 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
     };
   }, [draggingSectionId, finishDrag, reorderByPointerPosition]);
 
-  if (!isOpen) {
-    return null;
-  }
-
   const editingTemplate = editingTemplateId ? resolveResumeTemplate(editingTemplateId) : null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-4" onClick={handleModalClose}>
+    <TemplateCustomizationPresence isOpen={isOpen} enabled={surface === 'drawer'}>
+    {isOpen && (surface !== 'drawer' || editingTemplate) ? (
+    <div className={`fixed inset-0 z-[100] flex bg-black/45 ${surface === 'drawer' ? 'items-end' : 'items-center justify-center px-4'}`} onClick={handleModalClose}>
       <div
-        className="relative flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900"
+        ref={dialogRef} role="dialog" aria-modal="true" aria-label={surface === 'drawer' ? '模板自定义' : '选择简历模板'} tabIndex={-1}
+        className={`relative flex w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-gray-900 ${surface === 'drawer' ? 'max-h-[88dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)]' : 'max-h-[88vh] max-w-5xl rounded-2xl'}`}
         onClick={(event) => event.stopPropagation()}
       >
         {editingTemplate ? (
@@ -648,26 +684,26 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                 <button
                   type="button"
                   onClick={closeTemplatePresetEditor}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                  aria-label="返回模板列表"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  aria-label={surface === 'drawer' ? '取消自定义' : '返回模板列表'}
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
                 <div className="min-w-0">
                   <h3 className="truncate text-lg font-bold text-gray-900 dark:text-white">{editingTemplate.name}模板自定义</h3>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    保存后，后续选择该模板会默认使用这里的主题色和模块顺序。
+                    {surface === 'drawer' ? '应用后可继续比较，点击顶部确认保存所有修改。' : '保存后，后续选择该模板会默认使用这里的主题色和模块顺序。'}
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={handleModalClose} className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
+              <button type="button" aria-label="关闭模板自定义" onClick={handleModalClose} className="min-h-11 min-w-11 rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-5">
               <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
-                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
+                <div className={`${surface === 'drawer' ? 'hidden' : ''} rounded-2xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950`}>
                   <div className="mb-3 aspect-[794/1123] overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
                     <TemplateThumbnail
                       templateId={editingTemplate.id}
@@ -836,7 +872,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
               <button
                 type="button"
                 onClick={closeTemplatePresetEditor}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 取消
               </button>
@@ -844,9 +880,9 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                 type="button"
                 onClick={() => void handleSavePreset()}
                 disabled={isSavingPreset}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSavingPreset ? '保存中...' : '保存预设'}
+                {isSavingPreset ? '保存中...' : surface === 'drawer' ? '应用' : '保存预设'}
               </button>
             </div>
           </>
@@ -941,6 +977,8 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
         )}
       </div>
     </div>
+    ) : null}
+    </TemplateCustomizationPresence>
   );
 };
 

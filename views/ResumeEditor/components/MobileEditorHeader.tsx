@@ -27,6 +27,7 @@ import { isAcceptedJDAttachmentFile } from '../../../utils/jdAttachment';
 import { useJDAnalysisMotion } from './jdAnalysisMotion';
 
 export type MobileEditorHeaderProps = {
+    templateSelectionActive?: boolean;
     resumeId?: string | null;
     resumeName: string;
     onResumeNameChange: (name: string) => void;
@@ -84,6 +85,7 @@ export type MobileEditorHeaderProps = {
 };
 
 const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
+    templateSelectionActive = false,
     resumeId,
     resumeName,
     onResumeNameChange,
@@ -174,6 +176,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
     }, [resumeId]);
 
     useEffect(() => {
+        if (templateSelectionActive) return;
         if (showJdInput || isAnalyzing || isGeneratingBossGreeting || isEditingJd) {
             setIsAnalysisCollapsed(false);
         }
@@ -754,7 +757,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                     </div>
 
                     {isAnalysisCollapsed ? (
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 pb-1 pt-1.5">
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 pb-1 pt-1.5">
                             <div className="min-w-0 justify-self-start px-1">
                                 {analysisResult ? (
                                     <div className="leading-none text-emerald-600 dark:text-emerald-400">
@@ -792,6 +795,10 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 </button>
                             </div>
 
+                            <div className="flex items-center gap-1.5 justify-self-end">
+                            <button type="button" onClick={onOpenTemplateSelector} aria-label="选择简历模板" title="选择简历模板" className="inline-flex h-10 items-center justify-center gap-1 rounded-xl border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                                <LayoutTemplate className="h-4 w-4" />模板
+                            </button>
                             <button
                                 type="button"
                                 onClick={onExportPdf}
@@ -802,6 +809,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                                 <Download className="h-4 w-4" />
                                 {isExportingPdf ? '导出中' : '导出'}
                             </button>
+                            </div>
                         </div>
                     ) : (
                         <div className="mt-0.5 flex justify-center pb-0 pt-0">

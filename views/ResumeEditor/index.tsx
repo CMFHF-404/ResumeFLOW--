@@ -27,6 +27,7 @@ import {
 import { UNTITLED_RESUME_TITLE } from '../../constants/resumeConstants';
 import {
     AUTO_SAVE_DELAY_MS,
+    LIST_SPACING_BY_DENSITY,
     CERTIFICATION_DRAFT_PREFIX,
     CONFIRM_DELETE_CERTIFICATION_TEXT,
     CONFIRM_DELETE_CERTIFICATION_TITLE,
@@ -100,6 +101,8 @@ import ResumeEditorMeasurePreview from './components/ResumeEditorMeasurePreview'
 const ResumeEditorMobileDrawer = React.lazy(() => import('./components/ResumeEditorMobileDrawer'));
 const MobileWorkbenchReports = React.lazy(() => import('./components/MobileWorkbenchReports'));
 import TemplateSelectorModal from './components/TemplateSelectorModal';
+import { useMobileTemplateSession } from './hooks/useMobileTemplateSession';
+import { buildSpacingValue, resolveSectionSpacingClass } from './layoutUtils';
 import { JDAnalysisDetailsSidebar } from './components/JDAnalysisPanel';
 import type { ResumeFactorySidebarProps, ResumeFactoryTab } from './components/ResumeFactorySidebar';
 import buildExperiencePolishToolbars from './components/ExperiencePolishToolbars';
@@ -154,6 +157,8 @@ import { buildExperienceViewFromDraft } from './experiencePolishViewUtils';
 
 const AIAssistant = React.lazy(() => import('../AIAssistant'));
 const MobileEditorHeader = React.lazy(() => import('./components/MobileEditorHeader'));
+const MobileTemplateStrip = React.lazy(() => import('./components/MobileTemplateStrip'));
+const MobileTemplateToolbar = React.lazy(() => import('./components/MobileTemplateToolbar'));
 const ResumeOptimizationWorkspace = React.lazy(async () => {
     const module = await import('./components/ResumeOptimization/ResumeOptimizationWorkspace');
     return { default: module.ResumeOptimizationWorkspace };
@@ -1658,6 +1663,40 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isOpen: false,
         onClose: handleReturnFromAnalysisToAssistant,
     });
+    const mobileTemplates = useMobileTemplateSession({
+        owner: `${authUserKey ?? ''}:${resumeId ?? ''}`,
+        authUserKey,
+        enabled: isMobileAnalysisViewport && Boolean(resumeId) && !isLoadingResume && !isCreatingResume,
+        appearance: { templateId: resumeTemplateId, themeColorPresetId, sectionOrder, experienceListMarkerStyle, skillTagSeparator, layout: currentLayout, isSmartPageApplied },
+        presets: templatePresetMap,
+        ready: isTemplatePresetMapReady,
+        canCommit: !hasResumeVersionConflict && !isAutoSavePaused,
+        onPresetsSaved: saved => setTemplatePresetMap(previous => ({ ...previous, ...saved })),
+        onCommit: appearance => {
+            setResumeTemplateId(appearance.templateId);
+            setThemeColorPresetId(appearance.themeColorPresetId);
+            setSectionOrder([...appearance.sectionOrder]);
+            setExperienceListMarkerStyle(appearance.experienceListMarkerStyle);
+            setSkillTagSeparator(appearance.skillTagSeparator);
+            commitLayoutSnapshot(buildLayoutSnapshot(appearance.layout, appearance.isSmartPageApplied), { incrementVersion: true });
+            applyVisibleLayout(appearance.layout);
+            setIsSmartPageApplied(appearance.isSmartPageApplied);
+        },
+    });
+    const handleOpenResponsiveTemplateSelector = async () => {
+        handleOpenTemplateSelector(); // Preserve account preset refresh and fallback handling.
+        if (isMobileAnalysisViewport) {
+            setIsTemplateSelectorOpen(false);
+            mobileEditorDrawer.dismissImmediately();
+            try {
+                await mobileTemplates.prepareTransition();
+            } catch {
+                showToastError('模板加载失败，请重试');
+                return;
+            }
+            mobileTemplates.open();
+        }
+    };
     const handleOpenJDAnalysisDetailsSidebar = useCallback(() => {
         if (window.matchMedia('(max-width: 767px)').matches) {
             mobileEditorDrawer.setReportTab('jd');
@@ -2443,6 +2482,20 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 acceptedChangeIds: resumeOptimizationFlow.acceptedChangeIds,
                 readOnly: resumeOptimizationFlow.run?.status !== 'preview_ready',
             },
+        } : mobileTemplates.active ? {
+            ...editorPreviewProps,
+            templateId: mobileTemplates.current.templateId,
+            themeColorPresetId: mobileTemplates.current.themeColorPresetId,
+            sectionOrder: mobileTemplates.current.sectionOrder,
+            experienceListMarkerStyle: mobileTemplates.current.experienceListMarkerStyle,
+            skillTagSeparator: mobileTemplates.current.skillTagSeparator,
+            lineHeight: mobileTemplates.current.layout.lineHeight,
+            fontSize: mobileTemplates.current.layout.fontSize,
+            topPaddingPx: mobileTemplates.current.layout.topPaddingPx,
+            listSpacingValue: buildSpacingValue(mobileTemplates.current.layout.itemSpacingEm, mobileTemplates.current.layout.lineHeight),
+            bulletSpacingValue: buildSpacingValue(LIST_SPACING_BY_DENSITY.compact, mobileTemplates.current.layout.lineHeight),
+            sectionSpacingClass: resolveSectionSpacingClass(mobileTemplates.current.layout.sectionSpacingKey),
+            readOnly: true,
         } : editorPreviewProps;
     const jdAnalysisDetailsSidebarProps = analysisResult ? {
         onAnalyze: handleAnalyzeWithAutoName,
@@ -2528,6 +2581,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         <ResumeEditorViewport
             scrollContainerRef={mobileEditorScrollContainerRef}
             onKeyDownCapture={event => {
+                if (mobileTemplates.active && !mobileTemplates.editingTemplateId && event.key === 'Escape') {
+                    event.preventDefault(); mobileTemplates.cancel(); return;
+                }
                 if (!mobileEditorDrawer.isOpen || event.key !== 'Escape') return;
                 if (confirmDialog) {
                     event.preventDefault(); event.stopPropagation(); handleCancelDelete();
@@ -2536,6 +2592,20 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 }
             }}
             busy={isEditorBusy}
+            templateToolbar={mobileTemplates.active ? <React.Suspense fallback={null}><MobileTemplateToolbar
+                saving={mobileTemplates.saving} ready={isTemplatePresetMapReady} error={mobileTemplates.error}
+                onCancel={mobileTemplates.cancel} onConfirm={() => void mobileTemplates.confirm()}
+            /></React.Suspense> : null}
+            templateStrip={mobileTemplates.active ? <React.Suspense fallback={<div className="h-56 shrink-0 bg-white dark:bg-slate-900" role="status">正在加载模板…</div>}><MobileTemplateStrip
+                selectedTemplateId={mobileTemplates.current.templateId}
+                presets={mobileTemplates.effectivePresets}
+                ready={isTemplatePresetMapReady}
+                busy={mobileTemplates.saving}
+                fallbackAvailable={isTemplatePresetFallbackAvailable}
+                onFallback={() => unlockTemplatePresetMapWithLocalFallback(templatePresetFallbackOwnerKey)}
+                onSelect={mobileTemplates.select}
+                onCustomize={mobileTemplates.customize}
+            /></React.Suspense> : null}
             workbench={isMobileAnalysisViewport ? <React.Suspense fallback={null}>
                 <ResumeEditorMobileDrawer
                     key={`${authUserKey ?? ''}:${resumeId ?? ''}`}
@@ -2660,9 +2730,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isWorkspaceLayoutLocked={rightSidebarSurface === 'optimization' && isResumeOptimizationBusy}
                 />
             </div>
-            <div className="md:hidden">
+            <div className={`${mobileTemplates.active ? 'hidden' : 'md:hidden'} rf-mobile-editor-header`}>
                 <React.Suspense fallback={null}>
                     <MobileEditorHeader
+                        templateSelectionActive={mobileTemplates.active}
                         resumeId={resumeId}
                         resumeName={resumeName}
                         onResumeNameChange={handleResumeNameChange}
@@ -2681,7 +2752,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     batchPolishToolbar={batchPolishToolbar}
                     onBatchPolish={handleOpenBatchPolishToolbar}
                     onCloseBatchPolishToolbar={handleCloseBatchPolishToolbar}
-                    onOpenTemplateSelector={handleOpenTemplateSelector}
+                    onOpenTemplateSelector={handleOpenResponsiveTemplateSelector}
                     onAutoAssemble={handleAutoAssemble}
                     isAutoAssembling={isAutoAssembling}
                     autoAssemblyFocusRequest={resumeOptimizationAutoAssemblyFocusRequest}
@@ -2725,7 +2796,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             </div>
             <ResumeEditorDesktopWorkspace
                 factorySidebarProps={factorySidebarProps}
-                layoutAdjustProps={layoutAdjustProps}
+                layoutAdjustProps={mobileTemplates.active ? { ...layoutAdjustProps, isOpen: false } : layoutAdjustProps}
                 previewProps={editorPreviewPropsWithOptimization}
                 layoutMode={workspaceLayout}
                 isRightSidebarOpen={isRightSidebarOpen}
@@ -2750,19 +2821,21 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 </React.Suspense>
             ) : null}
             <TemplateSelectorModal
-                isOpen={isTemplateSelectorOpen}
-                selectedTemplateId={resumeTemplateId}
-                themeColorPresetId={themeColorPresetId}
-                sectionOrder={sectionOrder}
-                experienceListMarkerStyle={experienceListMarkerStyle}
-                skillTagSeparator={skillTagSeparator}
-                templatePresetMap={templatePresetMap}
+                isOpen={mobileTemplates.active ? Boolean(mobileTemplates.editingTemplateId) : isTemplateSelectorOpen}
+                surface={mobileTemplates.active ? 'drawer' : 'modal'}
+                initialEditingTemplateId={mobileTemplates.editingTemplateId}
+                selectedTemplateId={mobileTemplates.current.templateId}
+                themeColorPresetId={mobileTemplates.current.themeColorPresetId}
+                sectionOrder={mobileTemplates.current.sectionOrder}
+                experienceListMarkerStyle={mobileTemplates.current.experienceListMarkerStyle}
+                skillTagSeparator={mobileTemplates.current.skillTagSeparator}
+                templatePresetMap={mobileTemplates.effectivePresets}
                 isPresetMapReady={isTemplatePresetMapReady}
                 isPresetSyncFallbackAvailable={isTemplatePresetFallbackAvailable}
-                onClose={() => setIsTemplateSelectorOpen(false)}
+                onClose={mobileTemplates.active ? mobileTemplates.closeCustomization : () => setIsTemplateSelectorOpen(false)}
                 onUseLocalPresetFallback={() => unlockTemplatePresetMapWithLocalFallback(templatePresetFallbackOwnerKey)}
                 onSelectTemplate={handleSelectTemplate}
-                onSaveTemplatePreset={handleSaveTemplatePreset}
+                onSaveTemplatePreset={mobileTemplates.active ? mobileTemplates.stagePreset : handleSaveTemplatePreset}
             />
 
             {isAssistantSidebarMounted ? (

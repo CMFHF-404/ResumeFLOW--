@@ -5,12 +5,15 @@ type ResumeEditorViewportProps = React.PropsWithChildren<{
     onKeyDownCapture?: React.KeyboardEventHandler<HTMLDivElement>;
     busy?: boolean;
     workbench: React.ReactNode;
+    templateToolbar?: React.ReactNode;
+    templateStrip?: React.ReactNode;
 }>;
 
 const ResumeEditorViewport: React.FC<ResumeEditorViewportProps> = ({
-    scrollContainerRef, onKeyDownCapture, busy, workbench, children,
+    scrollContainerRef, onKeyDownCapture, busy, workbench, templateToolbar, templateStrip, children,
 }) => (
-    <div onKeyDownCapture={onKeyDownCapture} className="rf-editor-viewport relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
+    <div data-template-selection={templateStrip ? 'true' : undefined} onKeyDownCapture={onKeyDownCapture} className="rf-editor-viewport relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
+        {templateToolbar}
         <div
             ref={scrollContainerRef}
             data-rf-mobile-editor-scroll-root
@@ -19,7 +22,7 @@ const ResumeEditorViewport: React.FC<ResumeEditorViewportProps> = ({
         >
             {children}
         </div>
-        {workbench}
+        {templateStrip || workbench}
     </div>
 );
 

@@ -392,6 +392,35 @@ export const saveResumeTemplatePreset = async (
   return normalizedPreset;
 };
 
+// One profile update keeps a mobile selection session's multiple presets together.
+export const saveResumeTemplatePresets = async (
+  presets: Array<Omit<ResumeTemplatePreset, 'updatedAt'>>,
+  ownerId: string | null | undefined,
+  isCurrent: () => boolean = () => true
+): Promise<ResumeTemplatePresetMap> => {
+  if (!isAuthenticatedOwnerId(ownerId)) throw new Error('无法在未登录状态保存模板预设');
+  const profile = await profileService.getProfile({ force: true, expectedAuthCacheKey: ownerId });
+  if (profile.user_id !== ownerId || !isCurrent()) throw new Error('Template session changed');
+  const existing = extractResumeTemplatePresetMapFromProfile(profile.extra_json);
+  const saved: ResumeTemplatePresetMap = {};
+  for (const preset of presets) {
+    const normalized = normalizeResumeTemplatePreset(preset.templateId, {
+      ...preset,
+      layoutDefaults: preset.layoutDefaults ?? existing[preset.templateId]?.layoutDefaults,
+      updatedAt: new Date().toISOString(),
+    });
+    if (!normalized) throw new Error('无效的简历模板预设');
+    saved[preset.templateId] = normalized;
+  }
+  const updated = await profileService.updateProfile({ extra_json: {
+    ...(profile.extra_json || {}),
+    [PROFILE_RESUME_TEMPLATE_PRESETS_KEY]: serializeResumeTemplatePresetMap({ ...existing, ...saved }),
+  } }, { expectedAuthCacheKey: ownerId });
+  if (updated.user_id !== ownerId) throw new Error('Authentication context changed while saving template presets');
+  syncResumeTemplatePresetsFromProfile(updated.extra_json, ownerId);
+  return saved;
+};
+
 export const buildPreferredResumeCreateConfig = (
   extraJson: Record<string, any> | null | undefined,
   ownerId: string | null | undefined
