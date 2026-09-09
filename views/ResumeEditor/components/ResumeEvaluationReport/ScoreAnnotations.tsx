@@ -6,7 +6,7 @@ type State = { experienceNameFor: (id: string) => string | undefined; labelFor: 
 const ScoreContext = createContext<State>({ experienceNameFor: () => undefined, labelFor: row => row.label, suggestions: [], selected: [], toggle: () => {}, locate: () => {}, active: null });
 export const useScoreAnnotations = () => useContext(ScoreContext);
 
-export function ScoreAnnotationProvider({ suggestions, reportKey, onLocate, children, experiences = [] }: { experiences?: { id: string; company: string }[]; onLocate?: () => void; suggestions: ResumeScoreSuggestion[]; reportKey: string; children: React.ReactNode }) {
+export function ScoreAnnotationProvider({ suggestions, reportKey, onLocate, children, experiences = [] }: { experiences?: { id: string; company: string }[]; onLocate?: (key: string) => boolean | void; suggestions: ResumeScoreSuggestion[]; reportKey: string; children: React.ReactNode }) {
   const [selection, setSelection] = useState<{ key: string; ids: string[] }>({ key: reportKey, ids: [] });
   const [active, setActive] = useState<string | null>(null);
   const selected = selection.key === reportKey ? selection.ids : [];
@@ -23,7 +23,7 @@ export function ScoreAnnotationProvider({ suggestions, reportKey, onLocate, chil
       ids: ids.every(id => current.includes(id)) ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])] }; }),
     locate: key => {
       setActive(key);
-      onLocate?.();
+      if (onLocate?.(key)) return;
       window.requestAnimationFrame(() => {
       const node = [...document.querySelectorAll<HTMLElement>('[data-score-module]')].find(n => n.dataset.scoreModule === key && n.getClientRects().length > 0);
       if (node) { node.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); node.focus({ preventScroll: true });

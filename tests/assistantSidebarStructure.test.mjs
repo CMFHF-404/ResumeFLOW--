@@ -82,7 +82,7 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(sidebarHeader, /export const AssistantSidebarHeader: React\.FC<AssistantSidebarHeaderProps>/);
   assert.match(sidebarHeader, /MessageSquarePlus/);
   assert.match(sidebarHeader, /onNewChat\?: \(\) => void/);
-  assert.match(sidebarHeader, /shrink-0 border-b border-slate-200\/90 bg-white\/95 px-4 py-3 backdrop-blur/);
+  assert.match(sidebarHeader, /shrink-0 border-b border-slate-200\/90 bg-white\/95 backdrop-blur/);
   assert.match(sidebarHeader, /title=\{title\}/);
   assert.match(sidebarHeader, /pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400\/50 dark:text-slate-400 dark:hover:text-white/);
   const newChatButtonIndex = sidebarHeader.indexOf('onClick={onNewChat}');
@@ -102,7 +102,7 @@ test('assistant supports editor sidebar surface and full-page session handoff', 
   assert.match(sidebarHeader, /const SIDEBAR_ANALYSIS_BUTTON_CLASS = '[^']*text-emerald-600[^']*hover:text-emerald-700/);
   assert.doesNotMatch(sidebarHeader, /const SIDEBAR_ANALYSIS_BUTTON_CLASS = '[^']*\bbg-emerald-/);
   assert.doesNotMatch(sidebarHeader, /const SIDEBAR_ANALYSIS_BUTTON_STYLE/);
-  assert.match(sidebarHeader, /onOpenAnalysisDetails \? \(/);
+  assert.match(sidebarHeader, /onOpenAnalysisDetails && !compact \? \(/);
   assert.match(sidebarHeader, /onClick=\{onOpenAnalysisDetails\}/);
   assert.match(sidebarHeader, /className=\{SIDEBAR_ANALYSIS_BUTTON_CLASS\}[\s\S]*aria-label="查看分析详情"/);
   assert.doesNotMatch(sidebarHeader, /style=\{SIDEBAR_ANALYSIS_BUTTON_STYLE\}/);

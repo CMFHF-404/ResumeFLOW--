@@ -55,7 +55,7 @@ import type {
 
 type AIAssistantProps = {
   authUserKey?: string | null;
-  surface?: 'full' | 'sidebar';
+  surface?: 'full' | 'sidebar' | 'workbench';
   pendingLaunchRequest?: AssistantLaunchRequest | null;
   pendingOpenSessionRequest?: AssistantOpenSessionRequest | null;
   liveSelectedResume?: AssistantSelectedResume | null;
@@ -94,7 +94,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   draftInput = '',
   onDraftInputChange,
 }) => {
-  const isSidebarSurface = surface === 'sidebar';
+  const isWorkbenchSurface = surface === 'workbench';
+  const isSidebarSurface = surface === 'sidebar' || isWorkbenchSurface;
   const { isAuthenticated } = useLogto();
   const { toasts, success, error, closeToast } = useToast();
   const ownerGuard = useAssistantOwnerGuard(authUserKey);
@@ -530,7 +531,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   }, [handleSelectSession]);
 
   return (
-    <div className={isSidebarSurface
+    <div onKeyDownCapture={event => {
+      if (!isWorkbenchSurface || event.key !== 'Escape') return;
+      if (deleteConfirmId !== null) {
+        event.preventDefault(); event.stopPropagation(); setDeleteConfirmId(null);
+      } else if (isSidebarHistoryOpen) {
+        event.preventDefault(); event.stopPropagation(); setIsSidebarHistoryOpen(false);
+      } else if (isMobileDraftTrayOpen) {
+        event.preventDefault(); event.stopPropagation(); setIsMobileDraftTrayOpen(false);
+      }
+    }} className={isSidebarSurface
       ? 'flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-white dark:bg-slate-950'
       : 'flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950'
     }>
@@ -599,6 +609,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             {isSidebarSurface ? (
               <>
                 <AssistantSidebarHeader
+                  compact={isWorkbenchSurface}
                   title={assistantSidebarTitle}
                   isHistoryOpen={isSidebarHistoryOpen}
                   onNewChat={selectedSessionId ? handleSidebarNewChat : undefined}
@@ -657,7 +668,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
 
             <div
               ref={composerContainerRef}
-              className={isSidebarSurface
+              className={isWorkbenchSurface
+                ? 'pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-visible px-3 pb-2 pt-3'
+                : isSidebarSurface
                 ? 'pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-visible px-3 pb-3 pt-3'
                 : 'pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-visible px-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-4 md:px-7 md:pb-6 md:pt-5'
               }
@@ -696,6 +709,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   onRemoveSelectedResume={handleRemoveSelectedResume}
                 />
                 <ChatInputBox
+                  showDisclaimer={!isWorkbenchSurface}
                   value={inputValue}
                   onChange={setInputValue}
                   onSubmit={() => void handleSubmit()}

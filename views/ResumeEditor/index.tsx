@@ -1,4 +1,5 @@
 import { ScoreAnnotationProvider } from './components/ResumeEvaluationReport/ScoreAnnotations';
+import PersistentAssistantPortal from './components/PersistentAssistantPortal';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
@@ -95,7 +96,8 @@ import ResumeEditorDesktopWorkspace, {
     type ResumeEditorWorkspaceLayout,
 } from './components/ResumeEditorDesktopWorkspace';
 import ResumeEditorMeasurePreview from './components/ResumeEditorMeasurePreview';
-import ResumeEditorMobileDrawer from './components/ResumeEditorMobileDrawer';
+const ResumeEditorMobileDrawer = React.lazy(() => import('./components/ResumeEditorMobileDrawer'));
+const MobileWorkbenchReports = React.lazy(() => import('./components/MobileWorkbenchReports'));
 import TemplateSelectorModal from './components/TemplateSelectorModal';
 import { JDAnalysisDetailsSidebar } from './components/JDAnalysisPanel';
 import type { ResumeFactorySidebarProps, ResumeFactoryTab } from './components/ResumeFactorySidebar';
@@ -288,12 +290,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const isCacheOwnerMatched = Boolean(
         cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
     );
-    const mobileEditorDrawer = useMobileEditorDrawer({
-        mobileDrawerOpenRequest,
-        onMobileDrawerOpenRequestConsumed,
-        scrollContainerRef: mobileEditorScrollContainerRef,
-        setSidebarTab,
-    });
     const {
         toasts,
         success: showToastSuccess,
@@ -316,6 +312,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
     }, [rightSidebarSurface]);
     const [isAssistantSidebarMounted, setIsAssistantSidebarMounted] = useState(false);
+    const [desktopAssistantContainer, setDesktopAssistantContainer] = useState<HTMLDivElement | null>(null);
+    const [mobileAssistantContainer, setMobileAssistantContainer] = useState<HTMLDivElement | null>(null);
     const isJDAnalysisDetailsSidebarOpen = rightSidebarSurface === 'analysis';
     const [isResumeOptimizationLayoutTransitioning, setIsResumeOptimizationLayoutTransitioning] = useState(false);
     const resumeOptimizationReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -532,6 +530,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         sortByCategory,
         compareByDateDesc,
         compareCertificationByDateDesc,
+    });
+    const mobileEditorDrawer = useMobileEditorDrawer({
+        ownerKey: `${authUserKey ?? ""}:${resumeId ?? ""}`,
+        mobileDrawerOpenRequest,
+        onMobileDrawerOpenRequestConsumed,
+        scrollContainerRef: mobileEditorScrollContainerRef,
+        setSidebarTab,
     });
     const flushResumeConfig = useCallback(async (
         configOverride?: Parameters<typeof flushResumeConfigWithTimestamp>[0]
@@ -1108,10 +1113,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         }
         setRightSidebarSurface(shouldRestoreAnalysis ? 'analysis' : null);
         setWorkspaceLayout(shouldRestoreAnalysis ? 'ai' : 'list');
-        if (shouldRestoreAnalysis) focusRestoredAnalysisReport();
+        if (shouldRestoreAnalysis && window.matchMedia('(max-width: 767px)').matches) {
+            mobileEditorDrawer.setReportTab('resume');
+            mobileEditorDrawer.open('analysis');
+        } else if (shouldRestoreAnalysis) focusRestoredAnalysisReport();
         resumeOptimizationShouldRestoreReportRef.current = false;
         return true;
-    }, [analysisResult, focusRestoredAnalysisReport, resumeOptimizationFlow.closeWorkspace]);
+    }, [analysisResult, focusRestoredAnalysisReport, resumeOptimizationFlow.closeWorkspace, mobileEditorDrawer.open]);
 
     const handleFinishResumeOptimization = useCallback(async () => {
         resumeOptimizationShouldRestoreReportRef.current = Boolean(analysisResult);
@@ -1559,16 +1567,26 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         applyResumeDetail,
         ensureFloatingPolishResumeLink,
     });
+    const handleWorkbenchAssistantLaunch = useCallback((request: AssistantLaunchRequest) => {
+        if (window.matchMedia('(max-width: 767px)').matches) {
+            assistantSidebarLaunchRequestIdRef.current += 1;
+            setAssistantSidebarLaunchRequest({ ...request, requestId: `mobile-workbench-${assistantSidebarLaunchRequestIdRef.current}` });
+            setIsAssistantSidebarMounted(true);
+            mobileEditorDrawer.open('assistant');
+            return;
+        }
+        onLaunchAssistant?.(request);
+    }, [mobileEditorDrawer.open, onLaunchAssistant]);
     const {
         handleOpenExperienceAssistant,
         handleOpenFloatingExperienceAssistant,
-        handleLaunchResumeAssistant,
+        handleLaunchResumeAssistant: launchResumeAssistant,
     } = useResumeEditorAssistantLaunch({
         resumeId,
         resumeName,
         jdPolishContext,
         selectedResumeSnapshot,
-        onLaunchAssistant,
+        onLaunchAssistant: handleWorkbenchAssistantLaunch,
         experience,
         experienceItems,
         activeFloatingPolishExperienceId,
@@ -1579,6 +1597,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setExperiencePolishPreview,
         handleApplyResumeAssistantDraft,
     });
+    const handleLaunchResumeAssistant = useCallback(() => {
+        if (window.matchMedia('(max-width: 767px)').matches && isAssistantSidebarMounted) {
+            mobileEditorDrawer.open('assistant');
+        } else launchResumeAssistant();
+    }, [launchResumeAssistant, isAssistantSidebarMounted, mobileEditorDrawer.open]);
     const openResumeAssistantSidebar = useCallback(() => {
         if (!resumeId) {
             showToastInfo('请先选择或创建一份简历');
@@ -1620,31 +1643,33 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, []);
     const handleReturnFromAnalysisToAssistant = useCallback(() => {
         if (window.matchMedia('(max-width: 767px)').matches) {
-            handleCloseJDAnalysisDetailsSidebar();
-            handleLaunchResumeAssistant();
+            mobileEditorDrawer.open('assistant');
             return;
         }
         lastRightSidebarSurfaceRef.current = 'assistant';
         setIsAssistantSidebarMounted(true);
         setRightSidebarSurface('assistant');
-        setWorkspaceLayout('ai');
-    }, [handleCloseJDAnalysisDetailsSidebar, handleLaunchResumeAssistant]);
+    }, [mobileEditorDrawer.open]);
     const {
         captureReturnFocus: captureMobileAnalysisReturnFocus,
         isMobileAnalysisViewport,
-        mobileAnalysisDialogRef,
     } = useMobileJDAnalysisDialog({
-        isOpen: isJDAnalysisDetailsSidebarOpen,
+        isOpen: false,
         onClose: handleReturnFromAnalysisToAssistant,
     });
     const handleOpenJDAnalysisDetailsSidebar = useCallback(() => {
+        if (window.matchMedia('(max-width: 767px)').matches) {
+            mobileEditorDrawer.setReportTab('jd');
+            mobileEditorDrawer.open('analysis');
+            return;
+        }
         if (!analysisResult) {
             return;
         }
         captureMobileAnalysisReturnFocus();
         setRightSidebarSurface('analysis');
         setWorkspaceLayout((currentLayout) => currentLayout === 'ai' ? 'ai' : 'triple');
-    }, [analysisResult, captureMobileAnalysisReturnFocus]);
+    }, [analysisResult, captureMobileAnalysisReturnFocus, mobileEditorDrawer.open]);
     const shouldRestoreHydratedOptimizationWorkspace = Boolean(
         !isMobileAnalysisViewport
         && rightSidebarSurface === null
@@ -2077,7 +2102,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     } = useResumeEditorNavigationHandlers({
         hasBlockingState: hasFloatingPolishBlockingState,
         setSidebarTab,
-        openMobileDrawer: mobileEditorDrawer.open,
+        openMobileDrawer: () => mobileEditorDrawer.open('information'),
         beginProfileEdit,
         cancelEditingExperience: experience.cancelEditingExperience,
         startEditingExperience: experience.startEditingExperience,
@@ -2093,7 +2118,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         experienceItems,
         onOpenExperienceEditor: () => {
             setSidebarTab('experience');
-            mobileEditorDrawer.open();
+            mobileEditorDrawer.open('information');
         },
         onStartEditing: experience.startEditingExperience,
         onMissingTarget: () => {
@@ -2419,6 +2444,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             },
         } : editorPreviewProps;
     const jdAnalysisDetailsSidebarProps = analysisResult ? {
+        onAnalyze: handleAnalyzeWithAutoName,
+        isAnalyzing,
+        isAnalyzeDisabled: isEvaluating || !hasJdContext || hasMissingAttachmentContext,
         analysisResult,
         jdText: jdPolishContext,
         isOutdated,
@@ -2438,7 +2466,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;
     const rightSidebarContent = isRightSidebarOpen || hasOpenedRightSidebar ? (
         <div aria-hidden={!isRightSidebarOpen} inert={!isRightSidebarOpen ? true : undefined} className="relative h-full min-h-0 w-full overflow-clip bg-white dark:bg-slate-950">
-            {isAssistantSidebarMounted ? (
+            {isAssistantSidebarMounted && !isMobileAnalysisViewport ? (
                 <div
                     aria-hidden={!isAssistantSidebarActive}
                     inert={!isAssistantSidebarActive ? true : undefined}
@@ -2449,18 +2477,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                             : '-translate-y-4 opacity-0 pointer-events-none',
                     ].join(' ')}
                 >
-                    <React.Suspense fallback={<div className="h-full w-full animate-pulse bg-slate-50 dark:bg-slate-900" aria-label="正在加载 AI 助手" />}>
-                    <AIAssistant
-                        authUserKey={authUserKey}
-                        surface="sidebar"
-                        pendingLaunchRequest={assistantSidebarLaunchRequest}
-                        liveSelectedResume={assistantSidebarSelectedResume}
-                        onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
-                        onClose={handleCloseAssistantSidebar}
-                        onExpandToFullPage={handleExpandAssistantSidebar}
-                        onOpenAnalysisDetails={analysisResult ? handleOpenJDAnalysisDetailsSidebar : undefined}
-                    />
-                    </React.Suspense>
+                    <div ref={setDesktopAssistantContainer} className="h-full min-h-0" />
                 </div>
             ) : null}
             {jdAnalysisDetailsSidebarProps ? (
@@ -2498,11 +2515,26 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         </div>
     ) : null;
     return (
-        <ScoreAnnotationProvider experiences={[...selectedWorkItems, ...selectedProjectItems]} onLocate={isMobileAnalysisViewport ? handleCloseJDAnalysisDetailsSidebar : undefined} suggestions={!isEvaluationOutdated && analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v2' ? analysisResult.resumeEvaluation.suggestions : []}
+        <ScoreAnnotationProvider experiences={[...selectedWorkItems, ...selectedProjectItems]} onLocate={isMobileAnalysisViewport ? (key) => {
+            const experienceId = key.startsWith('experience_star:') ? key.slice('experience_star:'.length) : null;
+            if (experienceId && experienceItems.some(item => item.id === experienceId)) {
+                handleEditExperience(experienceId);
+                return true;
+            }
+            mobileEditorDrawer.dismissImmediately();
+        } : undefined} suggestions={!isEvaluationOutdated && analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v2' ? analysisResult.resumeEvaluation.suggestions : []}
             reportKey={JSON.stringify([resumeId, evaluationSignature, analysisResult?.resumeEvaluation, isEvaluationOutdated])}>
         <div
             ref={mobileEditorScrollContainerRef}
             data-rf-mobile-editor-scroll-root
+            onKeyDownCapture={event => {
+                if (!mobileEditorDrawer.isOpen || event.key !== 'Escape') return;
+                if (confirmDialog) {
+                    event.preventDefault(); event.stopPropagation(); handleCancelDelete();
+                } else if (isPersonalSummaryOverwriteDialogOpen) {
+                    event.preventDefault(); event.stopPropagation(); cancelPersonalSummaryOverwrite();
+                }
+            }}
             className="relative flex min-h-full flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable] bg-background-light dark:bg-background-dark md:h-full md:overflow-hidden"
             aria-busy={isEditorBusy}
         >
@@ -2619,7 +2651,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     isOutdated={isOutdated}
                     isAnalyzing={isAnalyzing}
                     onAnalyze={handleAnalyzeWithAutoName}
-                    onOpenAnalysisDetails={analysisResult ? handleOpenJDAnalysisDetailsSidebar : undefined}
+                    onOpenAnalysisDetails={handleOpenJDAnalysisDetailsSidebar}
                     onExportPdf={handleExportPdf}
                     isExportingPdf={isExportingPdf}
                     isPreviewOverflowing={isPreviewOverflowing}
@@ -2672,28 +2704,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 />
                 </React.Suspense>
             </div>
-            {isJDAnalysisDetailsSidebarOpen && jdAnalysisDetailsSidebarProps && isMobileAnalysisViewport ? (
-                <div
-                    ref={mobileAnalysisDialogRef}
-                    className="fixed inset-0 z-[80] flex items-end bg-slate-950/45 backdrop-blur-[1px] md:hidden"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label="分析报告"
-                    tabIndex={-1}
-                    onMouseDown={(event) => {
-                        if (event.target === event.currentTarget) {
-                            handleCloseJDAnalysisDetailsSidebar();
-                        }
-                    }}
-                >
-                    <div
-                        className="h-[calc(100dvh-2rem)] w-full overflow-hidden rounded-t-2xl bg-white shadow-2xl dark:bg-slate-950"
-                        onMouseDown={(event) => event.stopPropagation()}
-                    >
-                        <JDAnalysisDetailsSidebar {...jdAnalysisDetailsSidebarProps} />
-                    </div>
-                </div>
-            ) : null}
             <ResumeEditorDesktopWorkspace
                 factorySidebarProps={factorySidebarProps}
                 layoutAdjustProps={layoutAdjustProps}
@@ -2736,13 +2746,44 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 onSaveTemplatePreset={handleSaveTemplatePreset}
             />
 
+            {isMobileAnalysisViewport ? <React.Suspense fallback={null}>
             <ResumeEditorMobileDrawer
+                key={`${authUserKey ?? ''}:${resumeId ?? ''}`}
+                hasOpened={mobileEditorDrawer.hasOpened}
+                page={mobileEditorDrawer.page}
+                suspended={resumeOptimizationFlow.uiState !== 'closed' && isMobileAnalysisViewport}
+                analysis={<MobileWorkbenchReports panel={commonEditorSidebarProps.jdPanelProps} reportTab={mobileEditorDrawer.reportTab} onSelectReport={mobileEditorDrawer.setReportTab} />}
+                assistant={<div ref={setMobileAssistantContainer} className="h-full min-h-0" />}
                 isOpen={mobileEditorDrawer.isOpen}
                 isVisible={mobileEditorDrawer.isVisible}
-                onOpen={mobileEditorDrawer.open}
+                onOpen={(target) => {
+                    if (target === 'assistant') {
+                        handleLaunchResumeAssistant();
+                    } else mobileEditorDrawer.open(target);
+                }}
                 onClose={mobileEditorDrawer.close}
                 sidebarProps={commonEditorSidebarProps}
             />
+            </React.Suspense> : null}
+            {isAssistantSidebarMounted ? (
+                <PersistentAssistantPortal
+                    key={`${authUserKey ?? ''}:${resumeId ?? ''}`}
+                    container={isMobileAnalysisViewport ? mobileAssistantContainer : desktopAssistantContainer}
+                >
+                    <React.Suspense fallback={<div className="p-4 text-sm text-gray-500" role="status">正在加载 AI 助手…</div>}>
+                        <AIAssistant
+                            authUserKey={authUserKey}
+                            surface={isMobileAnalysisViewport ? 'workbench' : 'sidebar'}
+                            pendingLaunchRequest={assistantSidebarLaunchRequest}
+                            liveSelectedResume={assistantSidebarSelectedResume}
+                            onConsumeLaunchRequest={handleConsumeAssistantSidebarLaunchRequest}
+                            onClose={handleCloseAssistantSidebar}
+                            onExpandToFullPage={handleExpandAssistantSidebar}
+                            onOpenAnalysisDetails={isMobileAnalysisViewport || analysisResult ? handleOpenJDAnalysisDetailsSidebar : undefined}
+                        />
+                    </React.Suspense>
+                </PersistentAssistantPortal>
+            ) : null}
             {!isEditorBusy ? <ResumeEditorMeasurePreview {...measurePreviewProps} /> : null}
             {isEditorBusy ? (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-black/50 backdrop-blur-[1px]">

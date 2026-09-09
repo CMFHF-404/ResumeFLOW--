@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLogto } from '@logto/react';
-import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Moon, Sun, Bot, CreditCard, UserCog, Gauge } from 'lucide-react';
+import { FolderOpen, Database, Wand2, LogOut, MessageSquare, LogIn, Bot, CreditCard, UserCog, Gauge } from 'lucide-react';
 import { ViewState } from '../types';
 import { useProfile } from '../hooks/useProfile';
 import { markUserSignInStarted, markUserSignOutStarted } from '../services/authFlowState';
@@ -37,9 +37,6 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   const accountCenterUrl = import.meta.env.VITE_LOGTO_ACCOUNT_CENTER_URL?.trim();
   const mobileAvatarButtonRef = React.useRef<HTMLButtonElement>(null);
   const desktopAvatarButtonRef = React.useRef<HTMLButtonElement>(null);
-  const [isDarkMode, setIsDarkMode] = React.useState(() =>
-    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
-  );
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = React.useState(false);
   const mobileAvatarMenuRef = React.useRef<HTMLDivElement | null>(null);
   const desktopAvatarMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -84,9 +81,6 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     { view: ViewState.EDITOR, icon: Wand2, label: '简历工厂' },
     { view: ViewState.AI_ASSISTANT, icon: Bot, label: 'AI助理' },
   ];
-  const desktopUtilityButtonClass =
-    "group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 text-slate-300 transition-all hover:bg-slate-800 hover:text-white md:p-3";
-
   const handleSignOut = async () => {
     // 注销并跳转回首页(登录页)
     // 注意: 需要在 Logto 控制台将 http://localhost:5173 添加到 "Post Sign-out Redirect URI"
@@ -100,24 +94,6 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
     markUserSignInStarted();
     await trackLoginStart('sidebar');
     await signIn(import.meta.env.VITE_LOGTO_REDIRECT_URI || window.location.href);
-  };
-
-  React.useEffect(() => {
-    if (typeof document === 'undefined') {
-      return;
-    }
-    const observer = new MutationObserver(() => {
-      setIsDarkMode(document.documentElement.classList.contains('dark'));
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, []);
-
-  const handleToggleTheme = () => {
-    const nextIsDark = !document.documentElement.classList.contains('dark');
-    document.documentElement.classList.toggle('dark', nextIsDark);
-    setIsDarkMode(nextIsDark);
-    setIsAvatarMenuOpen(false);
   };
 
   React.useEffect(() => {
@@ -200,15 +176,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         <div className="text-xs text-slate-400">{isAuthenticated ? '账户工具' : '快速入口'}</div>
       </div>
       <div className="mt-2 flex flex-col gap-1">
-        <button
-          className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800 hover:text-white"
-          onClick={handleToggleTheme}
-          type="button"
-          role="menuitem"
-        >
-          {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          <span>{isDarkMode ? '切换浅色' : '切换深色'}</span>
-        </button>
+
         <button
           className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-amber-300 transition hover:bg-amber-500/10 hover:text-amber-200"
           onClick={() => handleOpenTokenPurchase(
@@ -425,14 +393,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         </div>
 
         <div className="mt-auto flex w-full flex-col items-center gap-4 pb-2">
-          <button
-            className={desktopUtilityButtonClass}
-            onClick={handleToggleTheme}
-            type="button"
-          >
-            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            <div className="nav-tooltip hidden md:block">{isDarkMode ? '切换浅色' : '切换深色'}</div>
-          </button>
+
 
           {isAuthenticated ? (
             <button
