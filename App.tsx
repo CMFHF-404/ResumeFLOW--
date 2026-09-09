@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRe
 import { useLogto } from '@logto/react';
 import AuthGuard from './components/AuthGuard';
 import GlobalSidebar from './components/GlobalSidebar';
+import AppViewport from './components/AppViewport';
 import QuotaPurchasePrompt from './components/QuotaPurchasePrompt';
 import ViewErrorBoundary from './components/ViewErrorBoundary';
 import type { AssistantLaunchRequest, AssistantOpenSessionRequest } from './views/AIAssistant/types';
@@ -605,7 +606,7 @@ const App: React.FC = () => {
 
   return (
     <AuthGuard authUserKey={authUserKey}>
-      <div key={viewScopeKey} className="flex h-[100dvh] min-h-[100dvh] w-full flex-col md:h-screen md:min-h-screen md:flex-row">
+      <AppViewport key={viewScopeKey} isEditor={currentView === ViewState.EDITOR}>
         <GlobalSidebar
           currentView={currentView}
           setView={handleSetView}
@@ -663,7 +664,7 @@ const App: React.FC = () => {
             />
           </Suspense>
         ) : null}
-      </div>
+      </AppViewport>
     </AuthGuard>
   );
 };

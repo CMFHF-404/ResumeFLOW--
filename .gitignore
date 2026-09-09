@@ -65,3 +65,10 @@ venv.bak/
 
 .env.local
 .claude/settings.local.json
+
+# Android release signing secrets and private backups
+/android/signing.properties
+/android/private/
+/android/**/*.p12
+/android/**/*.jks
+/android/**/*.keystore

@@ -1,3 +1,4 @@
+import ResumeEditorViewport from './components/ResumeEditorViewport';
 import { ScoreAnnotationProvider } from './components/ResumeEvaluationReport/ScoreAnnotations';
 import PersistentAssistantPortal from './components/PersistentAssistantPortal';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -2524,9 +2525,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             mobileEditorDrawer.dismissImmediately();
         } : undefined} suggestions={!isEvaluationOutdated && analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v2' ? analysisResult.resumeEvaluation.suggestions : []}
             reportKey={JSON.stringify([resumeId, evaluationSignature, analysisResult?.resumeEvaluation, isEvaluationOutdated])}>
-        <div
-            ref={mobileEditorScrollContainerRef}
-            data-rf-mobile-editor-scroll-root
+        <ResumeEditorViewport
+            scrollContainerRef={mobileEditorScrollContainerRef}
             onKeyDownCapture={event => {
                 if (!mobileEditorDrawer.isOpen || event.key !== 'Escape') return;
                 if (confirmDialog) {
@@ -2535,8 +2535,27 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                     event.preventDefault(); event.stopPropagation(); cancelPersonalSummaryOverwrite();
                 }
             }}
-            className="relative flex min-h-full flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable] bg-background-light dark:bg-background-dark md:h-full md:overflow-hidden"
-            aria-busy={isEditorBusy}
+            busy={isEditorBusy}
+            workbench={isMobileAnalysisViewport ? <React.Suspense fallback={null}>
+                <ResumeEditorMobileDrawer
+                    key={`${authUserKey ?? ''}:${resumeId ?? ''}`}
+                    hasOpened={mobileEditorDrawer.hasOpened}
+                    busy={isEditorBusy}
+                    page={mobileEditorDrawer.page}
+                    suspended={resumeOptimizationFlow.uiState !== 'closed' && isMobileAnalysisViewport}
+                    analysis={<MobileWorkbenchReports panel={commonEditorSidebarProps.jdPanelProps} reportTab={mobileEditorDrawer.reportTab} onSelectReport={mobileEditorDrawer.setReportTab} />}
+                    assistant={<div ref={setMobileAssistantContainer} className="h-full min-h-0" />}
+                    isOpen={mobileEditorDrawer.isOpen}
+                    isVisible={mobileEditorDrawer.isVisible}
+                    onOpen={(target) => {
+                        if (target === 'assistant') {
+                            handleLaunchResumeAssistant();
+                        } else mobileEditorDrawer.open(target);
+                    }}
+                    onClose={mobileEditorDrawer.close}
+                    sidebarProps={commonEditorSidebarProps}
+                />
+            </React.Suspense> : null}
         >
             {hasResumeVersionConflict ? (
                 <div
@@ -2746,25 +2765,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 onSaveTemplatePreset={handleSaveTemplatePreset}
             />
 
-            {isMobileAnalysisViewport ? <React.Suspense fallback={null}>
-            <ResumeEditorMobileDrawer
-                key={`${authUserKey ?? ''}:${resumeId ?? ''}`}
-                hasOpened={mobileEditorDrawer.hasOpened}
-                page={mobileEditorDrawer.page}
-                suspended={resumeOptimizationFlow.uiState !== 'closed' && isMobileAnalysisViewport}
-                analysis={<MobileWorkbenchReports panel={commonEditorSidebarProps.jdPanelProps} reportTab={mobileEditorDrawer.reportTab} onSelectReport={mobileEditorDrawer.setReportTab} />}
-                assistant={<div ref={setMobileAssistantContainer} className="h-full min-h-0" />}
-                isOpen={mobileEditorDrawer.isOpen}
-                isVisible={mobileEditorDrawer.isVisible}
-                onOpen={(target) => {
-                    if (target === 'assistant') {
-                        handleLaunchResumeAssistant();
-                    } else mobileEditorDrawer.open(target);
-                }}
-                onClose={mobileEditorDrawer.close}
-                sidebarProps={commonEditorSidebarProps}
-            />
-            </React.Suspense> : null}
             {isAssistantSidebarMounted ? (
                 <PersistentAssistantPortal
                     key={`${authUserKey ?? ''}:${resumeId ?? ''}`}
@@ -2810,7 +2810,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 onConfirm={confirmPersonalSummaryOverwrite}
                 onCancel={cancelPersonalSummaryOverwrite}
             />
-        </div>
+        </ResumeEditorViewport>
         </ScoreAnnotationProvider>
     );
 };

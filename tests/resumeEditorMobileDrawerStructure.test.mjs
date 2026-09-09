@@ -4,10 +4,16 @@ import { test } from 'node:test';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
+test('App scopes the stable viewport to the editor and keeps safe space below the preview', () => {
+  assert.match(read('App.tsx'), /<AppViewport key=\{viewScopeKey\} isEditor=\{currentView === ViewState\.EDITOR\}>/);
+  assert.match(read('views/ResumeEditor/components/ResumeEditorPreviewStage.tsx'), /pb-\[calc\(5rem\+env\(safe-area-inset-bottom,0px\)\)\]/);
+});
+
 test('ResumeEditor delegates mobile drawer shell to ResumeEditorMobileDrawer', () => {
   const editor = read('views/ResumeEditor/index.tsx');
   const drawer = read('views/ResumeEditor/components/ResumeEditorMobileDrawer.tsx');
   const drawerHook = read('views/ResumeEditor/hooks/useMobileEditorDrawer.ts');
+  const viewport = read('views/ResumeEditor/components/ResumeEditorViewport.tsx');
 
   assert.match(editor, /ResumeEditorMobileDrawer/);
   assert.match(editor, /isOpen=\{mobileEditorDrawer\.isOpen\}/);
@@ -15,8 +21,10 @@ test('ResumeEditor delegates mobile drawer shell to ResumeEditorMobileDrawer', (
   assert.match(editor, /mobileEditorDrawer\.open\(target\)/);
   assert.match(editor, /onClose=\{mobileEditorDrawer\.close\}/);
   assert.match(editor, /sidebarProps=\{commonEditorSidebarProps\}/);
-  assert.match(editor, /data-rf-mobile-editor-scroll-root/);
-  assert.match(editor, /\[scrollbar-gutter:stable\]/);
+  assert.match(editor, /<ResumeEditorMobileDrawer\b[^>]*busy=\{isEditorBusy\}/);
+  assert.match(editor, /scrollContainerRef=\{mobileEditorScrollContainerRef\}/);
+  assert.match(viewport, /data-rf-mobile-editor-scroll-root/);
+  assert.match(viewport, /\[scrollbar-gutter:stable\]/);
   assert.doesNotMatch(editor, /关闭经历库抽屉遮罩/);
   assert.doesNotMatch(editor, /layoutMode="drawer"/);
 
