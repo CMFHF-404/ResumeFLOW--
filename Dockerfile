@@ -8,7 +8,8 @@ ARG VITE_LOGTO_ENDPOINT
 ARG VITE_LOGTO_APP_ID
 ARG VITE_LOGTO_REDIRECT_URI
 ARG VITE_LOGTO_ACCOUNT_CENTER_URL
-ARG VITE_ENABLE_RESUME_OPTIMIZATION=false
+# Keep this ARG bare so Zeabur can inject the service variable during preprocessing.
+ARG VITE_ENABLE_RESUME_OPTIMIZATION
 ARG YIFUT_BASE_URL=https://www.yifut.com
 
 # These public build args are embedded into the Vite bundle. They must be
@@ -20,7 +21,7 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
     VITE_LOGTO_APP_ID=$VITE_LOGTO_APP_ID \
     VITE_LOGTO_REDIRECT_URI=$VITE_LOGTO_REDIRECT_URI \
     VITE_LOGTO_ACCOUNT_CENTER_URL=$VITE_LOGTO_ACCOUNT_CENTER_URL \
-    VITE_ENABLE_RESUME_OPTIMIZATION=$VITE_ENABLE_RESUME_OPTIMIZATION \
+    VITE_ENABLE_RESUME_OPTIMIZATION=${VITE_ENABLE_RESUME_OPTIMIZATION:-false} \
     YIFUT_BASE_URL=$YIFUT_BASE_URL
 
 COPY package.json package-lock.json ./
@@ -33,6 +34,8 @@ RUN test -n "$VITE_API_BASE_URL" \
     && test -n "$VITE_LOGTO_APP_ID" \
     && test -n "$VITE_LOGTO_REDIRECT_URI" \
     && test -n "$VITE_LOGTO_ACCOUNT_CENTER_URL" \
+    && case "$VITE_ENABLE_RESUME_OPTIMIZATION" in true|false) ;; *) echo 'VITE_ENABLE_RESUME_OPTIMIZATION must be true or false' >&2; exit 1 ;; esac \
+    && echo "Frontend build: VITE_ENABLE_RESUME_OPTIMIZATION=$VITE_ENABLE_RESUME_OPTIMIZATION" \
     && node tools/validate-production-origins.mjs --write-manifest=/app/built-origins.env \
     && npm run build
 
