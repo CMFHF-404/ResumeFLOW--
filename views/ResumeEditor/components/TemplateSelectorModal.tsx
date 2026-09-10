@@ -681,18 +681,18 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
           <>
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
               <div className="flex min-w-0 items-center gap-3">
-                <button
+                {surface !== 'drawer' && <button
                   type="button"
                   onClick={closeTemplatePresetEditor}
                   className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                  aria-label={surface === 'drawer' ? '取消自定义' : '返回模板列表'}
+                  aria-label="返回模板列表"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                </button>
-                <div className="min-w-0">
-                  <h3 className="truncate text-lg font-bold text-gray-900 dark:text-white">{editingTemplate.name}模板自定义</h3>
+                </button>}
+                <div className="min-w-0 text-left">
+                  <h3 className="truncate text-lg font-bold text-gray-900 dark:text-white">{surface === 'drawer' ? '自定义' : `${editingTemplate.name}模板自定义`}</h3>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {surface === 'drawer' ? '应用后可继续比较，点击顶部确认保存所有修改。' : '保存后，后续选择该模板会默认使用这里的主题色和模块顺序。'}
+                    {surface === 'drawer' ? editingTemplate.name : '保存后，后续选择该模板会默认使用这里的主题色和模块顺序。'}
                   </p>
                 </div>
               </div>
