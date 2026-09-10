@@ -445,8 +445,8 @@ test('editor wires the owner-guarded preflight before config flush and report ge
   const editor = read('views/ResumeEditor/index.tsx');
   const hook = read('views/ResumeEditor/hooks/useResumeEvaluationLinkPreflight.ts');
   const handler = editor.slice(
-    editor.indexOf('const handleGenerateEvaluation = useCallback'),
-    editor.indexOf('const {', editor.indexOf('const handleGenerateEvaluation = useCallback') + 10),
+    editor.indexOf('const handleGenerateEvaluationOnly = useCallback'),
+    editor.indexOf('const {', editor.indexOf('const handleGenerateEvaluationOnly = useCallback') + 10),
   );
 
   assert.match(editor, /useResumeEvaluationLinkPreflight\(/);
@@ -457,6 +457,6 @@ test('editor wires the owner-guarded preflight before config flush and report ge
   assert.match(handler, /ensureLinks: ensureSelectedExperienceLinks/);
   assert.match(handler, /flushConfig: flushResumeConfig/);
   assert.match(handler, /generateEvaluation/);
-  assert.match(handler, /assertJDAnalysisCurrent: canPersistCurrentJDAnalysis/);
+  assert.match(handler, /assertJDAnalysisCurrent: \(\) => isCurrent\(\) && canPersistCurrentJDAnalysis\(\)/);
   assert.match(handler, /showToastError\('简历内容已在其他请求中更新，请刷新后再生成六维报告'\)/);
 });

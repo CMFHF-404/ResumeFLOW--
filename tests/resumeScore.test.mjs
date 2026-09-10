@@ -45,7 +45,7 @@ test('report starts unselected and annotations are absent from read-only export'
       bundle:true, format:'esm', platform:'node', outfile:output, external:['react','react-dom','react/jsx-runtime','lucide-react'], logLevel:'silent' });
     const { ResumeScoreReport, ScoreAnnotationProvider, ModuleScoreNote, ResumeEvaluationReport } = await import(pathToFileURL(`${process.cwd()}/${output}`));
     const raw = normalizeResumeScore(report());
-    const render = readOnly => renderToStaticMarkup(React.createElement(ScoreAnnotationProvider, {suggestions:raw.suggestions, reportKey:'r1'},
+    const render = (readOnly, previewVisible = true) => renderToStaticMarkup(React.createElement(ScoreAnnotationProvider, {suggestions:raw.suggestions, reportKey:'r1', previewVisible},
       React.createElement(ModuleScoreNote, {moduleType:'personal_summary',moduleId:'current_resume',readOnly}),
       React.createElement(ResumeScoreReport, {report:raw, outdated:false,enabled:true,busy:false,canStart:true,generating:false,onStart:()=>{throw Error('render must not optimize');}})));
     const editor = render(false), exported = render(true);
@@ -55,6 +55,10 @@ test('report starts unselected and annotations are absent from read-only export'
     assert.doesNotMatch(editor, /checked=""/);
     assert.match(editor, /data-score-module/);
     assert.doesNotMatch(exported, /data-score-module/);
+    const hiddenPreview = render(false, false);
+    assert.doesNotMatch(hiddenPreview, /data-score-module/);
+    assert.match(hiddenPreview, /六维简历评估雷达图/);
+    assert.match(hiddenPreview, /优化所选模块（0）/);
     assert.doesNotMatch(editor, /自动规则未发现风险|审核通过/);
     const actionProps = { report: raw, outdated: false, enabled: true, busy: false, canStart: true,
       onGenerate: () => {}, onStop: () => {}, onStart: () => {} };

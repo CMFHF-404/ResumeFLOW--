@@ -477,7 +477,7 @@ test('report stop action and single-button placeholder stay accessible', () => {
   assert.match(panel, /onStop=\{onStopEvaluation\}/);
   assert.match(report, /onClick=\{isGenerating \? onStop : onGenerate\} disabled=\{isGenerating \? !onStop : isOptimizationBusy\}/);
   assert.match(panel, /onStopEvaluation\?: \(\) => void/);
-  assert.match(editor, /onStopEvaluation: stopEvaluation/);
+  assert.match(editor, /onStopEvaluation: handleStopEvaluation/);
 });
 
 test('guidance failures retain only a current trusted report and expose safe retryable messages', () => {

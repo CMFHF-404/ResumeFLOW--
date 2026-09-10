@@ -6,7 +6,8 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
 import { useJDAnalysis } from '../../hooks/useJDAnalysis';
-import { useResumeEvaluation } from '../../hooks/useResumeEvaluation';
+import { buildJDResultIdentity, useResumeEvaluation } from '../../hooks/useResumeEvaluation';
+import { useRescoreWithJDRefresh } from './hooks/useRescoreWithJDRefresh';
 import { useResumeData } from '../../hooks/useResumeData';
 import type { AssistantDraftApplyNavigation, AssistantSelectedResume } from '../../services/aiService';
 import type { ExperienceCategory } from '../../services/experienceService';
@@ -687,7 +688,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         [analysisResult, isOutdated]
     );
     const {
-        isEvaluating,
+        isEvaluating: isScoring,
         thinkingText: evaluationThinkingText,
         evaluationError,
         generateEvaluation,
@@ -751,7 +752,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         applyResumeDetail,
         setResumeExperienceMap,
     });
-    const handleGenerateEvaluation = useCallback(async () => {
+    const [desktopReportSelection, setDesktopReportSelection] = useState({ owner: '', tab: 'jd' as 'jd' | 'resume' });
+    const reportOwner = `${authUserKey ?? ''}:${resumeId ?? ''}`;
+    const handleDesktopReportTabChange = useCallback((tab: 'jd' | 'resume') => {
+        setDesktopReportSelection({ owner: reportOwner, tab });
+    }, [reportOwner]);
+    const handleGenerateEvaluationOnly = useCallback(async (isCurrent: () => boolean) => {
+        if (!isCurrent()) return { status: 'aborted' as const };
         if (!canPersistCurrentJDAnalysis()) {
             showToastError('请先处理未同步的本地 JD 分析。');
             return { status: 'error' as const };
@@ -761,9 +768,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 ensureLinks: ensureSelectedExperienceLinks,
                 flushConfig: flushResumeConfig,
                 generateEvaluation,
-                assertJDAnalysisCurrent: canPersistCurrentJDAnalysis,
+                assertJDAnalysisCurrent: () => isCurrent() && canPersistCurrentJDAnalysis(),
             });
         } catch {
+            if (!isCurrent()) return { status: 'aborted' as const };
             if (!canPersistCurrentJDAnalysis()) {
                 showToastError('请先处理未同步的本地 JD 分析。');
                 return { status: 'error' as const };
@@ -778,6 +786,30 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         generateEvaluation,
         showToastError,
     ]);
+    const refreshJDForEvaluation = useCallback(async (isCurrent: () => boolean) => {
+        if (!isCurrent()) return { status: 'aborted' as const };
+        if (!canPersistCurrentJDAnalysis()) return { status: 'pending_conflict' as const };
+        await flushResumeConfig();
+        if (!isCurrent()) return { status: 'aborted' as const };
+        if (!canPersistCurrentJDAnalysis()) return { status: 'pending_conflict' as const };
+        return handleAnalyze({ shouldContinue: isCurrent });
+    }, [canPersistCurrentJDAnalysis, flushResumeConfig, handleAnalyze]);
+    const {
+        run: handleGenerateEvaluation,
+        stop: handleStopEvaluation,
+        isRunning: isRescoring,
+    } = useRescoreWithJDRefresh({
+        inputKey: JSON.stringify([authUserKey, resumeId, evaluationSnapshot, evaluationJdText]),
+        needsJDRefresh: hasJdContext && isOutdated,
+        jdResultIdentity: buildJDResultIdentity(analysisResult),
+        refreshJD: refreshJDForEvaluation,
+        resultIdentity: buildJDResultIdentity,
+        evaluate: handleGenerateEvaluationOnly,
+        stopJD: handleStopAnalysis,
+        stopEvaluation,
+        onRefreshFailure: () => showToastError('JD 匹配刷新未完成，本次未重新评分。请检查 JD 输入后重试。'),
+    });
+    const isEvaluating = isScoring || isRescoring;
     const {
         activeManualSaveDraftRef,
         appliedManualSaveDraftKeyRef,
@@ -2273,7 +2305,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             evaluationThinkingText,
             evaluationError,
             onGenerateEvaluation: handleGenerateEvaluation,
-            onStopEvaluation: stopEvaluation,
+            onStopEvaluation: handleStopEvaluation,
             isOptimizationEnabled: RESUME_OPTIMIZATION_ENABLED,
             isOptimizationBusy: isResumeOptimizationBusy,
             canStartOptimization: resumeOptimizationFlow.canStart,
@@ -2509,7 +2541,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         evaluationThinkingText,
         evaluationError,
         onGenerateEvaluation: handleGenerateEvaluation,
-        onStopEvaluation: stopEvaluation,
+        onStopEvaluation: handleStopEvaluation,
         isOptimizationEnabled: RESUME_OPTIMIZATION_ENABLED,
         isOptimizationBusy: isResumeOptimizationBusy,
         canStartOptimization: resumeOptimizationFlow.canStart,
@@ -2517,6 +2549,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         onStartOptimization: handleStartResumeOptimization,
         onClose: handleReturnFromAnalysisToAssistant,
         onOpenAgentPluginConfig,
+        onReportTabChange: handleDesktopReportTabChange,
     } satisfies React.ComponentProps<typeof JDAnalysisDetailsSidebar> : null;
     const rightSidebarContent = isRightSidebarOpen || hasOpenedRightSidebar ? (
         <div aria-hidden={!isRightSidebarOpen} inert={!isRightSidebarOpen ? true : undefined} className="relative h-full min-h-0 w-full overflow-clip bg-white dark:bg-slate-950">
@@ -2569,7 +2602,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         </div>
     ) : null;
     return (
-        <ScoreAnnotationProvider experiences={[...selectedWorkItems, ...selectedProjectItems]} onLocate={isMobileAnalysisViewport ? (key) => {
+        <ScoreAnnotationProvider previewVisible={isMobileAnalysisViewport
+            ? mobileEditorDrawer.hasOpened && mobileEditorDrawer.page === 'analysis'
+                && mobileEditorDrawer.reportTab === 'resume' && !mobileEditorDrawer.isOpen && !mobileEditorDrawer.isVisible
+            : isRightSidebarOpen && isJDAnalysisDetailsSidebarOpen
+                && desktopReportSelection.owner === reportOwner && desktopReportSelection.tab === 'resume'}
+            experiences={[...selectedWorkItems, ...selectedProjectItems]} onLocate={isMobileAnalysisViewport ? (key) => {
             const experienceId = key.startsWith('experience_star:') ? key.slice('experience_star:'.length) : null;
             if (experienceId && experienceItems.some(item => item.id === experienceId)) {
                 handleEditExperience(experienceId);

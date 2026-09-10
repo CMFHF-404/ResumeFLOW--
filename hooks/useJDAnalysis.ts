@@ -129,6 +129,7 @@ type UseJDAnalysisOptions = {
 type HandleAnalyzeOptions = {
   onProgress?: JDAnalyzeProgressHandler;
   onEvent?: JDAnalyzeStreamHandler;
+  shouldContinue?: () => boolean;
 };
 
 // LOCAL_EVALUATION_ATTESTATION_BRIDGE_START
@@ -1448,11 +1449,9 @@ export const useJDAnalysis = ({
 
   const runAnalyze = useCallback(
     async (
-      options?: AnalyzeOptions & {
-        onProgress?: JDAnalyzeProgressHandler;
-        onEvent?: JDAnalyzeStreamHandler;
-      }
+      options?: AnalyzeOptions & HandleAnalyzeOptions
     ): Promise<JDAnalyzeOutcome> => {
+      if (options?.shouldContinue?.() === false) return { status: "aborted" };
       if (!canPersistCurrentJDAnalysis()) {
         return { status: "pending_conflict" };
       }
@@ -1465,6 +1464,7 @@ export const useJDAnalysis = ({
         }
         return { status: "aborted" };
       }
+      if (options?.shouldContinue?.() === false) return { status: "aborted" };
       if (!canPersistCurrentJDAnalysis()) {
         return { status: "pending_conflict" };
       }
@@ -1534,7 +1534,8 @@ export const useJDAnalysis = ({
         signal: controller.signal,
         expectedAuthCacheKey: ownerOperation.expectedAuthCacheKey,
         shouldContinue: () => (
-          activeAnalysisRunIdRef.current === runId
+          options?.shouldContinue?.() !== false
+          && activeAnalysisRunIdRef.current === runId
           && activeResumeIdRef.current === resumeId
           && activeAnalysisIdentityRef.current === analysisIdentity
           && ownerGuard.isOperationCurrent(ownerOperation)
@@ -1564,6 +1565,9 @@ export const useJDAnalysis = ({
   );
 
   const handleAnalyze = useCallback((options?: HandleAnalyzeOptions): Promise<JDAnalyzeOutcome> => {
+    if (options?.shouldContinue?.() === false) {
+      return Promise.resolve({ status: "aborted" });
+    }
     if (!canPersistCurrentJDAnalysis()) {
       return Promise.resolve({ status: "pending_conflict" });
     }
@@ -1572,7 +1576,7 @@ export const useJDAnalysis = ({
     }
     const request = (async (): Promise<JDAnalyzeOutcome> => {
       const hasPreparedSelection = await waitForPendingJdFileSelection();
-      if (!hasPreparedSelection) {
+      if (!hasPreparedSelection || options?.shouldContinue?.() === false) {
         return { status: "aborted" };
       }
       if (!canPersistCurrentJDAnalysis()) {
@@ -1616,6 +1620,7 @@ export const useJDAnalysis = ({
         diff: plan.diff,
         onProgress: options?.onProgress,
         onEvent: options?.onEvent,
+        shouldContinue: options?.shouldContinue,
       });
     })();
     analyzeRequestRef.current = request;
