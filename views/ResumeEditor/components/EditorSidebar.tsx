@@ -172,29 +172,14 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
                 </div>
                 <EditingSuggestionNav {...editingSuggestion} />
             </div>
-            {layoutMode === 'drawer' ? <div className="relative min-h-0 flex-1">
-                <div hidden={sidebarTab !== 'profile'} inert={sidebarTab !== 'profile' ? true : undefined} className="absolute inset-0 overflow-y-auto overscroll-contain p-3">
+            <div className="relative min-h-0 flex-1 overflow-hidden">
+                <div data-active={sidebarTab === 'profile'} aria-hidden={sidebarTab !== 'profile'} inert={sidebarTab !== 'profile' ? true : undefined} className={`rf-sidebar-page rf-sidebar-profile absolute inset-0 overflow-y-auto overscroll-contain ${layoutMode === 'drawer' ? 'p-3' : 'space-y-4 bg-gray-50/30 p-4 dark:bg-black/20 md:p-5'}`}>
                     <ProfileTab {...profileTabProps} />
                 </div>
-                <div ref={scrollContainerRef} hidden={sidebarTab !== 'experience'} inert={sidebarTab !== 'experience' ? true : undefined} className="absolute inset-0 overflow-y-auto overscroll-contain p-3">
+                <div ref={scrollContainerRef} data-active={sidebarTab === 'experience'} aria-hidden={sidebarTab !== 'experience'} inert={sidebarTab !== 'experience' ? true : undefined} className={`rf-sidebar-page rf-sidebar-experience absolute inset-0 overflow-y-auto overscroll-contain ${layoutMode === 'drawer' ? 'p-3' : 'space-y-4 bg-gray-50/30 p-4 dark:bg-black/20 md:p-5'}`}>
                     <ExperienceTab {...experienceTabProps} layoutMode={layoutMode} scrollContainerRef={scrollContainerRef} />
                 </div>
-            </div> : <>
-            <div
-                ref={scrollContainerRef}
-                className="flex-1 space-y-4 overflow-y-auto bg-gray-50/30 p-4 dark:bg-black/20 md:p-5"
-            >
-                {sidebarTab === 'profile' ? (
-                    <ProfileTab {...profileTabProps} />
-                ) : (
-                    <ExperienceTab
-                        {...experienceTabProps}
-                        layoutMode={layoutMode}
-                        scrollContainerRef={scrollContainerRef}
-                    />
-                )}
             </div>
-            </>}
         </aside>
     );
 };
