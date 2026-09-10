@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { waitForNextFrame } from '../snapshotUtils';
 
-const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 320;
+const MOBILE_EDITOR_DRAWER_ANIMATION_MS = 200;
 
 export type MobileWorkbenchPage = 'information' | 'analysis' | 'assistant';
 
@@ -51,8 +51,11 @@ export const useMobileEditorDrawer = ({
         clearOpenFrame();
         setIsOpen(true);
         cancelOpenFrameRef.current = waitForNextFrame(() => {
-            cancelOpenFrameRef.current = null;
-            setIsVisible(true);
+            // Commit the off-screen state before starting the transition.
+            cancelOpenFrameRef.current = waitForNextFrame(() => {
+                cancelOpenFrameRef.current = null;
+                setIsVisible(true);
+            });
         });
     }, [clearDrawerTimer, clearOpenFrame]);
 
@@ -70,7 +73,7 @@ export const useMobileEditorDrawer = ({
         timerRef.current = window.setTimeout(() => {
             setIsOpen(false);
             timerRef.current = null;
-        }, MOBILE_EDITOR_DRAWER_ANIMATION_MS);
+        }, window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : MOBILE_EDITOR_DRAWER_ANIMATION_MS);
     }, [clearDrawerTimer, clearOpenFrame]);
 
     useEffect(() => {

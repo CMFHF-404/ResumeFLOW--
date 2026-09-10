@@ -35,7 +35,8 @@ test('ResumeEditor delegates mobile drawer shell to ResumeEditorMobileDrawer', (
   assert.match(drawer, /aria-label="收起工作台"/);
   assert.match(drawer, /工作台/);
   assert.match(drawer, /duration-200/);
-  assert.match(drawer, /hidden=\{!active\}/);
+  assert.match(drawer, /visibility: active \? 'visible' : 'hidden'/);
+  assert.doesNotMatch(drawer, /hidden=\{!active\}/);
   assert.doesNotMatch(drawer, /backdrop-blur-\[1px\]/);
   assert.match(drawer, /isVisible \? 'translate-y-0' : 'translate-y-full'/);
   assert.match(drawer, /layoutMode="drawer"/);

@@ -89,7 +89,10 @@ const ResumeEditorMobileDrawer: React.FC<ResumeEditorMobileDrawerProps> = ({
             </div>
         </div>
         {hasOpened && createPortal(
-            <div hidden={!active} inert={!active ? true : undefined} className="fixed inset-0 z-[70] bg-black/35 md:hidden" data-mobile-workbench-overlay>
+            <div aria-hidden={!active || undefined} inert={!active ? true : undefined}
+                style={{ visibility: active ? 'visible' : 'hidden', opacity: active ? 1 : 0 }}
+                className="fixed inset-0 z-[70] md:hidden" data-mobile-workbench-overlay>
+                <div aria-hidden="true" className={`absolute inset-0 bg-black/35 transition-opacity duration-200 motion-reduce:transition-none ${active && isVisible ? 'opacity-100' : 'opacity-0'}`} />
                 <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="mobile-workbench-title" tabIndex={-1}
                     style={{ top: `calc(${viewport?.top ?? 0}px + env(safe-area-inset-top, 0px) + 8px)`, height: `calc(${viewport ? `${viewport.height}px` : '100dvh'} - env(safe-area-inset-top, 0px) - 8px)` }}
                     className={`absolute inset-x-0 flex min-h-0 flex-col overflow-hidden rounded-t-2xl border border-border-light bg-surface-light shadow-2xl transition-transform duration-200 motion-reduce:transition-none dark:border-border-dark dark:bg-surface-dark ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}>
