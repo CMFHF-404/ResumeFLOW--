@@ -29,8 +29,8 @@ export default function MobileTemplateStrip({ selectedTemplateId, presets, ready
         {!ready && <div role="status" className="px-4 pt-2 text-xs text-amber-700 dark:text-amber-300">
             正在同步模板预设…{fallbackAvailable && <button type="button" onClick={onFallback} className="ml-2 min-h-11 underline">使用本地预设</button>}
         </div>}
-        <div ref={stripRef} className="relative flex snap-x snap-proximity gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 pt-2">
-            {RESUME_TEMPLATE_DEFINITIONS.map(template => <div key={template.id} className="w-[104px] shrink-0 snap-center">
+        <div ref={stripRef} className="relative flex touch-pan-x select-none gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 pt-2">
+            {RESUME_TEMPLATE_DEFINITIONS.map(template => <div key={template.id} className="w-[104px] shrink-0">
                 <button type="button" disabled={!ready || busy} onClick={() => onSelect(template.id)} aria-label={`选择${template.name}模板`} aria-pressed={selectedTemplateId === template.id}
                     className={`relative block w-full rounded-lg border-2 p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${selectedTemplateId === template.id ? 'border-primary bg-primary/5' : 'border-slate-200 dark:border-slate-700'}`}>
                     <div className="aspect-[794/1123] overflow-hidden rounded bg-white">

@@ -123,7 +123,12 @@ test('mobile app isolates scroll across views and keeps drawer viewport adaptati
     const lastLine = await page.locator('[data-last-line]').boundingBox();
     assert.ok(lastLine.y + lastLine.height <= initialDock.y, 'last line clears the workbench dock');
 
-    await page.getByRole('button', { name: '工作台', exact: true }).click();
+    const focusedBeforeEntry = await workbenchButton.evaluate(async button => {
+      button.click();
+      await new Promise(requestAnimationFrame);
+      return document.activeElement?.hasAttribute('data-workbench-close');
+    });
+    assert.equal(focusedBeforeEntry, false, 'opening must not focus an off-screen translated control');
     await page.getByRole('dialog').waitFor();
     assert.equal(await scroller.evaluate(el => el.style.overflow), 'hidden');
     await page.getByRole('textbox', { name: '个人信息输入' }).fill('键盘避让回归');
@@ -189,11 +194,17 @@ test('mobile app isolates scroll across views and keeps drawer viewport adaptati
     assert.equal(await page.getByRole('dialog').evaluate(el => getComputedStyle(el).transitionProperty), 'none');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 
-    // Synthetic visual viewport resize: prove only the dialog consumes it.
+    // Browser chrome resize while reading must not change the sheet geometry.
+    const reportBounds = await page.getByRole('dialog').boundingBox();
     await page.evaluate(() => {
       Object.defineProperty(window.visualViewport, 'height', { configurable: true, value: 420 });
       window.visualViewport.dispatchEvent(new Event('resize'));
     });
+    await page.waitForTimeout(60);
+    assert.deepEqual(await page.getByRole('dialog').boundingBox(), reportBounds);
+    // Keyboard avoidance is still active for an actual focused input.
+    await page.getByRole('tab', { name: '个人信息', exact: true }).click();
+    await page.getByRole('textbox', { name: '个人信息输入' }).focus();
     await page.waitForFunction(() => document.querySelector('[role="dialog"]').getBoundingClientRect().height === 412);
     assert.equal((await metrics()).appHeight, 740);
     assert.deepEqual(await dock.boundingBox(), initialDock);

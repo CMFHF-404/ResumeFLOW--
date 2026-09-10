@@ -149,3 +149,16 @@ html[data-mobile-template-transition]::view-transition { pointer-events: none; }
    multiply opacity and flash when the retained report becomes visible again. */
 [data-mobile-workbench-overlay] .rf-report-panel-enter,
 [data-mobile-workbench-overlay] .rf-workbench-page-enter { animation: none; }
+
+/* Blur the backdrop on the dock's outer compositing layer. Keep the button
+   above it, and include the prefixed property for mobile Safari/WebViews. */
+.rf-workbench-dock-glass { background-color: rgb(255 255 255 / 92%); }
+.dark .rf-workbench-dock-glass { background-color: rgb(15 23 42 / 94%); }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .rf-workbench-dock-glass {
+    background-color: rgb(255 255 255 / 48%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+  }
+  .dark .rf-workbench-dock-glass { background-color: rgb(15 23 42 / 62%); }
+}
