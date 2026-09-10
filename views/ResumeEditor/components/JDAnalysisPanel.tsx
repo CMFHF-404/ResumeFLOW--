@@ -486,6 +486,7 @@ export const useJDStrategyCopyState = (onOpenAgentPluginConfig?: () => void) => 
 };
 
 type JDAnalysisDetailsContentProps = JDReportRefreshProps & {
+    onReportTabChange?: (tab: 'jd' | 'resume') => void;
     reportTab?: 'jd' | 'resume';
     analysisResult: JDAnalysisResult;
     jdText: string;
@@ -507,6 +508,7 @@ type JDAnalysisDetailsContentProps = JDReportRefreshProps & {
 };
 
 export const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> = ({
+    onReportTabChange,
     reportTab,
     onAnalyze,
     isAnalyzing,
@@ -535,6 +537,7 @@ export const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> =
         && (!isCurrentEvaluation || evaluation.jdMatch !== null);
     const [activeReport, setActiveReport] = useState<'jd' | 'resume'>(() => shouldShowJdAnalysis ? 'jd' : 'resume');
     const selectedReport = reportTab ?? (shouldShowJdAnalysis ? activeReport : 'resume');
+    useEffect(() => { onReportTabChange?.(selectedReport); }, [onReportTabChange, selectedReport]);
     return (
       <div>
         {!reportTab ? <div className="relative mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-900" role="tablist" aria-label="分析报告类型">
@@ -603,6 +606,7 @@ export const JDAnalysisDetailsContent: React.FC<JDAnalysisDetailsContentProps> =
 };
 
 type JDAnalysisDetailsSidebarProps = JDReportRefreshProps & {
+    onReportTabChange?: (tab: 'jd' | 'resume') => void;
     analysisResult: JDAnalysisResult | null;
     jdText: string;
     isOutdated: boolean;
@@ -622,6 +626,7 @@ type JDAnalysisDetailsSidebarProps = JDReportRefreshProps & {
 };
 
 export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> = ({
+    onReportTabChange,
     onAnalyze,
     isAnalyzing,
     isAnalyzeDisabled,
@@ -688,6 +693,7 @@ export const JDAnalysisDetailsSidebar: React.FC<JDAnalysisDetailsSidebarProps> =
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-4 py-4">
                 <JDAnalysisDetailsContent
+                    onReportTabChange={onReportTabChange}
                     onAnalyze={onAnalyze}
                     isAnalyzing={isAnalyzing}
                     isAnalyzeDisabled={isAnalyzeDisabled}

@@ -2,11 +2,11 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ResumeScoreSuggestion } from '../../../../types/ai';
 import { scoreModuleKey } from '../../../../utils/resumeScore.mjs';
 
-type State = { experienceNameFor: (id: string) => string | undefined; labelFor: (row: ResumeScoreSuggestion) => string; suggestions: ResumeScoreSuggestion[]; selected: string[]; toggle: (ids: string[]) => void; locate: (key: string) => void; active: string | null };
-const ScoreContext = createContext<State>({ experienceNameFor: () => undefined, labelFor: row => row.label, suggestions: [], selected: [], toggle: () => {}, locate: () => {}, active: null });
+type State = { previewVisible: boolean; experienceNameFor: (id: string) => string | undefined; labelFor: (row: ResumeScoreSuggestion) => string; suggestions: ResumeScoreSuggestion[]; selected: string[]; toggle: (ids: string[]) => void; locate: (key: string) => void; active: string | null };
+const ScoreContext = createContext<State>({ previewVisible: false, experienceNameFor: () => undefined, labelFor: row => row.label, suggestions: [], selected: [], toggle: () => {}, locate: () => {}, active: null });
 export const useScoreAnnotations = () => useContext(ScoreContext);
 
-export function ScoreAnnotationProvider({ suggestions, reportKey, onLocate, children, experiences = [] }: { experiences?: { id: string; company: string }[]; onLocate?: (key: string) => boolean | void; suggestions: ResumeScoreSuggestion[]; reportKey: string; children: React.ReactNode }) {
+export function ScoreAnnotationProvider({ suggestions, reportKey, onLocate, children, experiences = [], previewVisible = true }: { previewVisible?: boolean; experiences?: { id: string; company: string }[]; onLocate?: (key: string) => boolean | void; suggestions: ResumeScoreSuggestion[]; reportKey: string; children: React.ReactNode }) {
   const [selection, setSelection] = useState<{ key: string; ids: string[] }>({ key: reportKey, ids: [] });
   const [active, setActive] = useState<string | null>(null);
   const selected = selection.key === reportKey ? selection.ids : [];
@@ -18,7 +18,7 @@ export function ScoreAnnotationProvider({ suggestions, reportKey, onLocate, chil
     const field = ({ s: '背景', t: '任务', a: '行动', r: '结果' } as Record<string, string>)[row.fieldPath.split('.').pop() || ''];
     return field ? `${name} · ${field}` : name;
   };
-  const state: State = { experienceNameFor, labelFor, suggestions, selected, active,
+  const state: State = { previewVisible, experienceNameFor, labelFor, suggestions, selected, active,
     toggle: ids => setSelection(old => { const current = old.key === reportKey ? old.ids : []; return { key: reportKey,
       ids: ids.every(id => current.includes(id)) ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])] }; }),
     locate: key => {
@@ -37,7 +37,7 @@ export function ModuleScoreNote({ moduleType, moduleId, readOnly }: { moduleType
   const state = useScoreAnnotations();
   const key = `${moduleType}:${moduleId}`;
   const rows = state.suggestions.filter(row => scoreModuleKey(row) === key);
-  if (readOnly || !rows.length) return null;
+  if (!state.previewVisible || readOnly || !rows.length) return null;
   return <aside data-score-module={key} data-html2canvas-ignore="true" data-export-ignore="true" tabIndex={-1}
     className={`absolute right-0 top-0 z-20 max-w-[85%] print:hidden ${state.active === key ? 'ring-2 ring-amber-400' : ''}`}>
     <details className="rounded-md border border-amber-200 bg-amber-50 text-[11px] text-amber-950 shadow-sm">
