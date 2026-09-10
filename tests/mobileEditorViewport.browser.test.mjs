@@ -15,6 +15,7 @@ import { createRoot } from 'react-dom/client';
 import AppViewport from './components/AppViewport';
 import ResumeEditorViewport from './views/ResumeEditor/components/ResumeEditorViewport';
 import Drawer from './views/ResumeEditor/components/ResumeEditorMobileDrawer';
+import Reports from './views/ResumeEditor/components/MobileWorkbenchReports';
 import { useMobileEditorDrawer } from './views/ResumeEditor/hooks/useMobileEditorDrawer';
 function Fixture() {
   const [editor, setEditor] = useState(true);
@@ -24,6 +25,8 @@ function Fixture() {
     mobileDrawerOpenRequest: 0, onMobileDrawerOpenRequestConsumed() {}, setSidebarTab() {} });
   window.switchEditor = setEditor;
   window.setEditorBusy = setBusy;
+  window.openWorkbench = drawer.open;
+  window.closeWorkbench = drawer.close;
   return <AppViewport isEditor={editor}>
     <nav style={{height: 72, flexShrink: 0}}>原子简历 · 布局验证</nav>
     <div className="flex min-h-0 min-w-0 flex-1">
@@ -33,7 +36,10 @@ function Fixture() {
         }
       }} workbench={
         <Drawer {...drawer} busy={busy} onOpen={drawer.open} onClose={drawer.close} sidebarProps={{}}
-          analysis={<p>分析报告</p>} assistant={<textarea aria-label="助手输入" />} />
+          analysis={<Reports reportTab={drawer.reportTab} onSelectReport={drawer.setReportTab} panel={{
+            hasJdContext: true, jdContextText: 'AI 产品实习生', isOutdated: true,
+            analysisResult: {matchPercentage: 84, summary: '移动报告验证', jdInterpretation: {normalizedTitle: 'AI 产品实习生'}},
+          }} />} assistant={<textarea aria-label="助手输入" />} />
       }>
         <div style={{flexShrink: 0, padding: '16px 16px calc(5rem + env(safe-area-inset-bottom, 0px))'}}>
           <h1>长简历滚动验证</h1>
@@ -45,10 +51,12 @@ function Fixture() {
     </div>
   </AppViewport>;
 }
-createRoot(document.getElementById('root')).render(<React.StrictMode><Fixture /></React.StrictMode>);
+const root = createRoot(document.getElementById('root'));
+window.unmountFixture = () => root.unmount();
+root.render(<React.StrictMode><Fixture /></React.StrictMode>);
 `;
 
-test('mobile editor isolates scroll, restores page rules, and keeps drawer viewport adaptation', async () => {
+test('mobile app isolates scroll across views and keeps drawer viewport adaptation', async () => {
   const [{ outputFiles }, css] = await Promise.all([
     build({
       stdin: { contents: fixture, loader: 'tsx', resolveDir: process.cwd() },
@@ -137,6 +145,50 @@ test('mobile editor isolates scroll, restores page rules, and keeps drawer viewp
     await page.getByRole('dialog').waitFor();
     assert.equal(await page.getByRole('textbox', { name: '个人信息输入' }).inputValue(), '键盘避让回归');
 
+    await page.getByRole('tab', { name: '分析报告', exact: true }).click();
+    await page.locator('#jd-report-panel').waitFor();
+    await page.locator('#mobile-jd-report-panel').evaluate(el => { el.scrollTop = 80; });
+    const reportScroll = await page.locator('#mobile-jd-report-panel').evaluate(el => el.scrollTop);
+    // Frame samples catch nested opacity restarts and a dark backdrop left behind
+    // after the sheet has already finished closing.
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const closeFrames = await page.evaluate(async () => {
+        const overlay = document.querySelector('[data-mobile-workbench-overlay]');
+        const backdrop = overlay.firstElementChild;
+        const frames = [];
+        window.closeWorkbench();
+        const started = performance.now();
+        while (performance.now() - started < 300) {
+          await new Promise(requestAnimationFrame);
+          frames.push({ visible: getComputedStyle(overlay).visibility === 'visible', opacity: Number(getComputedStyle(backdrop).opacity) });
+        }
+        return frames;
+      });
+      assert.ok(closeFrames.some(frame => frame.opacity > 0 && frame.opacity < 1), 'backdrop fades instead of snapping');
+      const lastVisible = closeFrames.filter(frame => frame.visible).at(-1);
+      assert.ok(lastVisible.opacity < .15, 'backdrop is nearly transparent before the overlay is hidden');
+      assert.equal(closeFrames.at(-1).visible, false);
+      await page.evaluate(() => window.openWorkbench('analysis'));
+      await page.locator('#jd-report-panel').waitFor();
+      assert.equal(await page.locator('#jd-report-panel').evaluate(el => getComputedStyle(el).animationName), 'none');
+      assert.equal(await page.locator('#mobile-jd-report-panel').evaluate(el => getComputedStyle(el).animationName), 'none');
+      assert.equal(await page.locator('#mobile-jd-report-panel').evaluate(el => el.scrollTop), reportScroll);
+      await page.waitForTimeout(250);
+    }
+    await page.evaluate(() => window.closeWorkbench());
+    await page.waitForTimeout(50);
+    await page.evaluate(() => window.openWorkbench('analysis'));
+    await page.waitForTimeout(280);
+    assert.equal(await page.getByRole('dialog').isVisible(), true, 'a pending close cannot hide a reopened report');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(() => window.closeWorkbench());
+    await page.waitForFunction(() => document.querySelector('[data-mobile-workbench-overlay]').style.visibility === 'hidden');
+    await page.evaluate(() => window.openWorkbench('analysis'));
+    await page.getByRole('dialog').waitFor();
+    await page.waitForTimeout(60);
+    assert.equal(await page.getByRole('dialog').evaluate(el => getComputedStyle(el).transitionProperty), 'none');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
     // Synthetic visual viewport resize: prove only the dialog consumes it.
     await page.evaluate(() => {
       Object.defineProperty(window.visualViewport, 'height', { configurable: true, value: 420 });
@@ -167,12 +219,16 @@ test('mobile editor isolates scroll, restores page rules, and keeps drawer viewp
     await page.emulateMedia({ media: 'screen' });
     assert.equal((await metrics()).htmlOverflow, 'hidden');
     await page.evaluate(() => window.switchEditor(false));
-    await page.waitForFunction(() => !document.documentElement.hasAttribute('data-rf-editor-viewport'));
-    assert.equal(await page.evaluate(() => getComputedStyle(document.body).overflowY), 'visible');
+    await page.getByText('已离开编辑页').waitFor();
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).overflowY), 'hidden');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('nav')).touchAction), 'pan-x pinch-zoom');
     await page.evaluate(() => window.switchEditor(true));
     await dock.waitFor();
     assert.equal((await metrics()).htmlOverflow, 'hidden');
     if (process.env.QA_SCREENSHOT_PATH) await page.screenshot({ path: process.env.QA_SCREENSHOT_PATH });
+    await page.evaluate(() => window.unmountFixture());
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-rf-app-viewport')), false);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).overflowY), 'visible');
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

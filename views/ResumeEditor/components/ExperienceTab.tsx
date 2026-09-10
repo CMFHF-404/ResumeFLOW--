@@ -462,13 +462,16 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         workItems.length,
     ]);
 
+    const displayedEditingExperience = useExitContent(experience.editingExpId ? experience : null);
+    const displayedEditingId = displayedEditingExperience?.editingExpId;
+
     useEffect(() => {
         if (typeof window === 'undefined') {
             return;
         }
         const prevEditingExpId = prevEditingExpIdRef.current;
-        prevEditingExpIdRef.current = experience.editingExpId;
-        if (!prevEditingExpId || experience.editingExpId) {
+        prevEditingExpIdRef.current = displayedEditingId ?? null;
+        if (!prevEditingExpId || displayedEditingId) {
             return;
         }
         if (!shouldRestoreScrollRef.current) {
@@ -487,7 +490,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
             container.scrollTop = scrollTop;
         });
         return () => window.cancelAnimationFrame(frameId);
-    }, [experience.editingExpId, scrollContainerRef, scrollTarget]);
+    }, [displayedEditingId, scrollContainerRef, scrollTarget]);
 
     useEffect(() => {
         if (!scrollTarget || typeof window === 'undefined') {
@@ -499,9 +502,9 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
         return () => window.cancelAnimationFrame(frameId);
     }, [scrollTarget]);
 
-    if (experience.editingExpId) {
+    if (displayedEditingExperience) {
         return (
-            <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+            <div inert={!experience.editingExpId ? true : undefined} aria-hidden={!experience.editingExpId || undefined} className={`space-y-4 ${experience.editingExpId ? 'rf-experience-enter' : 'rf-experience-exit'}`}>
                 <button
                     onClick={experience.cancelEditingExperience}
                     className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white mb-2"
@@ -509,7 +512,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
                     <ArrowLeft className="w-3 h-3" /> 返回列表
                 </button>
                 <ExperienceEditor
-                    experience={experience}
+                    experience={displayedEditingExperience}
                     isPolishPreviewing={isEditingExperiencePolishPreviewing}
                 />
             </div>
@@ -567,7 +570,7 @@ const ExperienceTab: React.FC<ExperienceTabProps> = ({
     ) : null;
 
     return (
-        <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
+        <div className="space-y-3 rf-experience-list-enter">
             <div className="relative z-20 px-1">
                 <div className="flex min-w-0 items-center justify-between gap-2">
                     <p className="flex min-w-0 items-center gap-2 text-xs text-gray-400">
