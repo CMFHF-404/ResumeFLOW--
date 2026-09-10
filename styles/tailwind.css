@@ -3,27 +3,30 @@
 @tailwind utilities;
 
 /* Browser chrome may resize the visual viewport; it must not resize the
-   mobile editor's reading surface. Screen-only rules leave printing alone. */
+   mobile app's reading surface. Screen-only rules leave printing alone. */
 @media screen and (max-width: 767.98px) {
-  html[data-rf-editor-viewport="true"],
-  html[data-rf-editor-viewport="true"] body,
-  html[data-rf-editor-viewport="true"] #root {
+  html[data-rf-app-viewport="true"],
+  html[data-rf-app-viewport="true"] body,
+  html[data-rf-app-viewport="true"] #root {
     height: 100%;
     overflow: hidden;
     overscroll-behavior-y: contain;
   }
 
-  .rf-app-viewport[data-editor-viewport="true"],
+  .rf-app-viewport,
   .rf-editor-viewport {
     overflow: hidden;
   }
 
+  .rf-app-viewport > nav { touch-action: pan-x pinch-zoom; }
+
+  .rf-app-viewport .overflow-y-auto,
   [data-rf-mobile-editor-scroll-root] {
     overscroll-behavior-y: contain;
   }
 
   @supports (height: 100svh) {
-    .rf-app-viewport[data-editor-viewport="true"] {
+    .rf-app-viewport {
       height: 100svh;
       min-height: 100svh;
     }
@@ -120,3 +123,29 @@ html[data-mobile-template-transition]::view-transition { pointer-events: none; }
   .rf-overlay-enter, .rf-overlay-exit,
   [data-modal-motion] [data-quota-dialog] { animation: none; }
 }
+
+/* Keep both tabs mounted so drafts and each tab's scroll position survive. */
+.rf-sidebar-page {
+  transition: transform 240ms cubic-bezier(.22,1,.36,1), visibility 240ms;
+}
+.rf-sidebar-page[data-active="false"] { visibility: hidden; pointer-events: none; }
+.rf-sidebar-page[data-active="true"] { visibility: visible; transform: translateX(0); }
+.rf-sidebar-experience[data-active="false"] { transform: translateX(-100%); }
+.rf-sidebar-profile[data-active="false"] { transform: translateX(100%); }
+@keyframes rf-experience-enter { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes rf-experience-exit { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(24px); } }
+@keyframes rf-experience-list-enter { from { opacity: .4; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); } }
+@media (max-width: 767px) {
+  .rf-experience-enter { animation: rf-experience-enter 220ms cubic-bezier(.22,1,.36,1) both; }
+  .rf-experience-exit { animation: rf-experience-exit 160ms ease-in both; }
+  .rf-experience-list-enter { animation: rf-experience-list-enter 200ms ease-out both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-sidebar-page { transition: none; }
+  .rf-experience-enter, .rf-experience-exit, .rf-experience-list-enter { animation: none; }
+}
+
+/* The workbench shell owns opening/closing motion. Nested report fades can
+   multiply opacity and flash when the retained report becomes visible again. */
+[data-mobile-workbench-overlay] .rf-report-panel-enter,
+[data-mobile-workbench-overlay] .rf-workbench-page-enter { animation: none; }
