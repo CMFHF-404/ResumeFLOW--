@@ -56,7 +56,10 @@ from .schemas import (
     ResumePdfExportRequest,
     ResumePdfRenderSnapshot,
 )
-from .pdf_payload import RenderedPdfValidationError, validate_rendered_pdf_bytes
+from .pdf_payload import (
+    RenderedPdfValidationError, validate_rendered_pdf_bytes,
+    PdfPageCountMismatchError, enforce_resume_pdf_page_limit,
+)
 from .snapshot_service import (
     DEFAULT_RENDER_CLAIM_LEASE_SECONDS,
     DEFAULT_RENDERED_PDF_RETRY_TTL_SECONDS,
@@ -358,6 +361,23 @@ def _build_pdf_download_response(pdf_bytes: bytes, file_name: str | None) -> Res
     return Response(content=validated_pdf, media_type="application/pdf", headers=headers)
 
 
+def _enforce_snapshot_page_constraint(pdf_bytes: bytes, snapshot) -> None:
+    constraint = getattr(snapshot, "pageConstraint", None)
+    if constraint is None:
+        return
+    try:
+        enforce_resume_pdf_page_limit(pdf_bytes, constraint.maxPages)
+    except PdfPageCountMismatchError as exc:
+        raise HTTPException(status_code=422, detail={
+            "code": "PDF_PAGE_COUNT_MISMATCH",
+            "actualPages": exc.actual_pages,
+            "maxPages": exc.max_pages,
+            "message": str(exc),
+        }, headers=EXPORT_NO_STORE_HEADERS) from exc
+    except RenderedPdfValidationError as exc:
+        raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+
 def _get_persisted_rendered_pdf(record) -> bytes | None:
     pdf_bytes = getattr(record, "rendered_pdf", None)
     expires_at = getattr(record, "rendered_pdf_expires_at", None)
@@ -419,6 +439,7 @@ async def _render_snapshot_pdf_response(
             token,
             renderer,
             persistence_session=session,
+            snapshot=snapshot,
         )
         return _build_pdf_download_response(pdf_bytes, file_name)
     finally:
@@ -506,6 +527,7 @@ async def _render_and_finalize_claimed_snapshot(
     renderer: Callable[[str, str], Awaitable[bytes]],
     *,
     persistence_session: AsyncSession | None = None,
+    snapshot=None,
 ) -> bytes:
     try:
         pdf_bytes = await _render_with_claim_heartbeat(
@@ -514,6 +536,7 @@ async def _render_and_finalize_claimed_snapshot(
             token,
             renderer,
         )
+        _enforce_snapshot_page_constraint(pdf_bytes, snapshot)
         if persistence_session is not None:
             await finalize_render_snapshot_claim(
                 persistence_session,
@@ -635,6 +658,7 @@ async def render_owned_snapshot_pdf_download_response(
     resolved_file_name = file_name or getattr(lookup_snapshot, "resumeName", None)
     persisted_pdf = _get_persisted_rendered_pdf(lookup_record)
     if persisted_pdf is not None:
+        _enforce_snapshot_page_constraint(persisted_pdf, lookup_snapshot)
         return _build_pdf_download_response(persisted_pdf, resolved_file_name)
     if lookup_record.consumed_at is not None:
         raise _snapshot_http_exception(
@@ -671,7 +695,7 @@ async def render_owned_snapshot_pdf_download_response(
     if claim_consumed_error is not None:
         async with AsyncSessionFactory() as recovery_session:
             try:
-                recovery_record, _ = await get_render_snapshot_by_owner(
+                recovery_record, recovery_snapshot = await get_render_snapshot_by_owner(
                     recovery_session,
                     snapshot_id,
                     user_id,
@@ -688,6 +712,7 @@ async def render_owned_snapshot_pdf_download_response(
                 raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
         recovered_pdf = _get_persisted_rendered_pdf(recovery_record)
         if recovered_pdf is not None:
+            _enforce_snapshot_page_constraint(recovered_pdf, recovery_snapshot)
             return _build_pdf_download_response(recovered_pdf, resolved_file_name)
         raise _snapshot_http_exception(
             HTTP_410_GONE,
@@ -700,6 +725,7 @@ async def render_owned_snapshot_pdf_download_response(
         claim_id,
         token,
         renderer,
+        snapshot=lookup_snapshot,
     )
 
     return _build_pdf_download_response(pdf_bytes, resolved_file_name)
@@ -737,6 +763,7 @@ async def render_legacy_snapshot_pdf_download_response(
     resolved_file_name = file_name or getattr(lookup_snapshot, "resumeName", None)
     persisted_pdf = _get_persisted_rendered_pdf(lookup_record)
     if persisted_pdf is not None:
+        _enforce_snapshot_page_constraint(persisted_pdf, lookup_snapshot)
         return _build_pdf_download_response(persisted_pdf, resolved_file_name)
     if lookup_record.consumed_at is not None:
         raise _snapshot_http_exception(
@@ -775,7 +802,7 @@ async def render_legacy_snapshot_pdf_download_response(
     if claim_consumed_error is not None:
         async with AsyncSessionFactory() as recovery_session:
             try:
-                recovery_record, _ = await get_render_snapshot_by_token(
+                recovery_record, recovery_snapshot = await get_render_snapshot_by_token(
                     recovery_session,
                     snapshot_id,
                     token,
@@ -794,6 +821,7 @@ async def render_legacy_snapshot_pdf_download_response(
                 raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
         recovered_pdf = _get_persisted_rendered_pdf(recovery_record)
         if recovered_pdf is not None:
+            _enforce_snapshot_page_constraint(recovered_pdf, recovery_snapshot)
             return _build_pdf_download_response(recovered_pdf, resolved_file_name)
         raise _snapshot_http_exception(
             HTTP_410_GONE,
@@ -805,6 +833,7 @@ async def render_legacy_snapshot_pdf_download_response(
         claim_id,
         token,
         renderer,
+        snapshot=lookup_snapshot,
     )
     return _build_pdf_download_response(pdf_bytes, resolved_file_name)
 

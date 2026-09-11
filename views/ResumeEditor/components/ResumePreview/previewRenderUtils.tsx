@@ -281,7 +281,8 @@ export const renderStarBlocks = (
             return value ? (
                 <div
                     key={`${itemId}-${field}`}
-                    className={`${className} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                    data-rf-print-paragraph="true"
+                    className={`${className} ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                     dangerouslySetInnerHTML={renderRichText(value)}
                 />
             ) : null;
@@ -301,7 +302,7 @@ export const renderStarBlocks = (
                         actionList.listType === 'none' ? (
                             <div className={`space-y-[var(--rf-bullet-spacing)] text-xs text-gray-900 leading-[var(--rf-line-height)] ${RICH_TEXT_INLINE_STYLES_CLASS}`}>
                                 {actionList.lines.map((line, index) => (
-                                    <div key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                                    <div data-rf-print-paragraph="true" key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
                                 ))}
                             </div>
                         ) : React.createElement(
@@ -310,7 +311,7 @@ export const renderStarBlocks = (
                                 className: `${actionList.listType === 'ordered' ? 'list-decimal' : 'list-disc'} list-outside ml-4 text-xs text-gray-900 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`,
                             },
                             actionList.lines.map((line, index) => (
-                                <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                                <li data-rf-print-paragraph="true" key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
                             )),
                         )
                     ) : null
@@ -334,7 +335,8 @@ export const renderStarBlocks = (
         <>
             {contextText ? (
                 <div
-                    className={`text-gray-900 text-xs mb-1 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                    data-rf-print-paragraph="true"
+                    className={`text-gray-900 text-xs mb-1 ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                     dangerouslySetInnerHTML={renderRichText(contextText)}
                 />
             ) : null}
@@ -344,7 +346,7 @@ export const renderStarBlocks = (
                         className={`space-y-[var(--rf-bullet-spacing)] text-xs text-gray-900 leading-[var(--rf-line-height)] ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                     >
                         {actionList.lines.map((line, index) => (
-                            <div key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                            <div data-rf-print-paragraph="true" key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
                         ))}
                     </div>
                 ) : (
@@ -354,14 +356,15 @@ export const renderStarBlocks = (
                             className: `${actionList.listType === 'ordered' ? 'list-decimal' : 'list-disc'} list-outside ml-4 text-xs text-gray-900 space-y-[var(--rf-bullet-spacing)] leading-[var(--rf-line-height)] ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`,
                         },
                         actionList.lines.map((line, index) => (
-                            <li key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
+                            <li data-rf-print-paragraph="true" key={`${itemId}-action-${index}`} dangerouslySetInnerHTML={{ __html: line }} />
                         ))
                     )
                 )
             ) : null}
             {resultText ? (
                 <div
-                    className={`text-xs text-gray-900 mt-1 ${RICH_TEXT_INLINE_STYLES_CLASS}`}
+                    data-rf-print-paragraph="true"
+                    className={`text-xs text-gray-900 mt-1 ${RICH_TEXT_LIST_NESTED_CLASS} ${RICH_TEXT_INLINE_STYLES_CLASS}`}
                     dangerouslySetInnerHTML={renderRichText(resultText)}
                 />
             ) : null}

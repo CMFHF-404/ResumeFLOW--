@@ -69,7 +69,7 @@ export const SMART_PAGE_ADJUSTING_TOAST_DURATION_MS = 800;
 export const A4_HEIGHT_MM = 297;
 export const PREVIEW_PADDING_MM = 20;
 export const SMART_PAGE_BOTTOM_GAP_MM = PREVIEW_PADDING_MM;
-export const PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX = 2;
+
 export const LINE_HEIGHT_MAX = 1.75;
 export const LINE_HEIGHT_MIN = 1.35;
 export const LINE_HEIGHT_STEP = 0.05;
@@ -129,8 +129,8 @@ export const SECTION_TITLE_BOTTOM_SPACING = 'mb-3';
 export const SECTION_TITLE_BOTTOM_PADDING = 'pb-1';
 
 export const SMART_PAGE_TOAST_MESSAGES = {
-    success: '已自动调整为一页',
-    overflow: '内容过多，即使调整行间距与字号也无法保留页尾留白，请删减部分内容。',
+    success: '已完成单页排版，下载时将校验实际 PDF 页数',
+    overflow: '当前排版仍需多页，已保留调整结果；可恢复默认或删减内容后重试。',
     adjusting: '正在尝试自动适配一页...',
 } as const;
 export const DEFAULT_MATCH_SCORE_FILTER = 70;
@@ -138,7 +138,7 @@ export const AUTO_ASSEMBLY_MAX_EXPERIENCES = 3;
 export const AUTO_ASSEMBLY_MATCH_THRESHOLD = 80;
 export const AUTO_ASSEMBLY_TOAST_MESSAGES = {
     loading: '正在一键组装简历...',
-    success: '已完成一键组装，并自动适配为一页',
+    success: '已完成组装和单页排版，下载时将校验实际 PDF 页数',
     partialOverflow: '已完成一键组装，但内容仍超出一页，请继续手动删减',
     emptyJd: '请先填写 JD 内容或上传附件，再执行一键组装',
     analyzeFailed: 'JD 分析失败，无法执行一键组装',

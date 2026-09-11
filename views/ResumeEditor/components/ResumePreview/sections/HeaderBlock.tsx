@@ -183,7 +183,7 @@ const HeaderBlock: React.FC<HeaderBlockProps> = ({
                 <div className="mb-5 flex items-start justify-between gap-5">
                     <div className="min-w-0 flex-1">
                         <div className="mb-2 h-1.5 w-14 rounded-full" style={{ backgroundColor: isPhotoSidebarTemplate ? '#ffffff' : 'var(--rf-accent-color)' }} />
-                        <h1 className={`text-[28px] font-bold tracking-[0.12em] ${isPhotoSidebarTemplate ? 'text-white' : 'text-gray-900'}`}>
+                        <h1 className={`break-words text-[28px] font-bold tracking-[0.12em] ${isPhotoSidebarTemplate ? 'text-white' : 'text-gray-900'}`}>
                             {profile.name}
                         </h1>
                         {isPhotoSidebarTemplate && targetRole ? (

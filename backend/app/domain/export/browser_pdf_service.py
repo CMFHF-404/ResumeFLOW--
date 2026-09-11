@@ -59,6 +59,8 @@ _FRONTEND_STATIC_PATH_PREFIXES = (
 _FRONTEND_STATIC_EXACT_PATHS = {
     "/index.tsx",
     "/App.tsx",
+    # Vite serves runtime enums from this root module before the export page mounts.
+    "/types.ts",
     "/favicon.png",
     "/logo-mark-128.png",
 }
@@ -386,6 +388,12 @@ async def _render_pdf_with_browser(
             )
         page = await context.new_page()
         page.set_default_timeout(timeout_ms)
+        await page.add_init_script(
+            "window.__rfExportDeadlineMs = Date.now() + "
+            + str(_remaining_timeout_ms(resolved_deadline))
+            + ";"
+        )
+        await page.emulate_media(media="print")
         await page.goto(
             page_url,
             wait_until="domcontentloaded",
@@ -413,7 +421,6 @@ async def _render_pdf_with_browser(
             }
             """
         )
-        await page.emulate_media(media="print")
         await page.wait_for_timeout(50)
 
         return await page.pdf(

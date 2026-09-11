@@ -1,3 +1,4 @@
+import { waitForResumeRenderReady } from '../../../utils/resumeRenderReadiness';
 import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import type { ResumePrintLayoutMeasurement } from '../../../types/resume';
 import { measureResumeLayout } from '../snapshotUtils';
@@ -30,17 +31,11 @@ export const useResumePreviewMeasurement = ({
         if (isCancelled()) {
             return null;
         }
-        if (typeof document !== 'undefined' && document.fonts?.ready) {
-            await document.fonts.ready;
-            if (isCancelled()) {
-                return null;
-            }
-            await waitForPreviewUpdate(1);
-        }
-
-        if (isCancelled()) {
-            return null;
-        }
+        if (!pageRef.current) return null;
+        try {
+            await waitForResumeRenderReady(pageRef.current, {signal:new AbortController().signal,deadlineMs:Date.now()+10000});
+        } catch { return null; }
+        if (isCancelled()) return null;
 
         return measureResumeLayout(pageRef.current, contentRef.current);
     }, [contentRef, pageRef, waitForPreviewUpdate]);

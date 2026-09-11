@@ -25,7 +25,11 @@ import type {
 type UpdateToast = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
 
 type UseResumePdfExportParams = {
+    waitForSmartPageIdle: () => Promise<void>;
+    isSmartPageAdjusting: () => boolean;
+    isSinglePageVerified: () => boolean;
     authUserKey: string | null;
+    resumeId: string | null;
     isExportingPdf: boolean;
     setIsExportingPdf: (value: boolean) => void;
     showToastLoading: (message: string) => string;
@@ -56,7 +60,11 @@ type UseResumePdfExportParams = {
 };
 
 export const useResumePdfExport = ({
+    waitForSmartPageIdle,
+    isSmartPageAdjusting,
+    isSinglePageVerified,
     authUserKey,
+    resumeId,
     isExportingPdf,
     setIsExportingPdf,
     showToastLoading,
@@ -85,6 +93,37 @@ export const useResumePdfExport = ({
     experienceListMarkerStyle,
     skillTagSeparator,
 }: UseResumePdfExportParams) => {
+    const buildLatestSnapshot = () => {
+        const snapshot = buildResumePdfRenderSnapshot({
+                verifiedSinglePage: isSinglePageVerified(),
+                resumeName,
+                targetRole,
+                profile,
+                lineHeight,
+                fontSize,
+                listSpacingValue,
+                bulletSpacingValue,
+                topPaddingPx,
+                sectionSpacingClass,
+                listSpacingClass,
+                sectionOrder,
+                selectedWorkItems,
+                selectedProjectItems,
+                educations,
+                selectedEduIds,
+                sortedCertifications,
+                selectedCertIds,
+                selectedSkillGroups,
+                templateId,
+                themeColorPresetId,
+                experienceListMarkerStyle,
+                skillTagSeparator,
+            });
+
+        return snapshot;
+    };
+    const latestSnapshotRef = useRef(buildLatestSnapshot);
+    useLayoutEffect(() => { latestSnapshotRef.current = buildLatestSnapshot; });
     const exportGenerationRef = useRef(0);
     const activeToastIdRef = useRef<string | null>(null);
     useLayoutEffect(() => {
@@ -94,7 +133,7 @@ export const useResumePdfExport = ({
             closeToast(activeToastIdRef.current);
             activeToastIdRef.current = null;
         }
-    }, [authUserKey, closeToast, setIsExportingPdf]);
+    }, [authUserKey, resumeId, closeToast, setIsExportingPdf]);
     useEffect(() => () => {
         exportGenerationRef.current += 1;
         if (activeToastIdRef.current) {
@@ -133,34 +172,19 @@ export const useResumePdfExport = ({
             if (!await canCommit()) {
                 return;
             }
-            const snapshot = buildResumePdfRenderSnapshot({
-                resumeName,
-                targetRole,
-                profile,
-                lineHeight,
-                fontSize,
-                listSpacingValue,
-                bulletSpacingValue,
-                topPaddingPx,
-                sectionSpacingClass,
-                listSpacingClass,
-                sectionOrder,
-                selectedWorkItems,
-                selectedProjectItems,
-                educations,
-                selectedEduIds,
-                sortedCertifications,
-                selectedCertIds,
-                selectedSkillGroups,
-                templateId,
-                themeColorPresetId,
-                experienceListMarkerStyle,
-                skillTagSeparator,
-            });
-            const exportTitle = buildResumeExportTitle(resumeName);
-            toastId = showToastLoading('正在生成 PDF...');
+            toastId = showToastLoading('正在准备最新排版...');
             activeToastIdRef.current = toastId;
             setIsExportingPdf(true);
+            const captureDeadline = Date.now() + 35000;
+            do {
+                await waitForSmartPageIdle();
+                await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+                if (!await canCommit()) return;
+                if (Date.now() >= captureDeadline) throw new Error('排版尚未稳定，请稍后重试。');
+            } while (isSmartPageAdjusting());
+            const snapshot = latestSnapshotRef.current();
+            const exportTitle = buildResumeExportTitle(snapshot.resumeName);
+            updateToast(toastId, {message:'正在生成 PDF...'});
             const { downloadUrl, fileName } = await exportService.createResumePdfDownloadLink(
                 snapshot,
                 exportTitle,
@@ -182,7 +206,7 @@ export const useResumePdfExport = ({
             activeToastIdRef.current = null;
             trackResumeExported(expectedAuthCacheKey);
         } catch (error) {
-            console.error('[ResumeEditor] PDF 导出失败:', error);
+            console.error('[ResumeEditor] PDF 导出失败:', error instanceof Error ? error.message : 'unknown error');
             if (!toastId || !await canCommit()) {
                 return;
             }
@@ -208,6 +232,8 @@ export const useResumePdfExport = ({
             }
         }
     }, [
+        waitForSmartPageIdle,
+        isSmartPageAdjusting,
         authUserKey,
         bulletSpacingValue,
         closeToast,

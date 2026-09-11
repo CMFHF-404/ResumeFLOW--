@@ -1397,6 +1397,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             <h2
                 className={`rf-template-section-heading ${touchSelectionClass} font-bold uppercase ${sectionHeadingTextClassName} ${sectionHeadingBorderClassName} ${isAccent || isClassic || isModernAvatar || isTimelineBlue || isDeepHire ? 'flex items-center' : ''} ${isAccent && !isTimelineBlue ? 'pl-3.5 py-1.5' : (isAvatar ? '' : SECTION_TITLE_BOTTOM_PADDING)} ${isAccent && !isTimelineBlue ? '' : SECTION_TITLE_BOTTOM_SPACING} ${isAvatar ? 'mb-4' : ''} ${isClassic || isModernAvatar ? 'gap-[0.4em]' : ''} ${isTimelineBlue ? 'relative min-w-0 w-full gap-2 pr-1' : ''}`}
                 data-rf-section-heading={sectionId}
+                data-rf-print-heading="true"
                 style={{
                     ...(isAccentEmerald || !isAccent ? sectionTitleStyle : {}),
                     ...touchHandleStyle,

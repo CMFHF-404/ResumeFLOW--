@@ -1,105 +1,54 @@
 import type { ResumePrintLayoutMeasurement } from '../types/resume';
+import {
+  A4_HEIGHT_PX, A4_WIDTH_PX, fitsSinglePageBounds,
+  SINGLE_PAGE_SAFETY_INSET_PX, SINGLE_PAGE_MEASUREMENT_EPSILON_PX,
+} from './resumePageGeometry';
 
-const DEFAULT_OVERFLOW_TOLERANCE_PX = 2;
-const MIN_VISIBLE_RECT_PX = 0.5;
-
-const resolveMarginBottom = (element: HTMLElement) => {
-  const marginBottom = Number.parseFloat(window.getComputedStyle(element).marginBottom);
-  return Number.isFinite(marginBottom) ? marginBottom : 0;
-};
-
-const isElementVisiblyRendered = (element: HTMLElement) => {
+const number = (value: string) => Number.parseFloat(value) || 0;
+const visible = (element: Element) => {
   const style = window.getComputedStyle(element);
-  if (
-    style.display === 'none'
-    || style.visibility === 'hidden'
-    || Number.parseFloat(style.opacity || '1') === 0
-  ) {
-    return false;
-  }
-
-  const rect = element.getBoundingClientRect();
-  return rect.width > MIN_VISIBLE_RECT_PX || rect.height > MIN_VISIBLE_RECT_PX;
+  return style.display !== 'none' && style.visibility !== 'hidden'
+    && style.opacity !== '0' && element.getClientRects().length > 0;
 };
 
-const findDeepestVisibleContentBottom = (root: HTMLElement): number | null => {
-  let maxBottom = isElementVisiblyRendered(root)
-    ? root.getBoundingClientRect().bottom
-    : null;
-
-  const childElements = Array.from(root.children) as HTMLElement[];
-  childElements.forEach((child) => {
-    const childBottom = findDeepestVisibleContentBottom(child);
-    if (childBottom !== null) {
-      maxBottom = maxBottom === null ? childBottom : Math.max(maxBottom, childBottom);
-    }
-  });
-
-  return maxBottom;
-};
-
-const findDeepestVisibleDirectChildBottom = (root: HTMLElement): number | null => {
-  let maxBottom: number | null = null;
-  const childElements = Array.from(root.children) as HTMLElement[];
-
-  childElements.forEach((child) => {
-    if (!isElementVisiblyRendered(child)) {
-      return;
-    }
-
-    const childBottom = child.getBoundingClientRect().bottom + resolveMarginBottom(child);
-    maxBottom = maxBottom === null ? childBottom : Math.max(maxBottom, childBottom);
-  });
-
-  return maxBottom;
-};
-
-const findOverflowingSectionIds = (
-  root: HTMLElement,
-  printableBottom: number,
-  tolerancePx: number
-): string[] => {
-  const sectionElements = Array.from(
-    root.querySelectorAll<HTMLElement>('[data-rf-section-id]')
-  );
-
-  return sectionElements
-    .filter((element) => isElementVisiblyRendered(element))
-    .filter((element) => {
-      const bottom = element.getBoundingClientRect().bottom + resolveMarginBottom(element);
-      return bottom - printableBottom > tolerancePx;
-    })
-    .map((element) => element.dataset.rfSectionId || '')
-    .filter(Boolean);
+// Start at semantic flow boxes, never at stretched column/background containers.
+// Include descendants extending outside their parent and actual flow margins.
+const flowBottom = (element: Element, origin: number, scale: number): number => {
+  if (!visible(element) || element.getAttribute('aria-hidden') === 'true') return 0;
+  const style = window.getComputedStyle(element);
+  let bottom = (element.getBoundingClientRect().bottom - origin) / scale + number(style.marginBottom);
+  for (const child of element.children) bottom = Math.max(bottom, flowBottom(child, origin, scale));
+  return bottom;
 };
 
 export const measureResumePrintLayout = (
-  pageElement: HTMLElement,
-  contentRoot: HTMLElement,
-  tolerancePx = DEFAULT_OVERFLOW_TOLERANCE_PX
+  pageElement: HTMLElement, contentRoot: HTMLElement,
+  safetyInsetPx = SINGLE_PAGE_SAFETY_INSET_PX,
 ): ResumePrintLayoutMeasurement => {
-  const pageRect = pageElement.getBoundingClientRect();
-  const pageStyle = window.getComputedStyle(pageElement);
-  const paddingTop = Number.parseFloat(pageStyle.paddingTop);
-  const paddingBottom = Number.parseFloat(pageStyle.paddingBottom);
-  const printableTop = pageRect.top + (Number.isFinite(paddingTop) ? paddingTop : 0);
-  const printableBottom = pageRect.bottom - (Number.isFinite(paddingBottom) ? paddingBottom : 0);
-  const deepestContentBottom = findDeepestVisibleContentBottom(contentRoot) ?? printableTop;
-  const directChildBottom = findDeepestVisibleDirectChildBottom(contentRoot) ?? printableTop;
-  const contentBottom = Math.max(deepestContentBottom, directChildBottom);
-  const overflowPx = Math.max(0, contentBottom - printableBottom);
-  const overflowingSectionIds = findOverflowingSectionIds(
-    contentRoot,
-    printableBottom,
-    tolerancePx
-  );
-
+  const rect = pageElement.getBoundingClientRect();
+  // Undo uniform editor zoom using width; capacity never follows root height.
+  const scale = rect.width / A4_WIDTH_PX;
+  const style = window.getComputedStyle(pageElement);
+  const printableTop = number(style.paddingTop);
+  const printableBottom = A4_HEIGHT_PX - number(style.paddingBottom);
+  const sections = [...contentRoot.querySelectorAll<HTMLElement>('[data-rf-section-id]')];
+  const roots = [...contentRoot.querySelectorAll<HTMLElement>('#basic-info, [data-rf-section-id], [data-rf-print-flow]')];
+  const bottomOf = (element: HTMLElement) => {
+    let bottom = flowBottom(element, rect.top, scale);
+    const column = element.closest('.rf-template-sidebar, .rf-template-main');
+    if (column) bottom += number(window.getComputedStyle(column).paddingBottom);
+    return bottom;
+  };
+  const contentBottom = Math.max(printableTop, ...roots.map(bottomOf));
+  const fits = (bottom: number) => fitsSinglePageBounds({
+    capacityBottomPx: printableBottom, flowBottomPx: bottom, safetyInsetPx,
+    measurementEpsilonPx: SINGLE_PAGE_MEASUREMENT_EPSILON_PX,
+  });
   return {
-    fits: overflowPx <= tolerancePx,
-    overflowPx,
-    printableTop,
-    printableBottom,
-    contentBottom,
-    overflowingSectionIds,
+    fits: scale > 0 && Number.isFinite(scale) && fits(contentBottom),
+    overflowPx: Math.max(0, contentBottom - printableBottom + safetyInsetPx),
+    printableTop, printableBottom, contentBottom,
+    overflowingSectionIds: sections.filter(el => visible(el) && !fits(bottomOf(el)))
+      .map(el => el.dataset.rfSectionId || '').filter(Boolean),
   };
 };
