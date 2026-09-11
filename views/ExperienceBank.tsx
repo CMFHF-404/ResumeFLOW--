@@ -105,6 +105,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
   onJumpToResumeEditor,
   focusRequest,
 }) => {
+  const agentFieldId = React.useId();
   const assistantResize = useAssistantSidebarResize();
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
   const [isAssistantSidebarOpen, setIsAssistantSidebarOpen] = useState(false);
@@ -437,7 +438,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 scroll-smooth md:p-8">
+      <main aria-label="经历库" className="flex-1 overflow-y-auto p-4 scroll-smooth md:p-8">
         <div className="max-w-5xl mx-auto space-y-12 pb-20">
           <div className="flex items-center gap-2 md:hidden">
             <button
@@ -538,7 +539,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
               </div>
             </div>
             {/* 隐藏 file input，由头像区点击触发 */}
-            <input
+            <input aria-label="上传头像"
               ref={avatarFileInputRef}
               type="file"
               accept="image/*"
@@ -571,10 +572,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                   <div className="flex items-start gap-3 mb-5 md:hidden">
                     <div className="flex-1 min-w-0 space-y-5">
                       <div className="space-y-1">
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                           <User className="w-3 h-3" /> 姓名
                         </label>
-                        <input
+                        <input id={`${agentFieldId}-1`}
                           className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                           value={name}
                           onChange={(e) => handleNameChange(e.target.value)}
@@ -582,10 +583,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <label id={`${agentFieldId}-label-2`} htmlFor={`${agentFieldId}-2`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                           <Phone className="w-3 h-3" /> 电话
                         </label>
-                        <input
+                        <input id={`${agentFieldId}-2`}
                           className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                           value={phone}
                           onChange={(e) => handlePhoneChange(e.target.value)}
@@ -618,10 +619,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
                     {/* 姓名 - 仅 PC（mobile 已在上方单独渲染） */}
                     <div className="hidden md:block space-y-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <label id={`${agentFieldId}-label-3`} htmlFor={`${agentFieldId}-3`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <User className="w-3 h-3" /> 姓名
                       </label>
-                      <input
+                      <input id={`${agentFieldId}-3`}
                         className="fluid-input text-lg font-bold text-gray-900 dark:text-white w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                         value={name}
                         onChange={(e) => handleNameChange(e.target.value)}
@@ -631,10 +632,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
                     {/* 邮箱 - mobile 排第1，PC 正常流 */}
                     <div className="order-1 md:order-none space-y-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <label id={`${agentFieldId}-label-4`} htmlFor={`${agentFieldId}-4`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <Mail className="w-3 h-3" /> 邮箱
                       </label>
-                      <input
+                      <input id={`${agentFieldId}-4`}
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                         value={email}
                         onChange={(e) => handleEmailChange(e.target.value)}
@@ -644,10 +645,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
                     {/* 电话 - 仅 PC（mobile 已在上方与头像平行显示） */}
                     <div className="hidden md:block md:order-none space-y-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <label id={`${agentFieldId}-label-5`} htmlFor={`${agentFieldId}-5`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <Phone className="w-3 h-3" /> 电话
                       </label>
-                      <input
+                      <input id={`${agentFieldId}-5`}
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                         value={phone}
                         onChange={(e) => handlePhoneChange(e.target.value)}
@@ -657,10 +658,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
                     {/* 地点 */}
                     <div className="order-2 md:order-none space-y-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <label id={`${agentFieldId}-label-6`} htmlFor={`${agentFieldId}-6`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <MapPin className="w-3 h-3" /> 地点
                       </label>
-                      <input
+                      <input id={`${agentFieldId}-6`}
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                         value={location}
                         onChange={(e) => handleLocationChange(e.target.value)}
@@ -670,10 +671,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
                     {/* 意向岗位 - 同步当前活动简历 */}
                     <div className="order-3 md:order-none space-y-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <label id={`${agentFieldId}-label-7`} htmlFor={`${agentFieldId}-7`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <Briefcase className="w-3 h-3" /> 意向岗位
                       </label>
-                      <input
+                      <input id={`${agentFieldId}-7`}
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                         value={targetRole}
                         onChange={(e) => handleTargetRoleChange(e.target.value)}
@@ -683,10 +684,10 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
 
                     {/* 链接 */}
                     <div className="order-4 md:order-none md:col-span-2 lg:col-span-1 space-y-1">
-                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <label id={`${agentFieldId}-label-8`} htmlFor={`${agentFieldId}-8`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                         <LinkIcon className="w-3 h-3" /> 链接 (LinkedIn/Portfolio)
                       </label>
-                      <input
+                      <input id={`${agentFieldId}-8`}
                         className="fluid-input text-base text-gray-700 dark:text-gray-300 w-full disabled:bg-transparent disabled:border-transparent disabled:p-0"
                         value={link}
                         onChange={(e) => handleLinkChange(e.target.value)}
@@ -719,7 +720,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
                   )}
                 </div>
                 {isEditingProfile ? (
-                  <textarea
+                  <textarea aria-label="填写适合展示在简历中的个人评价，或AI自动基于个人经历生成。"
                     className="min-h-[132px] w-full resize-y rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-gray-700 dark:bg-surface-dark dark:text-gray-300"
                     value={summary}
                     onChange={(e) => handleSummaryChange(e.target.value)}

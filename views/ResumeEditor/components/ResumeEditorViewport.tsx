@@ -12,7 +12,7 @@ type ResumeEditorViewportProps = React.PropsWithChildren<{
 const ResumeEditorViewport: React.FC<ResumeEditorViewportProps> = ({
     scrollContainerRef, onKeyDownCapture, busy, workbench, templateToolbar, templateStrip, children,
 }) => (
-    <div data-template-selection={templateStrip ? 'true' : undefined} onKeyDownCapture={onKeyDownCapture} className="rf-editor-viewport relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
+    <div role="main" aria-label="简历工厂" data-template-selection={templateStrip ? 'true' : undefined} onKeyDownCapture={onKeyDownCapture} className="rf-editor-viewport relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
         {templateToolbar}
         <div
             ref={scrollContainerRef}

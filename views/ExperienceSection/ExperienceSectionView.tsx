@@ -18,6 +18,7 @@ const SectionHeader: React.FC<{
     <div className="flex items-center gap-2">
       <button
         onClick={onToggle}
+        aria-label={`展开或收起${title}`} aria-expanded={!isCollapsed}
         className="p-1 -ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
       >
         <ChevronDown
@@ -80,7 +81,7 @@ const ExperienceCardList: React.FC<{
       const data = model.cardData.get(cardId) || buildExperienceCardData(item);
       return (
         <ExperienceCard
-          key={cardId}
+          key={cardId} agentItemId={cardId}
           ref={(el) => model.setCardRef(cardId, el)}
           data={data}
           labels={labels}

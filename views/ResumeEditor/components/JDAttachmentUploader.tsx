@@ -92,7 +92,7 @@ const JDAttachmentUploader: React.FC<JDAttachmentUploaderProps> = ({
             >
                 <X aria-hidden="true" className="h-3 w-3" />
             </button>}
-            <input
+            <input aria-label="上传附件"
                 ref={inputRef}
                 type="file"
                 accept={JD_ATTACHMENT_ACCEPT}

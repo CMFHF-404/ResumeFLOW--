@@ -231,7 +231,7 @@ const TagInputField: React.FC<{
             onRemove={onRemove}
         />
         <div className="flex min-w-0 flex-[1_1_12rem] items-center gap-2">
-            <input
+            <input aria-label={tags.length > 0 ? '' : placeholder}
                 className="min-w-0 flex-1 bg-transparent text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 border-none focus:ring-0 focus:outline-none py-1 px-1"
                 placeholder={tags.length > 0 ? '' : placeholder}
                 value={draft}

@@ -791,7 +791,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                         </div>
                         <label className="block">
                           <span className="mb-2 block text-xs font-medium text-gray-600 dark:text-gray-300">TAG 连接符</span>
-                          <input
+                          <input aria-label={DEFAULT_RESUME_SKILL_TAG_SEPARATOR}
                             type="text"
                             value={editingSkillTagSeparator}
                             onChange={(event) => setEditingSkillTagSeparator(event.target.value)}
@@ -816,7 +816,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                         const meta = TEMPLATE_SECTION_META[sectionId] ?? { label: sectionId, hint: '' };
                         const isDragging = draggingSectionId === sectionId;
                         return (
-                          <div
+                          <div data-agent-item={sectionId}
                             key={sectionId}
                             data-section-id={sectionId}
                             onDragOver={handleSectionDragOver}
@@ -895,7 +895,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                   选择模板后会优先套用该模板的个人预设。
                 </p>
               </div>
-              <button type="button" onClick={handleModalClose} className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
+              <button type="button" onClick={handleModalClose} aria-label="关闭模板选择" className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -920,7 +920,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                   const isSelected = template.id === selectedTemplateId;
                   const hasCustomPreset = Boolean(templatePresetMap[template.id]);
                   return (
-                    <article
+                    <article data-agent-item={template.id}
                       key={template.id}
                       className={`flex h-full flex-col rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900 ${isSelected ? 'ring-2 ring-primary' : ''}`}
                     >
@@ -961,7 +961,7 @@ const TemplateSelectorModal: React.FC<TemplateSelectorModalProps> = ({
                       <p className="mt-1 min-h-[38px] text-xs text-gray-500 dark:text-gray-400">{template.description}</p>
                       <button
                         type="button"
-                        onClick={() => onSelectTemplate(template.id)}
+                        onClick={() => onSelectTemplate(template.id)} aria-pressed={isSelected} aria-label={`选择${template.name}模板`} data-agent-action="select-template"
                         disabled={!isPresetMapReady}
                         className={`mt-auto inline-flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold disabled:cursor-wait disabled:opacity-60 ${isSelected ? 'bg-primary text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'}`}
                       >

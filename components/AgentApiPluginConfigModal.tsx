@@ -425,7 +425,7 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={handleClose}>
-      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 text-slate-100 shadow-2xl shadow-slate-950/60" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-label="Agent API 插件配置" data-agent-dialog="agent-config" className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 text-slate-100 shadow-2xl shadow-slate-950/60" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold">Agent API 插件配置</h2>
@@ -446,13 +446,13 @@ const AgentApiPluginConfigModal: React.FC<AgentApiPluginConfigModalProps> = ({
                 <button className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50" disabled={isMutatingKey} onClick={refreshApiKey} type="button">刷新 API Key</button>
               </div>
             </div>
-            <textarea className="h-44 w-full resize-none rounded-xl border border-slate-700 bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-100 outline-none focus:border-primary" readOnly value={agentInstruction} />
+            <textarea aria-label="发送给 Agent 的指令" className="h-44 w-full resize-none rounded-xl border border-slate-700 bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-100 outline-none focus:border-primary" readOnly value={agentInstruction} />
             <p className="mt-2 text-xs text-slate-400">当前 Key 标识：{displayApiKey}。完整 Key 不会由列表接口返回。</p>
             {revealedKey ? (
               <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
                 <div className="mb-2 text-xs font-medium text-amber-200">完整 API Key 仅本次显示，不会保存到当前账号；关闭后无法再次查看。</div>
                 <div className="flex gap-2">
-                  <input className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100" readOnly value={revealedKey} />
+                  <input aria-label="本次显示的完整 API Key" className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100" readOnly value={revealedKey} />
                   <button className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-slate-950" onClick={copyRevealedKey} type="button">复制 Key</button>
                 </div>
               </div>

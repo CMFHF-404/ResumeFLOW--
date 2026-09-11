@@ -1,3 +1,4 @@
+import { activateOnEnterOrSpace } from '../utils/agentUi';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { Award, Plus, ChevronDown } from 'lucide-react';
 import { certificationsService, Certification as CertificationRecord } from '../services/certificationsService';
@@ -608,7 +609,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                     className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 cursor-pointer select-none"
                     onClick={() => setIsCollapsed(!isCollapsed)}
                 >
-                    <div className={`p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
+                    <div role="button" tabIndex={0} aria-label="展开或收起证书资质" aria-expanded={!isCollapsed} onKeyDown={activateOnEnterOrSpace} className={`p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
                         <ChevronDown
                             className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
                         />
@@ -639,7 +640,7 @@ const CertificationSection: React.FC<CertificationSectionProps> = ({
                         {sortedCertifications.map(cert => {
                             const id = cert.id;
                             return (
-                                <div key={id} ref={el => { if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id); }}>
+                                <div data-agent-item={id} key={id} ref={el => { if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id); }}>
                                     <CertificationCard
                                         data={cardData.get(id) || buildCertificationCardData(cert)}
                                         isExpanded={expandedCards.has(id)}

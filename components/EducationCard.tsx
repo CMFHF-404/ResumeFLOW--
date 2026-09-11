@@ -1,3 +1,4 @@
+import { activateOnEnterOrSpace } from '../utils/agentUi';
 import React from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import MonthPicker from './MonthPicker';
@@ -27,10 +28,12 @@ const EducationTextField: React.FC<{
     onChange: (value: string) => void;
     className?: string;
     inputClassName?: string;
-}> = ({ label, value, placeholder, onChange, className, inputClassName }) => (
+}> = ({ label, value, placeholder, onChange, className, inputClassName }) => {
+  const agentFieldId = React.useId();
+  return (
     <div className={className}>
-        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">{label}</label>
-        <input
+        <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">{label}</label>
+        <input id={`${agentFieldId}-1`}
             className={`fluid-input ${inputClassName || 'text-base text-gray-700 dark:text-gray-300 placeholder-gray-300'} w-full`}
             placeholder={placeholder}
             value={value}
@@ -38,17 +41,20 @@ const EducationTextField: React.FC<{
         />
     </div>
 );
+};
 
 const EducationMonthField: React.FC<{
     label: string;
     value: string;
     placeholder: string;
     onChange: (value: string) => void;
-}> = ({ label, value, placeholder, onChange }) => (
+}> = ({ label, value, placeholder, onChange }) => {
+  const agentFieldId = React.useId();
+  return (
     <div>
-        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">{label}</label>
+        <label id={`${agentFieldId}-label-2`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">{label}</label>
         <div className="h-[46px]">
-            <MonthPicker
+            <MonthPicker id={`${agentFieldId}-2`} labelledBy={`${agentFieldId}-label-2`}
                 value={value}
                 onChange={onChange}
                 placeholder={placeholder}
@@ -57,6 +63,7 @@ const EducationMonthField: React.FC<{
         </div>
     </div>
 );
+};
 
 const EducationFields: React.FC<{
     data: EduCardData;
@@ -124,9 +131,9 @@ const EducationCardCollapsed: React.FC<{
         <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-1 min-w-0">
-                    <h3 className="font-bold text-gray-900 dark:text-white truncate min-w-0 shrink">
+                    <h3 className="font-bold text-gray-900 dark:text-white truncate min-w-0 shrink"><span role="button" tabIndex={0} aria-label={`展开 ${data.school}`} aria-expanded={false} data-agent-action="expand-item" onKeyDown={activateOnEnterOrSpace}>
                         {data.school || '未填写学校'}
-                    </h3>
+                    </span></h3>
                     <span className="shrink-0 text-gray-300 dark:text-gray-600">|</span>
                     <span className="text-gray-700 dark:text-gray-300 font-medium truncate min-w-0 shrink">
                         {data.major || '未填写专业'}
@@ -144,7 +151,7 @@ const EducationCardCollapsed: React.FC<{
                 ) : null}
             </div>
             <div className="text-right shrink-0 flex items-center gap-2">
-                <button
+                <button aria-label="删除"
                     onClick={(event) => {
                         event.stopPropagation();
                         onDelete();
@@ -171,7 +178,7 @@ const EducationCardActions: React.FC<{
 }> = ({ isModified, isSaving, onDelete, onSave, onCancel, onToggle }) => (
     <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
         <div className="flex items-center gap-2">
-            <button
+            <button aria-label="删除"
                 onClick={onDelete}
                 className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
                 title="删除"
@@ -266,6 +273,7 @@ const EducationCard: React.FC<EducationCardProps> = ({
     return (
         <div
             ref={(element) => setCardRef(eduId, element)}
+            data-agent-item={eduId} role="group" aria-label={data.school || "教育经历"} aria-busy={isSaving}
             className="bg-white dark:bg-surface-dark rounded-xl border border-sky-500/30 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
         >
             {showExpanded ? (

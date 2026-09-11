@@ -258,7 +258,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                                     autoFocus
                                     className="w-full rounded border border-primary bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary dark:bg-gray-800 dark:text-white sm:w-auto"
                                 />
-                                <button
+                                <button aria-label="保存"
                                     onClick={handleSave}
                                     className="p-1 text-primary hover:bg-primary/10 rounded transition-colors"
                                     title="保存"
@@ -269,14 +269,14 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         ) : (
                             <>
                                 <span className="max-w-full truncate text-sm font-medium text-gray-900 dark:text-white">{resumeName}</span>
-                                <button
+                                <button aria-label="编辑简历名称"
                                     onClick={handleStartEdit}
                                     className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
                                     title="编辑简历名称"
                                 >
                                     <Edit2 className="w-3.5 h-3.5" />
                                 </button>
-                                <button
+                                <button aria-label={createResumeTitle}
                                     onClick={onCreateResume}
                                     className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                     title={createResumeTitle}
@@ -367,17 +367,17 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                     {/* min-w 固定宽度：避免不同状态文字长度不同导致"智能一页"按钮位置抖动 */}
                     <div className="order-last flex w-full items-center gap-2 text-xs md:order-none md:w-auto">
                         <span className="text-gray-400 shrink-0">自动保存</span>
-                        <span className={`font-semibold min-w-[7rem] ${saveStatusClass}`}>{saveStatusText}</span>
+                        <span role="status" aria-label="保存状态" data-agent-state={saveState} className={`font-semibold min-w-[7rem] ${saveStatusClass}`}>{saveStatusText}</span>
                     </div>
                     <button
                         className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 md:hidden"
-                        onClick={onToggleTheme}
+                        onClick={onToggleTheme} aria-label="切换主题"
                     >
                         {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                     </button>
                     <button
                         className="ml-auto flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-60 md:ml-0"
-                        onClick={onExportPdf}
+                        onClick={onExportPdf} data-agent-action="export-pdf" aria-busy={isExportingPdf}
                         type="button"
                         disabled={isExportingPdf}
                         title={exportButtonTitle}

@@ -231,7 +231,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         {isAuthenticated ? (
           <button
             className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
-            onClick={handleSignOut}
+            onClick={handleSignOut} aria-label="登出"
             type="button"
             role="menuitem"
           >
@@ -241,7 +241,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
         ) : (
           <button
             className="flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-emerald-400 transition hover:bg-emerald-500/10 hover:text-emerald-300"
-            onClick={handleSignIn}
+            onClick={handleSignIn} aria-label="登录"
             type="button"
             role="menuitem"
           >
@@ -254,7 +254,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
   );
 
   return (
-    <nav className="w-full shrink-0 border-b border-slate-800 bg-slate-900 z-50 md:flex md:h-full md:w-[72px] md:flex-col md:items-center md:border-b-0 md:border-r">
+    <nav aria-label="主导航" className="w-full shrink-0 border-b border-slate-800 bg-slate-900 z-50 md:flex md:h-full md:w-[72px] md:flex-col md:items-center md:border-b-0 md:border-r">
       <div className="px-3 py-3 md:hidden">
         <div className="flex items-center gap-3">
           <div ref={mobileAvatarMenuRef} className="relative shrink-0">
@@ -272,16 +272,16 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
               <svg className="pointer-events-none absolute -inset-1 h-14 w-14 -rotate-90" viewBox="0 0 48 48" aria-hidden="true">
                 <circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-700" />
                 <circle
-                  cx="24"
-                  cy="24"
-                  r="22"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  className={`${quotaRingClass} transition-all`}
-                  strokeDasharray={`${quotaDash} ${TOKEN_RING_CIRCUMFERENCE}`}
-                />
+                cx="24"
+                cy="24"
+                r="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                className={`${quotaRingClass} transition-all`}
+                strokeDasharray={`${quotaDash} ${TOKEN_RING_CIRCUMFERENCE}`}
+              />
               </svg>
               {avatarInitial}
             </button>
@@ -295,6 +295,10 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
               return (
                 <button
                   key={tab.view}
+                  aria-label={tab.label}
+                  aria-current={isActive ? "page" : undefined}
+                  data-agent-action="navigate"
+                  data-agent-view={tab.view}
                   className={mobileTabButtonClass(tab.view)}
                   onClick={() => handleSetView(tab.view)}
                   type="button"
@@ -352,6 +356,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
 
         <div className="mt-8 flex w-full flex-1 flex-col items-center gap-6">
           <button
+            aria-label="我的简历"
+            aria-current={currentView === ViewState.DASHBOARD ? 'page' : undefined}
+            data-agent-action="navigate" data-agent-view={ViewState.DASHBOARD}
             className={getButtonClass(ViewState.DASHBOARD)}
             onClick={() => handleSetView(ViewState.DASHBOARD)}
             type="button"
@@ -362,6 +369,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           </button>
 
           <button
+            aria-label="经历库"
+            aria-current={currentView === ViewState.EXPERIENCE_BANK ? 'page' : undefined}
+            data-agent-action="navigate" data-agent-view={ViewState.EXPERIENCE_BANK}
             className={getButtonClass(ViewState.EXPERIENCE_BANK)}
             onClick={() => handleSetView(ViewState.EXPERIENCE_BANK)}
             type="button"
@@ -372,6 +382,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           </button>
 
           <button
+            aria-label="简历工厂"
+            aria-current={currentView === ViewState.EDITOR ? 'page' : undefined}
+            data-agent-action="navigate" data-agent-view={ViewState.EDITOR}
             className={getButtonClass(ViewState.EDITOR)}
             onClick={() => handleSetView(ViewState.EDITOR)}
             type="button"
@@ -382,6 +395,9 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           </button>
 
           <button
+            aria-label="AI助理"
+            aria-current={currentView === ViewState.AI_ASSISTANT ? 'page' : undefined}
+            data-agent-action="navigate" data-agent-view={ViewState.AI_ASSISTANT}
             className={getButtonClass(ViewState.AI_ASSISTANT)}
             onClick={() => handleSetView(ViewState.AI_ASSISTANT)}
             type="button"
@@ -398,7 +414,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           {isAuthenticated ? (
             <button
               className="group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 transition-all md:p-3 text-red-500 hover:bg-red-500/10 hover:text-red-400"
-              onClick={handleSignOut}
+              onClick={handleSignOut} aria-label="登出"
               type="button"
             >
               <LogOut className="h-5 w-5" />
@@ -407,7 +423,7 @@ const GlobalSidebar: React.FC<GlobalSidebarProps> = ({
           ) : (
             <button
               className="group relative flex min-w-0 items-center justify-center rounded-xl px-3 py-2 transition-all md:p-3 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
-              onClick={handleSignIn}
+              onClick={handleSignIn} aria-label="登录"
               type="button"
             >
               <LogIn className="h-5 w-5 -scale-x-100" />

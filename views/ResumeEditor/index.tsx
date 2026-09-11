@@ -2725,7 +2725,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
                             <label className="min-w-0 flex-1">
                                 <span className="mb-1 block font-semibold">完整 JD 正文</span>
-                                <textarea
+                                <textarea aria-label="请在此粘贴完整 JD 正文"
                                     value={restoredAttachmentFullTextDraft}
                                     onChange={(event) => setRestoredAttachmentFullTextDraft(event.target.value)}
                                     placeholder="请在此粘贴完整 JD 正文"

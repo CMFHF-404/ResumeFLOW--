@@ -1,3 +1,4 @@
+import { activateOnEnterOrSpace } from '../utils/agentUi';
 import React, { useCallback } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { resolveCardMotionClass } from '../components/cardMotion';
@@ -40,16 +41,14 @@ const CollapsedSkillCard: React.FC<{
         <div
             className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
             onClick={onToggle}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => event.key === 'Enter' && onToggle()}
+            role="group"
         >
             <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-bold text-gray-900 dark:text-white truncate">
+                        <h3 className="font-bold text-gray-900 dark:text-white truncate"><span role="button" tabIndex={0} aria-label={`展开 ${data.name}`} aria-expanded={false} data-agent-action="expand-item" onKeyDown={activateOnEnterOrSpace}>
                             {data.name || '未命名分类'}
-                        </h3>
+                        </span></h3>
                         <span className="text-gray-300 dark:text-gray-600">|</span>
                         <span className="text-gray-500 dark:text-gray-400 text-sm">
                             {data.skills.length} 个技能
@@ -67,7 +66,7 @@ const CollapsedSkillCard: React.FC<{
                     </div>
                 </div>
                 <div className="text-right shrink-0 flex items-center gap-2">
-                    <button
+                    <button aria-label="删除"
                         onClick={handleDelete}
                         className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                         title="删除"
@@ -104,15 +103,17 @@ const ExpandedSkillCard: React.FC<{
     onCancel,
     onNameChange,
     onSkillsChange,
-}) => (
+}) => {
+  const agentFieldId = React.useId();
+  return (
         <div className={resolveCardMotionClass(isCollapsing)}>
             <div className="p-6 border-b border-gray-50 dark:border-gray-800/50">
                 <div className="space-y-4">
                     <div>
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+                        <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
                             分类名称
                         </label>
-                        <input
+                        <input id={`${agentFieldId}-1`}
                             className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
                             placeholder="例如: 前端开发"
                             value={data.name}
@@ -137,7 +138,7 @@ const ExpandedSkillCard: React.FC<{
 
             <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                 <div className="flex items-center gap-2">
-                    <button
+                    <button aria-label="删除"
                         onClick={onDelete}
                         className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
                         title="删除"
@@ -179,6 +180,7 @@ const ExpandedSkillCard: React.FC<{
             </div>
         </div>
     );
+};
 
 const SkillCategoryCard: React.FC<SkillCategoryCardProps> = ({
     data,

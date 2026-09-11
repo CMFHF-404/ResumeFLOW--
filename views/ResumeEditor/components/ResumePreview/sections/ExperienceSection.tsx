@@ -218,7 +218,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                                         >
                                             <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
                                         </div>
-                                        <button
+                                        <button aria-label="编辑经历" data-agent-action="edit-experience" data-agent-item={item.id}
                                             type="button"
                                             className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
                                             onTouchStart={(event) => {

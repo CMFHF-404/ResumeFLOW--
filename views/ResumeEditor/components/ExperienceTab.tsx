@@ -763,7 +763,7 @@ const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience, isPolis
     <>
         <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-2">
             <div className="grid grid-cols-2 gap-2">
-                <input
+                <input aria-label="公司 / 项目名称"
                     className="text-sm font-bold text-gray-900 dark:text-white bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 focus:ring-1 focus:ring-primary focus:border-primary"
                     value={experience.editingDraft?.company || ''}
                     onChange={(event) => experience.updateEditingMeta('company', event.target.value)}
@@ -777,7 +777,7 @@ const ExperienceEditor: React.FC<ExperienceEditorProps> = ({ experience, isPolis
                         className="h-full"
                     />
                 </div>
-                <input
+                <input aria-label="职位 / 角色"
                     className="text-xs text-gray-500 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 focus:ring-1 focus:ring-primary focus:border-primary"
                     value={experience.editingDraft?.title || ''}
                     onChange={(event) => experience.updateEditingMeta('title', event.target.value)}

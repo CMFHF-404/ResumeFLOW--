@@ -149,19 +149,19 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
 
     return (
         <aside
-            className={asideClassName}
+            aria-label="简历编辑面板" className={asideClassName}
         >
             {showJDPanel ? <JDAnalysisPanel {...jdPanelProps} /> : null}
             <div className="border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-dark">
                 <div className="flex">
                     <button
                         className={`flex flex-1 items-center justify-center gap-2 border-b-2 py-3 text-xs font-medium transition-colors sm:text-sm ${sidebarTab === 'experience' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                        onClick={() => onSelectTab('experience')}
+                        onClick={() => onSelectTab('experience')} aria-pressed={sidebarTab === 'experience'}
                     >
                         <Database className="w-4 h-4" /> 经历库
                     </button>
                     <button
-                        className={`flex flex-1 items-center justify-center gap-2 border-b-2 py-3 text-xs font-medium transition-colors sm:text-sm ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        aria-pressed={sidebarTab === 'profile'} className={`flex flex-1 items-center justify-center gap-2 border-b-2 py-3 text-xs font-medium transition-colors sm:text-sm ${sidebarTab === 'profile' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
                         onClick={() => {
                             onSelectTab('profile');
                             if (layoutMode !== 'drawer') onProfileTabSelected();

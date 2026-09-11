@@ -1,3 +1,4 @@
+import { activateOnEnterOrSpace } from '../utils/agentUi';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, Sparkles, Trash2, X } from 'lucide-react';
@@ -79,6 +80,7 @@ const STAR_MODE_LETTERS = [
 ];
 
 type ExperienceCardProps = {
+  agentItemId?: string;
   data: ExperienceCardData;
   labels: ExperienceCardLabels;
   isExpanded: boolean;
@@ -124,14 +126,12 @@ const CollapsedExperienceCard: React.FC<{
     <div
       className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
       onClick={onToggle}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(event) => event.key === 'Enter' && onToggle()}
+      role="group"
     >
       <div className="hidden items-start justify-between gap-4 md:flex">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex min-w-0 items-center gap-3">
-            <h3 className="min-w-0 shrink truncate font-bold text-gray-900 dark:text-white">{data.org}</h3>
+            <h3 className="min-w-0 shrink truncate font-bold text-gray-900 dark:text-white"><span role="button" tabIndex={0} aria-label={`展开 ${data.org}`} aria-expanded={false} data-agent-action="expand-item" onKeyDown={activateOnEnterOrSpace}>{data.org}</span></h3>
             <span className="shrink-0 text-gray-300 dark:text-gray-600">|</span>
             <span className="min-w-0 shrink truncate font-medium text-gray-700 dark:text-gray-300">{data.title}</span>
           </div>
@@ -145,7 +145,7 @@ const CollapsedExperienceCard: React.FC<{
           <span className="block text-sm font-mono text-gray-500 dark:text-gray-400">
             {buildExperienceDate(data.start_date, data.end_date)}
           </span>
-          <button
+          <button aria-label="删除"
             onClick={handleDelete}
             className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
             title="删除"
@@ -159,12 +159,12 @@ const CollapsedExperienceCard: React.FC<{
 
       <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 md:hidden">
         <div className="min-w-0">
-          <h3 className="truncate font-bold text-gray-900 dark:text-white">
+          <h3 className="truncate font-bold text-gray-900 dark:text-white"><span role="button" tabIndex={0} aria-label={`展开 ${data.org}`} aria-expanded={false} data-agent-action="expand-item" onKeyDown={activateOnEnterOrSpace}>
             {data.org}
-          </h3>
+          </span></h3>
         </div>
         <div className="flex shrink-0 items-start gap-2">
-          <button
+          <button aria-label="删除"
             onClick={handleDelete}
             className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
             title="删除"
@@ -198,14 +198,16 @@ const ExperienceCardHeader: React.FC<{
   onFieldChange: (field: string, value: string | string[]) => void;
   isLocked: boolean;
   themeColor?: string;
-}> = ({ data, labels, onFieldChange, isLocked }) => (
+}> = ({ data, labels, onFieldChange, isLocked }) => {
+  const agentFieldId = React.useId();
+  return (
   <div className="p-6 pb-2 border-b border-gray-50 dark:border-gray-800/50">
     <div className="flex flex-col lg:flex-row gap-6 mb-4">
       <div className="flex-1">
-        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+        <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
           {labels.orgLabel}
         </label>
-        <input
+        <input id={`${agentFieldId}-1`}
           className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
           placeholder={labels.orgPlaceholder}
           type="text"
@@ -215,10 +217,10 @@ const ExperienceCardHeader: React.FC<{
         />
       </div>
       <div className="flex-1">
-        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+        <label id={`${agentFieldId}-label-2`} htmlFor={`${agentFieldId}-2`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
           {labels.titleLabel}
         </label>
-        <input
+        <input id={`${agentFieldId}-2`}
           className="fluid-input text-xl font-bold text-gray-900 dark:text-white placeholder-gray-300"
           placeholder={labels.titlePlaceholder}
           type="text"
@@ -263,6 +265,7 @@ const ExperienceCardHeader: React.FC<{
     </div>
   </div>
 );
+};
 
 const StarSectionItem: React.FC<{
   section: typeof STAR_SECTIONS[number];
@@ -642,7 +645,7 @@ const ExperienceCardFooter: React.FC<{
         : null}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <button
+          <button aria-label="删除"
             onClick={onDelete}
             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
             title="删除"
@@ -843,6 +846,7 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
   (
     {
       data,
+      agentItemId,
       labels,
       isExpanded,
       isCollapsing,
@@ -875,6 +879,7 @@ const ExperienceCard = React.forwardRef<HTMLDivElement, ExperienceCardProps>(
     return (
       <div
         ref={ref}
+        role="group" aria-label={data.org || labels.orgLabel} data-agent-item={agentItemId} aria-busy={isSaving} data-agent-state={isExpanded ? "expanded" : "collapsed"}
         className="bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
       >
         {!showExpanded ? (

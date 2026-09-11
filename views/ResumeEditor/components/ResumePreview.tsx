@@ -1796,7 +1796,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
     ));
 
     return (
-        <main
+        <main role="region" aria-label="简历预览" aria-hidden={isDashboardThumbnailPreview || undefined}
             ref={previewScrollRef}
             className={isDashboardThumbnailPreview
                 ? 'relative flex h-full w-full justify-center overflow-hidden bg-transparent p-0'

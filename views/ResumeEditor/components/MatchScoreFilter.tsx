@@ -35,7 +35,7 @@ const MatchScoreFilter: React.FC<MatchScoreFilterProps> = ({ value, onChange, di
 
     return (
         <div className="relative inline-block" ref={containerRef}>
-            <button
+            <button aria-label={disabled ? '请先确认或撤销当前润色结果' : '调整匹配度筛选'}
                 type="button"
                 onClick={() => {
                     if (disabled) {

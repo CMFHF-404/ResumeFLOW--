@@ -116,6 +116,9 @@ export const Toast: React.FC<ToastProps> = ({ message, type, duration = 3000, id
 
     return (
         <div
+            role={type === 'error' ? 'alert' : 'status'}
+            aria-atomic="true"
+            data-agent-state={type}
             className={`
         ${style.bg} ${style.border} ${style.text}
         flex items-center max-w-md gap-3 px-4 py-3 rounded-lg border shadow-lg

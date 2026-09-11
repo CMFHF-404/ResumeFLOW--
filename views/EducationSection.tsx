@@ -1,3 +1,4 @@
+import { activateOnEnterOrSpace } from '../utils/agentUi';
 import React from 'react';
 import { GraduationCap, Plus, ChevronDown } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -26,7 +27,7 @@ const EducationSectionHeader: React.FC<{
             className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 cursor-pointer select-none"
             onClick={onToggle}
         >
-            <div className={`p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
+            <div role="button" tabIndex={0} aria-label="展开或收起教育经历" aria-expanded={!isCollapsed} onKeyDown={activateOnEnterOrSpace} className={`p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
                 <ChevronDown
                     className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
                 />

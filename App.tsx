@@ -616,7 +616,7 @@ const App: React.FC = () => {
           onOpenTokenQuota={handleOpenTokenQuota}
           onOpenTokenPurchase={handleOpenTokenPurchase}
         />
-        <div className="flex min-h-0 min-w-0 flex-1">
+        <div data-agent-page={currentView} className="flex min-h-0 min-w-0 flex-1">
           <ViewErrorBoundary onReset={handleResetView} viewName={currentView}>
             <Suspense fallback={null}>
               {renderView()}

@@ -13,6 +13,9 @@ type RichTextEditorProps = {
     className?: string;
     placeholder?: string;
     ariaLabel?: string;
+    id?: string;
+    labelledBy?: string;
+    describedBy?: string;
     enableList?: boolean;
     showLineBulletCue?: boolean;
     onUndo?: () => boolean;
@@ -626,14 +629,14 @@ const RichTextLinkPopover: React.FC<{
                     X
                 </button>
             </div>
-            <input
+            <input aria-label={LINK_URL_PLACEHOLDER}
                 className="w-full border border-gray-200 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 placeholder={LINK_URL_PLACEHOLDER}
                 value={state.url}
                 onChange={(event) => onUrlChange(event.target.value)}
                 onKeyDown={handleKeyDown}
             />
-            <input
+            <input aria-label={LINK_TEXT_PLACEHOLDER}
                 className="w-full border border-gray-200 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 placeholder={LINK_TEXT_PLACEHOLDER}
                 value={state.text}
@@ -1363,6 +1366,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     className,
     placeholder,
     ariaLabel,
+    id,
+    labelledBy,
+    describedBy,
     enableList = true,
     showLineBulletCue = false,
     onUndo,
@@ -1582,6 +1588,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 className={editorClassName}
                 contentEditable={!readOnly}
                 role="textbox"
+                id={id}
+                aria-labelledby={labelledBy}
+                aria-describedby={describedBy}
+                aria-multiline="true"
                 aria-label={ariaLabel}
                 aria-readonly={readOnly}
                 data-placeholder={placeholder}

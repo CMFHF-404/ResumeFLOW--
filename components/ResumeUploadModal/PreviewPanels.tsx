@@ -458,6 +458,7 @@ export const ModalHeader: React.FC<{
       <button
         type="button"
         onClick={onClose}
+        aria-label="关闭导入预览"
         className="rounded-full p-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition"
       >
         <X className="w-5 h-5" />
@@ -490,7 +491,7 @@ const UploadDropzone: React.FC<{
       拖拽简历到这里，或点击选择文件
     </p>
     <p className="mt-1 text-xs text-gray-400">支持 PDF / DOCX</p>
-    <input
+    <input aria-label="上传附件"
       type="file"
       accept=".pdf,.docx"
       className="absolute inset-0 opacity-0 cursor-pointer"
@@ -921,4 +922,3 @@ export const ModalFooter: React.FC<{
     </div>
   </div>
 );
-

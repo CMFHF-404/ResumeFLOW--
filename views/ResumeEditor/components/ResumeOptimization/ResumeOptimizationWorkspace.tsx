@@ -500,7 +500,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                             onStepSelect={handleStepSelect}
                         />
                     </aside>
-                    <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <main role="region" aria-label="简历优化内容" className="flex min-h-0 flex-1 flex-col overflow-hidden">
                         <div className={[
                             'shrink-0 border-b border-slate-200 bg-white/70 dark:border-slate-800 dark:bg-slate-950/70',
                             isSidebarSurface ? 'hidden' : 'md:hidden',

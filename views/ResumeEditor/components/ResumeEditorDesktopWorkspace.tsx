@@ -64,6 +64,8 @@ const ResumeEditorDesktopWorkspace: React.FC<ResumeEditorDesktopWorkspaceProps> 
         />
         <div
             data-rf-right-sidebar
+            aria-hidden={!showRightSidebar}
+            inert={!showRightSidebar}
             className={[
                 'hidden md:flex md:h-full md:min-h-0 md:shrink-0 md:overflow-hidden',
                 'border-border-light dark:border-border-dark transition-[width,opacity] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',

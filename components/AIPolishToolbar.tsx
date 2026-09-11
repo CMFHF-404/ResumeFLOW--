@@ -219,7 +219,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
           </button>
         </div>
         {activeMode === 'custom' ? (
-          <textarea
+          <textarea aria-label="自定义润色要求"
             value={customPrompt}
             onChange={(event) => onCustomPromptChange(event.target.value)}
             placeholder="例如：突出跨团队协作，但保持事实克制，不要夸大成果。"
@@ -241,7 +241,7 @@ const AIPolishToolbar: React.FC<AIPolishToolbarProps> = ({
                 </div>
               ) : null}
             </div>
-            <textarea
+            <textarea aria-label="补充真实事实"
               value={smartCompletionPrompt.answer}
               onChange={(event) => smartCompletionPrompt.onAnswerChange(event.target.value)}
               placeholder="在这里补充真实事实，例如目标用户、产品取舍、MVP 验证、用户反馈或指标结果。"

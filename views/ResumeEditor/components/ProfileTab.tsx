@@ -68,7 +68,9 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
     onSaveEducation,
     onRequestDeleteEducation,
     onToggleEducationSelection,
-}) => (
+}) => {
+  const agentFieldId = React.useId();
+  return (
     <div className="space-y-3 animate-in fade-in slide-in-from-left-4 duration-300">
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-3">
@@ -122,8 +124,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
             ) : null}
             <div className="space-y-3">
                 <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400">姓名</label>
-                    <input
+                    <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="text-xs text-gray-500 dark:text-gray-400">姓名</label>
+                    <input id={`${agentFieldId}-1`}
                         className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                         value={profile.name}
                         onChange={(event) => setProfile({ ...profile, name: event.target.value })}
@@ -132,8 +134,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="text-xs text-gray-500 dark:text-gray-400">电话</label>
-                        <input
+                        <label id={`${agentFieldId}-label-2`} htmlFor={`${agentFieldId}-2`} className="text-xs text-gray-500 dark:text-gray-400">电话</label>
+                        <input id={`${agentFieldId}-2`}
                             className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                             value={profile.phone}
                             onChange={(event) => setProfile({ ...profile, phone: event.target.value })}
@@ -141,8 +143,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                         />
                     </div>
                     <div>
-                        <label className="text-xs text-gray-500 dark:text-gray-400">邮箱</label>
-                        <input
+                        <label id={`${agentFieldId}-label-3`} htmlFor={`${agentFieldId}-3`} className="text-xs text-gray-500 dark:text-gray-400">邮箱</label>
+                        <input id={`${agentFieldId}-3`}
                             className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                             value={profile.email}
                             onChange={(event) => setProfile({ ...profile, email: event.target.value })}
@@ -151,8 +153,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                     </div>
                 </div>
                 <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400">地点</label>
-                    <input
+                    <label id={`${agentFieldId}-label-4`} htmlFor={`${agentFieldId}-4`} className="text-xs text-gray-500 dark:text-gray-400">地点</label>
+                    <input id={`${agentFieldId}-4`}
                         className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                         value={profile.location}
                         onChange={(event) => setProfile({ ...profile, location: event.target.value })}
@@ -160,8 +162,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                     />
                 </div>
                 <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400">意向岗位</label>
-                    <input
+                    <label id={`${agentFieldId}-label-5`} htmlFor={`${agentFieldId}-5`} className="text-xs text-gray-500 dark:text-gray-400">意向岗位</label>
+                    <input id={`${agentFieldId}-5`}
                         className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                         value={targetRole}
                         onChange={(event) => setTargetRole(event.target.value)}
@@ -169,8 +171,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                     />
                 </div>
                 <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400">链接</label>
-                    <input
+                    <label id={`${agentFieldId}-label-6`} htmlFor={`${agentFieldId}-6`} className="text-xs text-gray-500 dark:text-gray-400">链接</label>
+                    <input id={`${agentFieldId}-6`}
                         className="w-full text-sm p-2 mt-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                         value={profile.linkedin}
                         onChange={(event) => setProfile({ ...profile, linkedin: event.target.value })}
@@ -197,6 +199,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
         />
     </div>
 );
+};
 
 type EducationSectionProps = {
     educations: EducationView[];
@@ -277,7 +280,7 @@ const EducationHeader: React.FC<{
 }> = ({ onCreate, isCollapsed, onToggle }) => (
     <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-            <button
+            <button aria-label={isCollapsed ? "展开" : "折叠"}
                 onClick={onToggle}
                 className="p-0.5 -ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 title={isCollapsed ? "展开" : "折叠"}
@@ -425,20 +428,22 @@ type EducationFormProps = {
     onUpdateDate: (field: 'startDate' | 'endDate', value: string) => void;
 };
 
-const EducationForm: React.FC<EducationFormProps> = ({ draft, onUpdateDraft, onUpdateDate }) => (
+const EducationForm: React.FC<EducationFormProps> = ({ draft, onUpdateDraft, onUpdateDate }) => {
+  const agentFieldId = React.useId();
+  return (
     <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
             <div>
-                <label className="text-[10px] text-gray-400">学校</label>
-                <input
+                <label id={`${agentFieldId}-label-7`} htmlFor={`${agentFieldId}-7`} className="text-[10px] text-gray-400">学校</label>
+                <input id={`${agentFieldId}-7`}
                     className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
                     value={draft.school}
                     onChange={(event) => onUpdateDraft('school', event.target.value)}
                 />
             </div>
             <div>
-                <label className="text-[10px] text-gray-400">专业</label>
-                <input
+                <label id={`${agentFieldId}-label-8`} htmlFor={`${agentFieldId}-8`} className="text-[10px] text-gray-400">专业</label>
+                <input id={`${agentFieldId}-8`}
                     className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
                     value={draft.major}
                     onChange={(event) => onUpdateDraft('major', event.target.value)}
@@ -447,16 +452,16 @@ const EducationForm: React.FC<EducationFormProps> = ({ draft, onUpdateDraft, onU
         </div>
         <div className="grid grid-cols-2 gap-2">
             <div>
-                <label className="text-[10px] text-gray-400">学位</label>
-                <input
+                <label id={`${agentFieldId}-label-9`} htmlFor={`${agentFieldId}-9`} className="text-[10px] text-gray-400">学位</label>
+                <input id={`${agentFieldId}-9`}
                     className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
                     value={draft.degree}
                     onChange={(event) => onUpdateDraft('degree', event.target.value)}
                 />
             </div>
             <div>
-                <label className="text-[10px] text-gray-400">GPA</label>
-                <input
+                <label id={`${agentFieldId}-label-10`} htmlFor={`${agentFieldId}-10`} className="text-[10px] text-gray-400">GPA</label>
+                <input id={`${agentFieldId}-10`}
                     className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
                     value={draft.gpa}
                     onChange={(event) => onUpdateDraft('gpa', event.target.value)}
@@ -465,9 +470,9 @@ const EducationForm: React.FC<EducationFormProps> = ({ draft, onUpdateDraft, onU
         </div>
         <div className="grid grid-cols-2 gap-2">
             <div>
-                <label className="text-[10px] text-gray-400">开始时间</label>
+                <label id={`${agentFieldId}-label-11`} className="text-[10px] text-gray-400">开始时间</label>
                 <div className="h-9 mt-0.5">
-                    <MonthPicker
+                    <MonthPicker id={`${agentFieldId}-11`} labelledBy={`${agentFieldId}-label-11`}
                         value={draft.startDate}
                         onChange={(val) => onUpdateDate('startDate', val)}
                         placeholder="开始时间"
@@ -476,9 +481,9 @@ const EducationForm: React.FC<EducationFormProps> = ({ draft, onUpdateDraft, onU
                 </div>
             </div>
             <div>
-                <label className="text-[10px] text-gray-400">结束时间</label>
+                <label id={`${agentFieldId}-label-12`} className="text-[10px] text-gray-400">结束时间</label>
                 <div className="h-9 mt-0.5">
-                    <MonthPicker
+                    <MonthPicker id={`${agentFieldId}-12`} labelledBy={`${agentFieldId}-label-12`}
                         value={draft.endDate}
                         onChange={(val) => onUpdateDate('endDate', val)}
                         placeholder="结束时间"
@@ -490,8 +495,8 @@ const EducationForm: React.FC<EducationFormProps> = ({ draft, onUpdateDraft, onU
             </div>
         </div>
         <div>
-            <label className="text-[10px] text-gray-400">课程</label>
-            <input
+            <label id={`${agentFieldId}-label-13`} htmlFor={`${agentFieldId}-13`} className="text-[10px] text-gray-400">课程</label>
+            <input id={`${agentFieldId}-13`}
                 className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-primary focus:border-primary"
                 value={draft.courses}
                 onChange={(event) => onUpdateDraft('courses', event.target.value)}
@@ -499,5 +504,6 @@ const EducationForm: React.FC<EducationFormProps> = ({ draft, onUpdateDraft, onU
         </div>
     </div>
 );
+};
 
 export default ProfileTab;

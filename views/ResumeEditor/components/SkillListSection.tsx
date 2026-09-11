@@ -51,7 +51,7 @@ const SkillTypeEditor: React.FC<{
 }> = ({ skill, disabled = false }) => (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-rose-500/30 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2">
         <div className="bg-rose-50/50 dark:bg-rose-900/10 px-3 py-2 border-b border-rose-100 dark:border-rose-800/30">
-            <input
+            <input aria-label="输入新分类名称..."
                 autoFocus
                 className="text-xs font-bold text-rose-700 dark:text-rose-400 bg-transparent border-none outline-none w-full placeholder-rose-300"
                 placeholder="输入新分类名称..."
@@ -63,7 +63,7 @@ const SkillTypeEditor: React.FC<{
         <div className="p-3 bg-white dark:bg-gray-800/50">
             <div className="flex flex-wrap gap-2">
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none text-xs">
-                    <input
+                    <input aria-label="输入第一项技能..."
                         className="bg-transparent border-none text-xs text-white p-0 m-0 min-w-[12ch] max-w-[48ch] outline-none focus:ring-0 placeholder-rose-200"
                         placeholder="输入第一项技能..."
                         value={skill.skillDraft?.name || ''}
@@ -172,7 +172,7 @@ const SkillTag: React.FC<{
                 className="group flex max-w-full items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all select-none border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none"
             >
                 {isSelected ? <CheckCircle2 className="w-3 h-3 text-white" /> : null}
-                <input
+                <input aria-label={skill.name}
                     autoFocus
                     className="bg-transparent border-none text-xs text-white p-0 m-0 min-w-[12ch] max-w-[48ch] outline-none focus:ring-0 placeholder-rose-200"
                     placeholder={skill.name}
@@ -319,7 +319,7 @@ const SkillGroupHeader: React.FC<{
                         </div>
                     </div>
                     <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400">{groupName}</h5>
-                    <button
+                    <button aria-label={`重命名技能分类 ${groupName}`}
                         onClick={() => {
                             skill.setRenamingCategoryTarget(groupName);
                             skill.setRenamingCategoryDraft(groupName);
@@ -390,7 +390,7 @@ const SkillGroupBody: React.FC<{
             {skill.skillDraftContext?.mode === 'group'
                 && skill.skillDraftContext?.groupName === group.name ? (
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none text-xs">
-                    <input
+                    <input aria-label="输入技能..."
                         autoFocus
                         className="bg-transparent border-none text-xs text-white p-0 m-0 min-w-[12ch] max-w-[48ch] outline-none focus:ring-0 placeholder-rose-200"
                         placeholder="输入技能..."
@@ -410,7 +410,7 @@ const SkillGroupBody: React.FC<{
                 </div>
             ) : (
                 <button
-                    onClick={() => skill.beginCreateSkillInGroup(group.name)}
+                    onClick={() => skill.beginCreateSkillInGroup(group.name)} aria-label={`添加技能到 ${group.name}`}
                     disabled={disabled}
                     className="flex items-center justify-center p-1.5 rounded-lg border border-dashed border-gray-300 hover:border-rose-400 text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-gray-300 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
                 >

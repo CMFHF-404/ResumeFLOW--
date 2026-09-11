@@ -124,7 +124,7 @@ const ModalShell: React.FC<{
   children: React.ReactNode;
 }> = ({ title, onClose, children }) => (
   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div className="bg-white dark:bg-surface-dark rounded-2xl shadow-2xl w-[92vw] max-w-lg overflow-hidden">
+    <div role="dialog" aria-label={title} data-agent-dialog="feedback" className="bg-white dark:bg-surface-dark rounded-2xl shadow-2xl w-[92vw] max-w-lg overflow-hidden">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
         <h3 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h3>
         <button
@@ -144,12 +144,14 @@ const ModalShell: React.FC<{
 const FeedbackTypeField: React.FC<{
   value: FeedbackCategory;
   onChange: (value: FeedbackCategory) => void;
-}> = ({ value, onChange }) => (
+}> = ({ value, onChange }) => {
+  const agentFieldId = React.useId();
+  return (
   <div>
-    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+    <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
       类型
     </label>
-    <select
+    <select id={`${agentFieldId}-1`}
       value={value}
       onChange={(event) => onChange(event.target.value as FeedbackCategory)}
       className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -162,18 +164,21 @@ const FeedbackTypeField: React.FC<{
     </select>
   </div>
 );
+};
 
 const FeedbackContentField: React.FC<{
   value: string;
   count: number;
   error: string | null;
   onChange: (value: string) => void;
-}> = ({ value, count, error, onChange }) => (
+}> = ({ value, count, error, onChange }) => {
+  const agentFieldId = React.useId();
+  return (
   <div>
-    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+    <label id={`${agentFieldId}-label-2`} htmlFor={`${agentFieldId}-2`} className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
       反馈内容
     </label>
-    <textarea
+    <textarea id={`${agentFieldId}-2`}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       rows={4}
@@ -189,6 +194,7 @@ const FeedbackContentField: React.FC<{
     </div>
   </div>
 );
+};
 
 const FeedbackContactField: React.FC<{
   contactType: FeedbackContactType;
@@ -203,6 +209,7 @@ const FeedbackContactField: React.FC<{
     </label>
     <div className="flex items-stretch gap-3">
       <select
+        aria-label="联系方式类型"
         value={contactType}
         onChange={(event) => onContactTypeChange(event.target.value as FeedbackContactType)}
         className="w-40 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -213,7 +220,7 @@ const FeedbackContactField: React.FC<{
           </option>
         ))}
       </select>
-      <input
+      <input aria-label={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -234,6 +241,7 @@ const FeedbackImageField: React.FC<{
   onAdd: (files: FileList) => void;
   onRemove: (index: number) => void;
 }> = ({ previews, imageError, onAdd, onRemove }) => {
+  const agentFieldId = React.useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const canAddMore = previews.length < FEEDBACK_MAX_IMAGES;
 
@@ -246,7 +254,7 @@ const FeedbackImageField: React.FC<{
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+      <label id={`${agentFieldId}-label-3`} htmlFor={`${agentFieldId}-3`} className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
         图片附件（可选，最多 {FEEDBACK_MAX_IMAGES} 张）
       </label>
 
@@ -290,7 +298,7 @@ const FeedbackImageField: React.FC<{
         </div>
       )}
 
-      <input
+      <input id={`${agentFieldId}-3`}
         ref={inputRef}
         type="file"
         accept={FEEDBACK_ALLOWED_IMAGE_TYPES.join(',')}

@@ -230,7 +230,7 @@ const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[9998] flex items-center justify-center overflow-hidden bg-black/50 p-3 backdrop-blur-md sm:p-4">
-      <div className={`relative flex w-full max-w-[min(1100px,calc(100vw-24px))] flex-col overflow-hidden rounded-3xl border border-white/20 bg-gradient-to-br from-white/95 via-white/85 to-emerald-50/80 shadow-2xl dark:from-gray-900 dark:via-gray-900/95 dark:to-emerald-900/20 sm:max-h-[calc(100dvh-32px)] sm:max-w-[min(1100px,calc(100vw-48px))] ${shouldShowMobilePreview ? 'h-[calc(100dvh-24px)]' : 'max-h-[calc(100dvh-24px)]'}`}>
+      <div role="dialog" aria-label="导入简历" data-agent-dialog="resume-upload" data-agent-state={stage} className={`relative flex w-full max-w-[min(1100px,calc(100vw-24px))] flex-col overflow-hidden rounded-3xl border border-white/20 bg-gradient-to-br from-white/95 via-white/85 to-emerald-50/80 shadow-2xl dark:from-gray-900 dark:via-gray-900/95 dark:to-emerald-900/20 sm:max-h-[calc(100dvh-32px)] sm:max-w-[min(1100px,calc(100vw-48px))] ${shouldShowMobilePreview ? 'h-[calc(100dvh-24px)]' : 'max-h-[calc(100dvh-24px)]'}`}>
         <div className="absolute inset-x-0 -top-20 h-40 rounded-full bg-emerald-400/20 blur-3xl" />
         <div className="relative flex min-h-0 flex-1 flex-col p-4 sm:p-6">
           <ModalHeader

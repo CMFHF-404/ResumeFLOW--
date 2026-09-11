@@ -96,12 +96,14 @@ const CertificationForm: React.FC<{
     draft: CertificationEditDraft;
     onUpdate: (field: keyof CertificationEditDraft, value: string) => void;
     disabled?: boolean;
-}> = ({ draft, onUpdate, disabled = false }) => (
+}> = ({ draft, onUpdate, disabled = false }) => {
+  const agentFieldId = React.useId();
+  return (
     <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
             <div>
-                <label className="text-[10px] text-gray-400">证书名称</label>
-                <input
+                <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="text-[10px] text-gray-400">证书名称</label>
+                <input id={`${agentFieldId}-1`}
                     className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
                     value={draft.name}
                     onChange={(event) => onUpdate('name', event.target.value)}
@@ -109,8 +111,8 @@ const CertificationForm: React.FC<{
                 />
             </div>
             <div>
-                <label className="text-[10px] text-gray-400">颁发机构</label>
-                <input
+                <label id={`${agentFieldId}-label-2`} htmlFor={`${agentFieldId}-2`} className="text-[10px] text-gray-400">颁发机构</label>
+                <input id={`${agentFieldId}-2`}
                     className="w-full text-xs mt-0.5 p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
                     value={draft.issuer}
                     onChange={(event) => onUpdate('issuer', event.target.value)}
@@ -119,9 +121,9 @@ const CertificationForm: React.FC<{
             </div>
         </div>
         <div>
-            <label className="text-[10px] text-gray-400">取得时间 (YYYY.MM)</label>
+            <label id={`${agentFieldId}-label-3`} className="text-[10px] text-gray-400">取得时间 (YYYY.MM)</label>
             <div className="h-9 mt-0.5">
-                <MonthPicker
+                <MonthPicker id={`${agentFieldId}-3`} labelledBy={`${agentFieldId}-label-3`}
                     value={draft.issueDate}
                     onChange={(val) => onUpdate('issueDate', val)}
                     placeholder="2026.07"
@@ -133,6 +135,7 @@ const CertificationForm: React.FC<{
         </div>
     </div>
 );
+};
 
 const CertificationEditCard: React.FC<{
     draft: CertificationEditDraft | null;
@@ -341,13 +344,13 @@ const CertificationListSection: React.FC<CertificationListSectionProps> = ({
         return (
             <div className="space-y-3">
                 <CertificationHeader
-                    title={title}
-                    onCreate={onBeginCreate}
-                    onResetSort={onResetSort}
-                    disabled={disabled}
-                    isCollapsed={isCollapsed}
-                    onToggle={() => setIsCollapsed(!isCollapsed)}
-                />
+                title={title}
+                onCreate={onBeginCreate}
+                onResetSort={onResetSort}
+                disabled={disabled}
+                isCollapsed={isCollapsed}
+                onToggle={() => setIsCollapsed(!isCollapsed)}
+            />
                 {!isCollapsed && (
                     <p className="text-xs text-gray-400">
                         {emptyMessage ?? '暂无证书'}
