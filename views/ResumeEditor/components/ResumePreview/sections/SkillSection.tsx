@@ -203,7 +203,7 @@ const SkillSection: React.FC<SkillSectionProps> = ({
                                         >
                                             <GripVertical className="h-3 w-3 text-gray-400 cursor-move" />
                                         </div>
-                                        <button
+                                        <button aria-label="编辑技能" data-agent-action="edit-skill" data-agent-item={editableSkill?.id}
                                             type="button"
                                             className="inline-flex items-center justify-center rounded-full p-0.5 text-gray-400 hover:text-primary"
                                             onTouchStart={(event) => {

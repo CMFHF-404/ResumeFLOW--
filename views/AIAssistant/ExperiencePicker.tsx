@@ -100,7 +100,7 @@ export const ExperiencePicker: React.FC<ExperiencePickerProps> = ({
       <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
           <Search className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
-          <input
+          <input aria-label="搜索组织、岗位、项目名"
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
             placeholder="搜索组织、岗位、项目名"
@@ -128,7 +128,7 @@ export const ExperiencePicker: React.FC<ExperiencePickerProps> = ({
                 <button
                   key={item.masterId}
                   type="button"
-                  onClick={() => toggleItem(item.masterId)}
+                  onClick={() => toggleItem(item.masterId)} aria-pressed={isSelected} data-agent-item={item.masterId}
                   className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
                     isSelected
                       ? 'border-emerald-300 bg-emerald-50 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-950/35'
@@ -202,13 +202,13 @@ export const ExperiencePicker: React.FC<ExperiencePickerProps> = ({
     <>
       <div className="fixed inset-0 z-[120] hidden bg-black/45 md:block" onClick={onClose} />
       <div className="fixed inset-0 z-[121] hidden items-center justify-center px-4 md:flex">
-        <div className="flex h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] dark:bg-slate-950 dark:shadow-[0_24px_80px_rgba(2,6,23,0.7)]">
+        <div role="dialog" aria-label="选择经历" className="flex h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] dark:bg-slate-950 dark:shadow-[0_24px_80px_rgba(2,6,23,0.7)]">
           {content}
         </div>
       </div>
 
       <div className="fixed inset-0 z-[120] bg-black/35 backdrop-blur-[1px] md:hidden" onClick={onClose} />
-      <div className="fixed inset-x-0 bottom-0 z-[121] h-[78vh] rounded-t-[28px] border border-slate-200 bg-white shadow-[0_-24px_60px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_-24px_60px_rgba(2,6,23,0.8)] md:hidden">
+      <div role="dialog" aria-label="选择经历" className="fixed inset-x-0 bottom-0 z-[121] h-[78vh] rounded-t-[28px] border border-slate-200 bg-white shadow-[0_-24px_60px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_-24px_60px_rgba(2,6,23,0.8)] md:hidden">
         <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-slate-200 dark:bg-slate-700" />
         <div className="flex h-[calc(100%-18px)] flex-col">
           {content}

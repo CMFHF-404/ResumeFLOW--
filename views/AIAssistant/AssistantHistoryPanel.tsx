@@ -73,7 +73,7 @@ const AssistantHistorySessionList: React.FC<SessionListProps> = ({
       {sessions.map((session) => {
         const isSelected = selectedSessionId === session.id;
         return (
-          <div
+          <div data-agent-item={session.id}
             key={session.id}
             className={`group relative flex w-full items-center justify-between ${isMobile ? 'rounded-2xl' : 'rounded-xl'} px-4 py-3 text-left transition ${
               isSelected ? 'bg-white text-slate-950 shadow-lg' : 'bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]'
@@ -81,7 +81,7 @@ const AssistantHistorySessionList: React.FC<SessionListProps> = ({
           >
             <button
               type="button"
-              onClick={() => onSelectSession(session.id)}
+              onClick={() => onSelectSession(session.id)} aria-current={isSelected ? "true" : undefined} data-agent-action="select-session"
               className={`flex-1 truncate text-left text-sm font-semibold outline-none ${isMobile ? 'pr-16' : 'pr-8'}`}
               title={session.title}
             >
@@ -93,7 +93,7 @@ const AssistantHistorySessionList: React.FC<SessionListProps> = ({
                 : 'md:pointer-events-none md:opacity-0 md:transition md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100'
             }`}
             >
-              <button
+              <button aria-label="重命名对话"
                 type="button"
                 onClick={(event) => onRenameSession(event, session)}
                 className={`rounded-md p-1.5 transition ${
@@ -105,7 +105,7 @@ const AssistantHistorySessionList: React.FC<SessionListProps> = ({
               >
                 <Edit2 className="h-3.5 w-3.5" />
               </button>
-              <button
+              <button aria-label="删除对话"
                 type="button"
                 onClick={(event) => onDeleteSession(event, session.id)}
                 className={`rounded-md p-1.5 transition ${
@@ -169,7 +169,7 @@ export const AssistantHistoryPanel: React.FC<AssistantHistoryPanelProps> = ({
     >
       {isDesktopHistoryCollapsed ? (
         <div className="flex min-h-0 flex-1 flex-col items-center gap-3 px-2 py-5">
-          <button
+          <button aria-label="展开对话记录"
             type="button"
             onClick={() => setIsDesktopHistoryCollapsed(false)}
             className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/6 text-white transition hover:bg-white/12"
@@ -177,7 +177,7 @@ export const AssistantHistoryPanel: React.FC<AssistantHistoryPanelProps> = ({
           >
             <PanelLeftOpen className="h-5 w-5" />
           </button>
-          <button
+          <button aria-label="新建综合会话"
             type="button"
             onClick={onNewChat}
             className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/6 text-white transition hover:bg-white/12"
@@ -195,7 +195,7 @@ export const AssistantHistoryPanel: React.FC<AssistantHistoryPanelProps> = ({
                 <div className="mt-2 truncate text-xl font-semibold text-white">AI 助理</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button
+                <button aria-label="新建综合会话"
                   type="button"
                   onClick={onNewChat}
                   className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/6 text-white transition hover:bg-white/12"
@@ -203,7 +203,7 @@ export const AssistantHistoryPanel: React.FC<AssistantHistoryPanelProps> = ({
                 >
                   <MessageSquarePlus className="h-5 w-5" />
                 </button>
-                <button
+                <button aria-label="收起对话记录"
                   type="button"
                   onClick={() => setIsDesktopHistoryCollapsed(true)}
                   className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/6 text-white transition hover:bg-white/12"
@@ -254,7 +254,7 @@ export const AssistantHistoryPanel: React.FC<AssistantHistoryPanelProps> = ({
               <div className="text-[11px] uppercase tracking-[0.28em] text-emerald-300/80">对话记录</div>
               <div className="mt-2 text-lg font-semibold text-white">AI 助理</div>
             </div>
-            <button
+            <button aria-label="关闭对话记录"
               type="button"
               onClick={() => setIsMobileHistoryOpen(false)}
               className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/12 bg-white/6 text-white transition hover:bg-white/12"

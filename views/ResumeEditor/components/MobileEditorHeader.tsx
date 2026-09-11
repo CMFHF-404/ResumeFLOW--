@@ -448,7 +448,7 @@ const MobileEditorHeader: React.FC<MobileEditorHeaderProps> = ({
                         {showJdInput ? (
                             <div className="space-y-3">
                                 <div className="relative rounded-xl border border-border-light bg-white/90 p-2 shadow-sm transition-colors dark:border-border-dark dark:bg-gray-900/80">
-                                    <textarea
+                                    <textarea aria-label="JD 职位要求"
                                         className="h-28 w-full resize-none rounded-lg border border-transparent bg-transparent p-3 pr-28 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-primary/20 focus:ring-2 focus:ring-primary/20 dark:text-gray-300 dark:placeholder:text-gray-600"
                                         placeholder={jdFile
                                             ? '可选：补充手动输入的 JD 说明；分析成功后会自动转成文本版 JD。'

@@ -93,13 +93,14 @@ const PreviewShell: React.FC<PreviewShellProps> = ({ title, onClose, children })
         onClick={onClose}
     >
         <div
-            className="bg-white dark:bg-surface-dark rounded-2xl shadow-2xl w-[92vw] max-w-6xl h-[88vh] flex flex-col overflow-hidden"
+            role="dialog" aria-label={title} data-agent-dialog="resume-preview" className="bg-white dark:bg-surface-dark rounded-2xl shadow-2xl w-[92vw] max-w-6xl h-[88vh] flex flex-col overflow-hidden"
             onClick={(event) => event.stopPropagation()}
         >
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">{title}</h3>
                 <button
                     onClick={onClose}
+                    aria-label="关闭简历预览"
                     className="p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-colors"
                     type="button"
                 >

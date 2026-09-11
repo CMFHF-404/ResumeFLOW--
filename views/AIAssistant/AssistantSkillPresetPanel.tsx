@@ -48,7 +48,7 @@ export const AssistantSkillPresetPanel: React.FC<AssistantSkillPresetPanelProps>
       {ASSISTANT_SKILL_PRESETS.map(({ id, title, prompt, Icon }) => {
         const isActive = activeSkillId === id;
         return (
-          <button
+          <button aria-label={prompt}
             key={id}
             type="button"
             onClick={() => onSelectPreset(id, prompt)}

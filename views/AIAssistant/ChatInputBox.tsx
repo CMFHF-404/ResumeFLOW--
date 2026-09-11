@@ -252,7 +252,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
         className="mb-2.5 flex flex-nowrap overflow-x-auto items-center justify-start gap-2 px-1 pb-1"
       >
         {hasSuggestedFollowups ? suggestedFollowups.map((item) => (
-          <button
+          <button aria-label={item.prompt}
             key={`${item.skillId}-${item.label}`}
             type="button"
             onClick={() => {
@@ -268,7 +268,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           const preset = SKILL_PRESET_BY_ID.get(presetId);
           const isActive = activeSkillId === presetId;
           return (
-            <button
+            <button aria-label={preset?.title}
               key={presetId}
               type="button"
               aria-pressed={isActive}
@@ -318,6 +318,8 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
         ) : null}
 
         <textarea
+          aria-label="消息输入"
+          data-agent-field="message"
           ref={textareaRef}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -336,6 +338,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                 onClick={() => setIsPlusMenuOpen((current) => !current)}
                 className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 title="添加经历或附件"
+                aria-expanded={isPlusMenuOpen}
               >
                 {isPlusMenuOpen ? <ChevronUp className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
               </button>
@@ -344,6 +347,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                   {plusActions.map((action) => (
                     <button
                       key={action.key}
+                      data-agent-action={action.key}
                       type="button"
                       onClick={() => {
                         setIsPlusMenuOpen(false);
@@ -364,6 +368,8 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                   type="button"
                   onClick={() => setIsModuleMenuOpen((current) => !current)}
                   title={selectedModuleTitle}
+                  aria-label="选择简历模块"
+                  aria-expanded={isModuleMenuOpen}
                   className={`inline-flex max-w-[168px] items-center gap-1 rounded-xl border px-2.5 py-1.5 text-[11px] font-bold transition ${
                     selectedModuleCount > 0
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100/60 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200 dark:shadow-none dark:hover:bg-emerald-500/20'
@@ -385,6 +391,8 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
                       return (
                         <button
                           key={mod.id}
+                          data-agent-item={mod.id}
+                          aria-pressed={isSelected}
                           type="button"
                           onClick={() => handleResumeModuleToggle(mod)}
                           className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
@@ -407,7 +415,7 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
           </div>
 
           <div className="flex shrink-0 items-center gap-2 pr-1">
-            <button
+            <button aria-label="语音输入"
               type="button"
               className="hidden rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
               title="语音输入"
@@ -417,6 +425,9 @@ export const ChatInputBox: React.FC<ChatInputBoxProps> = ({
             <button
               type="button"
               onClick={onSubmit}
+              aria-label="发送消息"
+              data-agent-action="send-message"
+              aria-busy={isSending}
               disabled={!canSubmit}
               className={`flex h-9 w-9 items-center justify-center rounded-full text-white transition disabled:cursor-not-allowed ${
                 canSubmit

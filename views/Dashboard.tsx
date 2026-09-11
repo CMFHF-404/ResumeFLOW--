@@ -1,3 +1,4 @@
+import { activateOnEnterOrSpace } from '../utils/agentUi';
 import React, { useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Plus, LayoutGrid, List, FileText, MoreHorizontal, Trash2, Copy, Edit2, Eye, PencilLine, UploadCloud, CheckSquare, Square, Check, X, LogIn, Bot, Sparkles, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { Resume, ViewState } from '../types';
@@ -100,6 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onResumesUpdate,
   onLaunchAssistant,
 }) => {
+  const agentFieldId = React.useId();
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const { profile: userProfile } = useProfile();
   const handleSignIn = useCallback(async () => {
@@ -747,7 +749,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">
+      <main aria-label="我的简历" className="flex-1 overflow-y-auto p-4 md:p-8">
         <div className="max-w-7xl mx-auto space-y-6 md:space-y-10">
           {/* 推广卡片：当没有简历时显示 */}
           {resumes.length === 0 && (
@@ -853,7 +855,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 >
                   <label className="relative min-w-0 flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <input
+                    <input aria-label="搜索简历名称"
                       value={searchQuery}
                       onChange={(event) => setSearchQuery(event.target.value)}
                       placeholder="搜索简历名称"
@@ -880,9 +882,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                       data-dashboard-filter-popover="advanced"
                     >
                       <div className="flex flex-col gap-3">
-                        <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                        <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
                           排序
-                          <select
+                          <select id={`${agentFieldId}-1`}
                             value={sortMode}
                             onChange={(event) => setSortMode(event.target.value as DashboardSortMode)}
                             className="h-11 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-900 outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900/50 dark:text-white"
@@ -894,9 +896,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <option value="match-asc">匹配度：低到高</option>
                           </select>
                         </label>
-                        <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                        <label id={`${agentFieldId}-label-2`} htmlFor={`${agentFieldId}-2`} className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
                           创建时间
-                          <select
+                          <select id={`${agentFieldId}-2`}
                             value={timeFilter.preset}
                             onChange={(event) => setTimeFilter((prev) => ({
                               ...prev,
@@ -913,9 +915,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </label>
                         {timeFilter.preset === 'custom' && (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                            <label id={`${agentFieldId}-label-3`} htmlFor={`${agentFieldId}-3`} className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
                               开始日期
-                              <input
+                              <input id={`${agentFieldId}-3`}
                                 value={timeFilter.startDate}
                                 onChange={(event) => setTimeFilter((prev) => ({
                                   ...prev,
@@ -958,9 +960,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </label>
                         {matchFilter.preset === 'custom' && (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                            <label id={`${agentFieldId}-label-4`} htmlFor={`${agentFieldId}-4`} className="flex flex-col gap-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
                               最低匹配度
-                              <input
+                              <input id={`${agentFieldId}-4`}
                                 value={matchFilter.min}
                                 onChange={(event) => setMatchFilter((prev) => ({
                                   ...prev,
@@ -1015,13 +1017,13 @@ const Dashboard: React.FC<DashboardProps> = ({
               )}
               <div className="hidden md:flex items-center bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-sm">
                 <button
-                  onClick={() => setViewMode('grid')}
+                  onClick={() => setViewMode('grid')} aria-label="网格视图" aria-pressed={viewMode === 'grid'}
                   className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-gray-700 text-primary dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 >
                   <LayoutGrid className="w-5 h-5" />
                 </button>
                 <button
-                  onClick={() => setViewMode('list')}
+                  onClick={() => setViewMode('list')} aria-label="列表视图" aria-pressed={viewMode === 'list'}
                   className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-100 dark:bg-gray-700 text-primary dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 >
                   <List className="w-5 h-5" />
@@ -1070,19 +1072,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <div className="flex items-center gap-2 md:hidden">
                     <button
-                      onClick={handleSelectAllToggle}
-                      disabled={visibleResumes.length === 0}
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                      type="button"
-                    >
+                    onClick={handleSelectAllToggle}
+                    disabled={visibleResumes.length === 0}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                    type="button"
+                  >
                       {allVisibleSelected ? '取消全选' : '全选'}
                     </button>
                     <button
-                      onClick={handleBatchDeleteRequest}
-                      disabled={selectedCount === 0 || isDeletingResume}
-                      className="rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-red-500/20 transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      type="button"
-                    >
+                    onClick={handleBatchDeleteRequest}
+                    disabled={selectedCount === 0 || isDeletingResume}
+                    className="rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-red-500/20 transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    type="button"
+                  >
                       删除
                     </button>
                   </div>
@@ -1128,7 +1130,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           ) : effectiveViewMode === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
               {visibleResumes.map(resume => (
-                <div
+                <div data-agent-item={resume.id}
                   key={resume.id}
                   onClick={() => handleResumeCardClick(resume.id)}
                   className={`dashboard-resume-card group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white transition-[border-color,box-shadow] duration-200 dark:bg-surface-dark ${batchEditCardMotionClass} ${selectedResumeIdSet.has(resume.id)
@@ -1144,6 +1146,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         : 'border-white/80 bg-white/90 text-gray-400 dark:border-gray-600 dark:bg-gray-800/90 dark:text-gray-500'
                         }`}
                       onClick={(event) => handleSelectionIndicatorClick(resume.id, event)}
+                                aria-pressed={selectedResumeIdSet.has(resume.id)}
                       type="button"
                     >
                       {selectedResumeIdSet.has(resume.id) ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
@@ -1162,7 +1165,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <div className="p-4 flex-1 flex flex-col">
                     <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-bold text-gray-900 dark:text-white truncate pr-2 text-base">{resume.name}</h3>
+                      <h3 className="font-bold text-gray-900 dark:text-white truncate pr-2 text-base"><span role="button" tabIndex={0} aria-label={`${isBatchEditMode ? "选择或取消选择" : "打开"} ${resume.name}`} aria-pressed={isBatchEditMode ? selectedResumeIdSet.has(resume.id) : undefined} data-agent-action="open-resume" onKeyDown={activateOnEnterOrSpace}>{resume.name}</span></h3>
                     </div>
                     {resume.matchRate > 0 && (
                       <div className="mb-3">
@@ -1186,6 +1189,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                           <button
                             className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors dropdown-trigger"
                             onClick={(e) => handleDropdownClick(e, resume.id)}
+                            aria-label={`更多操作 ${resume.name}`} aria-expanded={openDropdownId === resume.id} data-agent-action="resume-actions"
                           >
                             <MoreHorizontal className="w-4 h-4" />
                           </button>
@@ -1223,7 +1227,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                     {visibleResumes.map(resume => (
-                      <tr
+                      <tr data-agent-item={resume.id}
                         key={resume.id}
                         className={`group cursor-pointer transition-colors ${batchEditCardMotionClass} ${selectedResumeIdSet.has(resume.id)
                           ? 'bg-primary/5 dark:bg-primary/10'
@@ -1241,6 +1245,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                   : 'border-gray-200 bg-white text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
                                   }`}
                                 onClick={(event) => handleSelectionIndicatorClick(resume.id, event)}
+                                aria-pressed={selectedResumeIdSet.has(resume.id)}
                                 type="button"
                               >
                                 {selectedResumeIdSet.has(resume.id) ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
@@ -1249,7 +1254,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <div className="shrink-0 rounded-lg bg-indigo-50 p-2.5 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400">
                               <FileText className="w-5 h-5" />
                             </div>
-                            <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight">{resume.name}</h3>
+                            <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight"><span role="button" tabIndex={0} aria-label={`${isBatchEditMode ? "选择或取消选择" : "打开"} ${resume.name}`} aria-pressed={isBatchEditMode ? selectedResumeIdSet.has(resume.id) : undefined} data-agent-action="open-resume" onKeyDown={activateOnEnterOrSpace}>{resume.name}</span></h3>
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -1281,6 +1286,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               <button
                                 className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors dropdown-trigger"
                                 onClick={(e) => handleDropdownClick(e, resume.id)}
+                            aria-label={`更多操作 ${resume.name}`} aria-expanded={openDropdownId === resume.id} data-agent-action="resume-actions"
                               >
                                 <MoreHorizontal className="w-4 h-4" />
                               </button>
@@ -1294,7 +1300,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="space-y-3 md:hidden">
                 {visibleResumes.map((resume) => (
-                  <div
+                  <div data-agent-item={resume.id}
                     key={resume.id}
                     className={`dashboard-batch-card-mobile rounded-2xl border bg-white p-4 shadow-sm transition-colors dark:bg-surface-dark touch-manipulation select-none ${batchEditCardMotionClass} ${selectedResumeIdSet.has(resume.id)
                       ? 'border-primary/60 bg-primary/5 dark:border-primary/50 dark:bg-primary/10'
@@ -1314,7 +1320,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <h3 className="truncate text-base font-bold text-gray-900 dark:text-white">
-                          {resume.name}
+                          <span role="button" tabIndex={0} aria-label={`${isBatchEditMode ? '选择或取消选择' : '打开'} ${resume.name}`} aria-pressed={isBatchEditMode ? selectedResumeIdSet.has(resume.id) : undefined} data-agent-action="open-resume" onKeyDown={activateOnEnterOrSpace}>{resume.name}</span>
                         </h3>
                         <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                           <div>
@@ -1341,6 +1347,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             : 'border-gray-200 bg-white text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
                             }`}
                           onClick={(event) => handleSelectionIndicatorClick(resume.id, event)}
+                                aria-pressed={selectedResumeIdSet.has(resume.id)}
                           type="button"
                         >
                           {selectedResumeIdSet.has(resume.id) ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
@@ -1349,6 +1356,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <button
                           className="dropdown-trigger rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white"
                           onClick={(e) => handleDropdownClick(e, resume.id)}
+                            aria-label={`更多操作 ${resume.name}`} aria-expanded={openDropdownId === resume.id} data-agent-action="resume-actions"
                           type="button"
                         >
                           <MoreHorizontal className="h-4 w-4" />

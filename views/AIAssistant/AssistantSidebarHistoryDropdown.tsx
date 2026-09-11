@@ -67,7 +67,7 @@ export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDr
                 const isSelected = selectedSessionId === session.id;
                 const hasPendingDraft = isPendingLatestPreview(session);
                 return (
-                  <div
+                  <div data-agent-item={session.id}
                     key={session.id}
                     className={`group relative flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 transition ${
                       isSelected
@@ -75,9 +75,9 @@ export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDr
                         : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900'
                     }`}
                   >
-                    <button
+                    <button aria-label={session.title}
                       type="button"
-                      onClick={() => onSelectSession(session.id)}
+                      onClick={() => onSelectSession(session.id)} aria-current={isSelected ? "true" : undefined} data-agent-action="select-session"
                       className="min-w-0 flex-1 text-left outline-none"
                       title={session.title}
                     >
@@ -88,7 +88,7 @@ export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDr
                       </div>
                     </button>
                     <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                      <button
+                      <button aria-label="重命名对话"
                         type="button"
                         onClick={(event) => onRenameSession(event, session)}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-white hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-100"
@@ -96,7 +96,7 @@ export const AssistantSidebarHistoryDropdown: React.FC<AssistantSidebarHistoryDr
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
-                      <button
+                      <button aria-label="删除对话"
                         type="button"
                         onClick={(event) => onDeleteSession(event, session.id)}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/15 dark:hover:text-red-300"

@@ -1184,6 +1184,8 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                 </h3>
                 <button
                     onClick={onToggleCollapse}
+                    aria-label="展开或收起 JD 分析"
+                    aria-expanded={!isCollapsed}
                     className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                 >
                     {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
@@ -1196,18 +1198,18 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                             <div className="flex min-w-0 flex-1 items-center gap-2 text-[12px] text-gray-700 dark:text-gray-300">
                                 <Wand2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
                                 <span
-                                    className="min-w-0 flex-1 truncate font-medium leading-5"
-                                    title={`思考中：${thinkingText?.trim() || '正在分析岗位要求...'}`}
-                                >
+                                            className="min-w-0 flex-1 truncate font-medium leading-5"
+                                            title={`思考中：${thinkingText?.trim() || '正在分析岗位要求...'}`}
+                                        >
                                     思考中：{thinkingText?.trim() || '正在分析岗位要求...'}
                                 </span>
                             </div>
                             <button
-                                type="button"
-                                onClick={onStopAnalyze}
-                                disabled={!isAnalyzing || !onStopAnalyze}
-                                className="flex shrink-0 items-center gap-1 rounded bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-60 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/60"
-                            >
+                                        type="button"
+                                        onClick={onStopAnalyze}
+                                        disabled={!isAnalyzing || !onStopAnalyze}
+                                        className="flex shrink-0 items-center gap-1 rounded bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-60 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/60"
+                                    >
                                 <X className="h-3 w-3" />
                                 停止
                             </button>
@@ -1274,17 +1276,17 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                                         <CapabilityFollowUpCommentLine analysisResult={analysisResult} />
                                     </p>
                                     <BossGreetingSection
-                                        analysisResult={analysisResult}
-                                        hasJdContext={hasJdContext}
-                                        bossGreeting={bossGreeting}
-                                        isBossGreetingVisible={isBossGreetingVisible}
-                                        isBossGreetingOutdated={isBossGreetingOutdated}
-                                        isGeneratingBossGreeting={isGeneratingBossGreeting}
-                                        onGenerateBossGreeting={onGenerateBossGreeting}
-                                        onRefreshBossGreeting={onRefreshBossGreeting}
-                                        onCopyBossGreeting={onCopyBossGreeting}
-                                        onCollapseBossGreeting={onCollapseBossGreeting}
-                                    />
+                                    analysisResult={analysisResult}
+                                    hasJdContext={hasJdContext}
+                                    bossGreeting={bossGreeting}
+                                    isBossGreetingVisible={isBossGreetingVisible}
+                                    isBossGreetingOutdated={isBossGreetingOutdated}
+                                    isGeneratingBossGreeting={isGeneratingBossGreeting}
+                                    onGenerateBossGreeting={onGenerateBossGreeting}
+                                    onRefreshBossGreeting={onRefreshBossGreeting}
+                                    onCopyBossGreeting={onCopyBossGreeting}
+                                    onCollapseBossGreeting={onCollapseBossGreeting}
+                                />
                                 </div>
                             ) : null}
                         </div>
@@ -1302,7 +1304,7 @@ const JDAnalysisPanel: React.FC<JDAnalysisPanelProps> = ({
                             onDragLeave={handleAttachmentDragLeave}
                             onDrop={handleAttachmentDrop}
                         >
-                            <textarea
+                            <textarea aria-label="JD 职位要求"
                                 className="h-28 w-full resize-none rounded-lg border border-transparent bg-transparent p-3 pr-28 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-primary/20 focus:ring-2 focus:ring-primary/20 dark:text-gray-300 dark:placeholder:text-gray-600"
                                 placeholder={jdFile
                                     ? '可选：补充手动输入的 JD 说明；分析成功后会自动转成文本版 JD。'

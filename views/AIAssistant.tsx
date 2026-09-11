@@ -605,7 +605,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             />
           ) : null}
 
-          <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <main role={isSidebarSurface ? "region" : undefined} aria-label="AI 助理" className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {isSidebarSurface ? (
               <>
                 <AssistantSidebarHeader
@@ -635,7 +635,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
             ) : (
             <div className="border-b border-slate-200/90 bg-white/95 px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 md:hidden">
               <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
-                <button
+                <button aria-label="打开对话记录"
                   type="button"
                   onClick={() => setIsMobileHistoryOpen(true)}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-white"
@@ -679,7 +679,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                 ? 'pointer-events-auto relative z-10 w-full'
                 : 'pointer-events-auto relative z-10 mx-auto w-full max-w-3xl'
               }>
-                <input
+                <input aria-label="上传附件"
                   ref={attachmentInputRef}
                   type="file"
                   className="hidden"

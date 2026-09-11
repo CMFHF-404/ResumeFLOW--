@@ -79,7 +79,7 @@ export const AssistantContextRail: React.FC<AssistantContextRailProps> = ({
                 {[attachment.type, attachment.sizeLabel].filter(Boolean).join(' · ') || '已选择附件'}
               </div>
             </div>
-            <button
+            <button aria-label="移除附件"
               type="button"
               onClick={() => onRemoveAttachment?.(attachment.id)}
               className="self-start rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-100"
@@ -104,7 +104,7 @@ export const AssistantContextRail: React.FC<AssistantContextRailProps> = ({
                 {selectedResume.jdContext?.trim() ? '已关联 JD' : '未关联 JD'} · {getResumeExperienceLabel(selectedResume)}
               </div>
             </div>
-            <button
+            <button aria-label="移除简历"
               type="button"
               onClick={onRemoveSelectedResume}
               className="self-start rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-100"

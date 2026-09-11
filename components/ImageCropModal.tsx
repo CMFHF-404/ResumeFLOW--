@@ -228,7 +228,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
 
       {/* 弹窗主体 */}
-      <div className="relative z-10 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden w-full"
+      <div role="dialog" aria-label="裁剪头像" data-agent-dialog="avatar-crop" className="relative z-10 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden w-full"
         style={{ maxWidth: VIEW_WIDTH + 24 }}
       >
         {/* 标题栏 */}
@@ -236,7 +236,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
           <h3 className="font-semibold text-gray-900 dark:text-white text-sm">裁剪头像 · 1:1</h3>
           <button
             onClick={onCancel}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            aria-label="关闭头像裁剪" className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -290,7 +290,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
         <div className="px-5 py-3 flex items-center gap-3">
           <ZoomOut className="w-4 h-4 text-gray-400 shrink-0" />
           <input
-            type="range"
+            type="range" aria-label="头像缩放"
             min={minScale}
             max={maxScale}
             step={0.005}

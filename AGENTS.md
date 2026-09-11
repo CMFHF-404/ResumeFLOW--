@@ -15,6 +15,9 @@ The root is Vite + React + TypeScript (npm / `package-lock.json`). `backend/` is
 
 Select checks for the changed behavior and risk. Root tests use `node --test tests/<file>.test.mjs`; backend tests use `python -B -m unittest <module>` from `backend/`. Build/type checks are useful for frontend code and build changes; documentation-only edits need document and scope checks. Consult [feature test references](docs/agent-verification.md) only for the area being changed. Run broader suites when the impact warrants them or the task requests them.
 
+- JD refresh-before-rescore and cancellation/owner-guard changes use `node --test tests/jdAnalysisCancellation.test.mjs tests/rescoreWithJDRefresh.test.mjs`.
+- Mobile workbench, viewport, template-strip, and sidebar-motion changes use `node --test tests/mobileWorkbenchState.test.mjs tests/mobileTemplateSession.test.mjs tests/mobileTemplateStrip.browser.test.mjs tests/mobileEditorViewport.browser.test.mjs tests/sidebarMotion.browser.test.mjs`. The `.browser` fixtures exercise production components in headless Playwright, but do not establish authenticated-app or physical-device acceptance.
+
 Current scoring is `resume_score_v2` / `single_pass_v1`; optimization is `json_structure_v1`. Preserve one scoring call, one selected-module planning call, at most one answered-module rewrite, no audit/repair calls or automatic post-apply scoring, and zero calls for empty selections or skipped answers. `resumeScore.test.mjs` and backend `test_resume_score` cover current entrypoints; historical compatibility tests must not restore model audits or content regex gates. Preserve auth, save/version, HTML sanitization and scoped writes.
 
 ## Data and generated output

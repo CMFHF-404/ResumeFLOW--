@@ -1,3 +1,4 @@
+import { activateOnEnterOrSpace } from '../utils/agentUi';
 import React, { useCallback } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { resolveCardMotionClass } from '../components/cardMotion';
@@ -41,16 +42,14 @@ const CollapsedCertificationCard: React.FC<{
         <div
             className="p-5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
             onClick={onToggle}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => event.key === 'Enter' && onToggle()}
+            role="group"
         >
             <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1 min-w-0">
-                        <h3 className="font-bold text-gray-900 dark:text-white truncate min-w-0 shrink">
+                        <h3 className="font-bold text-gray-900 dark:text-white truncate min-w-0 shrink"><span role="button" tabIndex={0} aria-label={`展开 ${data.name}`} aria-expanded={false} data-agent-action="expand-item" onKeyDown={activateOnEnterOrSpace}>
                             {data.name || '未填写证书名称'}
-                        </h3>
+                        </span></h3>
                         <span className="shrink-0 text-gray-300 dark:text-gray-600">|</span>
                         <span className="text-gray-700 dark:text-gray-300 font-medium truncate min-w-0 shrink">
                             {data.issuer || '未填写颁发机构'}
@@ -61,7 +60,7 @@ const CollapsedCertificationCard: React.FC<{
                     </p>
                 </div>
                 <div className="text-right shrink-0 flex items-center gap-2">
-                    <button
+                    <button aria-label="删除"
                         onClick={handleDelete}
                         className="text-gray-400 hover:text-red-500 transition-colors p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                         title="删除"
@@ -96,15 +95,17 @@ const ExpandedCertificationCard: React.FC<{
     onSave,
     onCancel,
     onFieldChange,
-}) => (
+}) => {
+  const agentFieldId = React.useId();
+  return (
         <div className={resolveCardMotionClass(isCollapsing)}>
             <div className="p-6 border-b border-gray-50 dark:border-gray-800/50">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+                        <label id={`${agentFieldId}-label-1`} htmlFor={`${agentFieldId}-1`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
                             证书名称
                         </label>
-                        <input
+                        <input id={`${agentFieldId}-1`}
                             className="fluid-input text-lg font-bold text-gray-900 dark:text-white placeholder-gray-300 w-full"
                             placeholder="例如: PMP 项目管理专业人士"
                             value={data.name}
@@ -112,10 +113,10 @@ const ExpandedCertificationCard: React.FC<{
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+                        <label id={`${agentFieldId}-label-2`} htmlFor={`${agentFieldId}-2`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
                             颁发机构
                         </label>
-                        <input
+                        <input id={`${agentFieldId}-2`}
                             className="fluid-input text-base text-gray-700 dark:text-gray-300 placeholder-gray-300 w-full"
                             placeholder="例如: PMI"
                             value={data.issuer}
@@ -123,11 +124,11 @@ const ExpandedCertificationCard: React.FC<{
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
+                        <label id={`${agentFieldId}-label-3`} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
                             获得时间
                         </label>
                         <div className="h-[46px]">
-                            <MonthPicker
+                            <MonthPicker id={`${agentFieldId}-3`} labelledBy={`${agentFieldId}-label-3`}
                                 value={data.date}
                                 onChange={(val) => onFieldChange('date', val)}
                                 placeholder="获得时间"
@@ -141,7 +142,7 @@ const ExpandedCertificationCard: React.FC<{
 
             <div className="bg-gray-50 dark:bg-gray-800/50 px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                 <div className="flex items-center gap-2">
-                    <button
+                    <button aria-label="删除"
                         onClick={onDelete}
                         className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mr-2"
                         title="删除"
@@ -183,6 +184,7 @@ const ExpandedCertificationCard: React.FC<{
             </div>
         </div>
     );
+};
 
 const CertificationCard: React.FC<CertificationCardProps> = ({
     data,

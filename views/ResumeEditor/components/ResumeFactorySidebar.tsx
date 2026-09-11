@@ -167,11 +167,12 @@ const TemplateSelectionPanel: React.FC<Pick<
             const isSelected = template.id === selectedTemplateId;
             const preset = templatePresetMap[template.id];
             return (
-              <article key={template.id} className="min-w-0">
+              <article data-agent-item={template.id} key={template.id} className="min-w-0">
                 <div className="group relative">
                   <button
                     type="button"
                     onClick={() => onSelectTemplate(template.id)}
+                    data-agent-action="select-template"
                     disabled={!isTemplatePresetMapReady}
                     className="block w-full rounded-[9px] text-left outline-none transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
                     aria-label={`选择${template.name}模板`}
@@ -336,7 +337,7 @@ const LayoutPanel: React.FC<Omit<
                 {RESUME_THEME_COLOR_PRESETS.map((color) => {
                   const isActive = color.id === layoutAdjustProps.themeColorPresetId;
                   return (
-                    <button
+                    <button aria-label={color.name}
                       key={color.id}
                       type="button"
                       onClick={() => layoutAdjustProps.onThemeColorChange(color.id as ResumeThemeColorPresetId)}
@@ -547,6 +548,7 @@ const ResumeFactorySidebar: React.FC<ResumeFactorySidebarProps> = ({
                     key={key}
                     type="button"
                     onClick={() => onTabChange(key)}
+                    aria-pressed={isActive}
                     className={[
                       'relative z-10 inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition-colors duration-200',
                       isActive
@@ -572,13 +574,13 @@ const ResumeFactorySidebar: React.FC<ResumeFactorySidebarProps> = ({
                     : 'translate3d(-66.6666%, 0, 0)',
               }}
             >
-              <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
+              <div aria-hidden={activeTab !== 'templates'} inert={activeTab !== 'templates'} className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
                 <TemplateSelectionPanel {...rest} />
               </div>
-              <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
+              <div aria-hidden={activeTab !== 'edit'} inert={activeTab !== 'edit'} className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
                 <EditorSidebar {...editorSidebarProps} />
               </div>
-              <div className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
+              <div aria-hidden={activeTab !== 'layout'} inert={activeTab !== 'layout'} className="w-[33.3333%] h-full flex-shrink-0 overflow-y-auto min-w-0">
                 <LayoutPanel {...rest} />
               </div>
             </div>

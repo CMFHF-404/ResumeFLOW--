@@ -54,7 +54,7 @@ const GuestResumeEditorPreview: React.FC<GuestResumeEditorPreviewProps> = ({ onR
                     </div>
                 </div>
             </header>
-            <main className="min-h-0 flex-1 overflow-y-auto">
+            <main aria-label="简历工厂预览" className="min-h-0 flex-1 overflow-y-auto">
                 <div className="grid min-h-full grid-cols-1 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]">
                     <aside className="border-b border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-surface-dark lg:border-b-0 lg:border-r">
                         <div className="space-y-4">

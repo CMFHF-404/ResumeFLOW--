@@ -23,6 +23,8 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isConfirming = false,
   tone = 'danger',
 }) => {
+  const titleId = React.useId();
+  const descriptionId = React.useId();
   if (!isOpen) {
     return null;
   }
@@ -33,9 +35,9 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-surface-dark rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-in zoom-in-95 duration-200">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
-        <div className="text-gray-600 dark:text-gray-400 mb-6">{description}</div>
+      <div role="dialog" aria-labelledby={titleId} aria-describedby={descriptionId} aria-busy={isConfirming} data-agent-dialog="confirm" className="bg-white dark:bg-surface-dark rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-in zoom-in-95 duration-200">
+        <h3 id={titleId} className="text-lg font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
+        <div id={descriptionId} className="text-gray-600 dark:text-gray-400 mb-6">{description}</div>
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={onCancel}
@@ -47,6 +49,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </button>
           <button
             onClick={onConfirm}
+            data-agent-action="confirm"
             disabled={isConfirming}
             className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${confirmButtonClass}`}
             type="button"

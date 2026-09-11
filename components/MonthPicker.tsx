@@ -4,11 +4,16 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { ChevronDown, Calendar, X } from 'lucide-react';
 import { zhCN } from 'date-fns/locale';
 import { format } from 'date-fns';
+import { activateOnEnterOrSpace } from '../utils/agentUi';
 
 // 不要使用 "root" 作为 portalId（它是 React 挂载容器）；用专用容器 id 让库挂到 body 下，避免 React/DOM 冲突。
 export const DEFAULT_DATE_PICKER_PORTAL_ID = 'rf-datepicker-portal';
 
 interface MonthPickerProps {
+  id?: string;
+  ariaLabel?: string;
+  labelledBy?: string;
+  describedBy?: string;
   value: string; // Format: YYYY.MM or "至今" or empty
   onChange: (value: string) => void;
   placeholder?: string;
@@ -22,6 +27,11 @@ interface MonthPickerProps {
 }
 
 type CustomInputProps = {
+  id?: string;
+  ariaLabel?: string;
+  labelledBy?: string;
+  describedBy?: string;
+  expanded?: boolean;
   value?: string;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
   className?: string;
@@ -35,6 +45,7 @@ type CustomInputProps = {
 };
 
 const CustomInput = forwardRef<HTMLDivElement, CustomInputProps>(({
+  id, ariaLabel, labelledBy, describedBy, expanded,
   onClick,
   className,
   disabled,
@@ -59,7 +70,12 @@ const CustomInput = forwardRef<HTMLDivElement, CustomInputProps>(({
         fluid-input flex items-center justify-between w-full h-full
         ${disabled ? 'opacity-60 cursor-not-allowed' : ''}
       `}>
-        <div className="flex items-center gap-2 overflow-hidden flex-1 shrink-0">
+        <div id={id} role="button" tabIndex={disabled ? -1 : 0}
+          aria-label={ariaLabel || placeholder} aria-labelledby={labelledBy}
+          aria-describedby={describedBy} aria-disabled={disabled} aria-expanded={expanded}
+          data-agent-action="choose-month" data-agent-value={showValue}
+          onKeyDown={activateOnEnterOrSpace}
+          className="flex items-center gap-2 overflow-hidden flex-1 shrink-0">
           <Calendar className={`w-4 h-4 shrink-0 ${showValue ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400'}`} />
           <span className={`block truncate ${showValue ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400'}`}>
             {showValue || placeholder}
@@ -83,6 +99,7 @@ const CustomInput = forwardRef<HTMLDivElement, CustomInputProps>(({
             <button
               type="button"
               onClick={onClear}
+              aria-label={`清除${ariaLabel || placeholder || '月份'}`}
               className="p-1 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
             >
               <X className="w-3 h-3" />
@@ -97,6 +114,7 @@ const CustomInput = forwardRef<HTMLDivElement, CustomInputProps>(({
 });
 
 const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
+  id, ariaLabel, labelledBy, describedBy,
   value,
   onChange,
   placeholder = "选择月份",
@@ -108,6 +126,7 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
   maxDate,
   portalId
 }, ref) => {
+  const [isCalendarOpen, setIsCalendarOpen] = React.useState(false);
   const resolvedPortalId = portalId ?? DEFAULT_DATE_PICKER_PORTAL_ID;
 
   const parseMonthValue = (rawValue?: string) => {
@@ -159,12 +178,16 @@ const MonthPicker = forwardRef<HTMLDivElement, MonthPickerProps>(({
   return (
     <div className="w-full relative" ref={ref}>
       <DatePicker
+        id={id}
+        onCalendarOpen={() => setIsCalendarOpen(true)}
+        onCalendarClose={() => setIsCalendarOpen(false)}
         selected={selectedDate}
         onChange={handleChange}
         dateFormat="yyyy.MM"
         showMonthYearPicker
         customInput={
           <CustomInput
+            id={id} ariaLabel={ariaLabel || placeholder} labelledBy={labelledBy} describedBy={describedBy} expanded={isCalendarOpen}
             className={className}
             disabled={disabled}
             placeholder={placeholder}

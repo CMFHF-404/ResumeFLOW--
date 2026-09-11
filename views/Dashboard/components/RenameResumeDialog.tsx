@@ -21,6 +21,8 @@ const RenameResumeDialog: React.FC<RenameResumeDialogProps> = ({
     onConfirm,
     onCancel,
 }) => {
+    const titleId = React.useId();
+    const errorId = React.useId();
     const [name, setName] = useState(initialName);
     const [error, setError] = useState<string | null>(null);
 
@@ -54,17 +56,20 @@ const RenameResumeDialog: React.FC<RenameResumeDialogProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-surface-dark rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-in zoom-in-95 duration-200">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{DIALOG_TITLE}</h3>
+            <div role="dialog" aria-labelledby={titleId} aria-busy={isSaving} data-agent-dialog="rename-resume" className="bg-white dark:bg-surface-dark rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-in zoom-in-95 duration-200">
+                <h3 id={titleId} className="text-lg font-bold text-gray-900 dark:text-white mb-2">{DIALOG_TITLE}</h3>
                 <div className="space-y-2">
                     <input
+                        aria-label="简历名称"
+                        aria-invalid={Boolean(error)}
+                        aria-describedby={error ? errorId : undefined}
                         value={name}
                         onChange={(event) => handleChange(event.target.value)}
                         placeholder={NAME_PLACEHOLDER}
                         className="w-full px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                     {error ? (
-                        <p className="text-xs text-red-600">{error}</p>
+                        <p id={errorId} role="alert" className="text-xs text-red-600">{error}</p>
                     ) : null}
                 </div>
                 <div className="flex items-center justify-end gap-3 mt-6">

@@ -34,7 +34,7 @@ const ResumeEditorMeasurePreview: React.FC<ResumeEditorMeasurePreviewProps> = ({
     onNavigateTab,
     ...previewProps
 }) => (
-    <div className="fixed left-[-200vw] top-0 w-screen md:w-[calc(100vw-600px)] pointer-events-none opacity-0" aria-hidden="true">
+    <div className="fixed left-[-200vw] top-0 w-screen md:w-[calc(100vw-600px)] pointer-events-none opacity-0" aria-hidden="true" inert>
         <ResumePreview
             {...previewProps}
             previewScope="measure"
