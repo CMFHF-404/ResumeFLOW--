@@ -218,6 +218,8 @@ class BrowserPdfServiceTests(unittest.IsolatedAsyncioTestCase):
             "https://app.example.test/assets/app-123.js",
             "https://app.example.test/resume-templates/deephire/band.png",
             "https://app.example.test/index.tsx?t=123",
+            "https://app.example.test/types.ts",
+            "https://app.example.test/types.ts?t=123",
             "https://app.example.test/@vite/client",
             "https://app.example.test/views/ResumePdfExportPage.tsx?t=123",
             "https://app.example.test/assets/font%20subset.woff2",
@@ -248,6 +250,9 @@ class BrowserPdfServiceTests(unittest.IsolatedAsyncioTestCase):
             "http://127.0.0.1:8000/private.png",
             "http://169.254.169.254/latest/meta-data/",
             "https://cdn.example.test/tracker.png",
+            "https://cdn.example.test/types.ts",
+            "https://app.example.test/types.ts/private",
+            "https://app.example.test/types.ts.backup",
             "https://app.example.test/api/health",
             "https://api.example.test/exports/render-snapshots/other-snapshot",
             "https://api.example.test/exports/render-snapshots/snapshot-1?next=private",
@@ -586,6 +591,7 @@ class BrowserPdfServiceTests(unittest.IsolatedAsyncioTestCase):
             wait_for_function=AsyncMock(),
             evaluate=AsyncMock(side_effect=["", None]),
             emulate_media=AsyncMock(),
+            add_init_script=AsyncMock(),
             wait_for_timeout=AsyncMock(),
             pdf=AsyncMock(return_value=b"%PDF-1.7"),
         )
@@ -601,6 +607,11 @@ class BrowserPdfServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         settings = self._settings()
         settings.export_render_timeout_seconds = 1
+
+        async def assert_print_before_navigation(*args, **kwargs):
+            page.emulate_media.assert_awaited_once_with(media="print")
+            page.add_init_script.assert_awaited_once()
+        page.goto.side_effect = assert_print_before_navigation
 
         with patch.object(browser_pdf_service, "load_settings", return_value=settings):
             result = await browser_pdf_service._render_pdf_with_browser(

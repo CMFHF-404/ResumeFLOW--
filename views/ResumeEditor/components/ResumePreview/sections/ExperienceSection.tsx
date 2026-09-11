@@ -245,6 +245,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                                             : (event) => handleItemCardTouchStart(event, itemKey)
                                     }
                                 >
+                                    <div data-rf-print-heading="true">
                                     <div className="mb-1 flex items-start gap-3">
                                         <div className="min-w-0 flex-1">
                                             <h3 className="rf-template-item-title text-sm font-bold leading-snug text-gray-900">
@@ -258,6 +259,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                                     <p className="text-xs font-semibold text-gray-800 mb-1.5">
                                         {item.title}
                                     </p>
+                                    </div>
 
                                     <ModuleScoreNote moduleType="experience_star" moduleId={item.id} readOnly={isReadOnly} />
                                     {renderStarBlocks(

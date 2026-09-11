@@ -67,6 +67,7 @@ venv.bak/
 .claude/settings.local.json
 
 # Android release signing secrets and private backups
+/artifacts/resume-pagination/
 /android/signing.properties
 /android/private/
 /android/**/*.p12

@@ -1432,7 +1432,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         restoreDefaultLayout,
         waitForPreviewUpdate,
         waitForSmartPageIdle,
+        isSinglePageVerified,
     } = useSmartPageExecution({
+        currentLayout,
+        contentRevision: JSON.stringify({authUserKey,resumeId,profile,targetRole,
+            resumeTemplateId,themeColorPresetId,sectionOrder,experienceItems,selectedExpIds:[...selectedExpIds],
+            educations,selectedEduIds:[...selectedEduIds],certifications,selectedCertIds:[...selectedCertIds],
+            skillGroups,selectedSkillIds:[...selectedSkillIds],personalSummary,hasPersonalSummaryOverride,isSummaryVisible,
+            experienceListMarkerStyle,skillTagSeparator}),
         density,
         a4HeightRef,
         smartPageAdjustingRef,
@@ -2115,6 +2122,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     }, [closeToast, resumeId]);
 
     const handleExportPdf = useResumePdfExport({
+        resumeId,
+        isSmartPageAdjusting: () => smartPageAdjustingRef.current,
+        waitForSmartPageIdle,
+        isSinglePageVerified: () => isSinglePageVerified(currentLayout),
         authUserKey,
         isExportingPdf,
         setIsExportingPdf,

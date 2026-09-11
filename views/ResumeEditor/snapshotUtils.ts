@@ -4,7 +4,6 @@ import type {
 } from '../../types/resume';
 import { buildResumeAISnapshot } from '../../utils/resumeHelpers';
 import { measureResumePrintLayout } from '../../utils/resumePrintLayout';
-import { PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX } from './constants';
 
 export type BossGreetingSignatureParams = {
     jdText: string;
@@ -109,7 +108,6 @@ export const measureResumeLayout = (
 
     return measureResumePrintLayout(
         pageElement,
-        contentElement,
-        PRINT_LAYOUT_OVERFLOW_TOLERANCE_PX
+        contentElement
     );
 };

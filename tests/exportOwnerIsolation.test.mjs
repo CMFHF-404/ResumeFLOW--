@@ -81,6 +81,20 @@ const importDownloadHelper = async () => {
   return import(`data:text/javascript;base64,${encoded}#${Date.now()}-${Math.random()}`);
 };
 
+test('PDF page-count mismatch rejects download with the server message and no blob', async () => {
+  const previousFetch = globalThis.fetch;
+  let downloads = 0;
+  globalThis.__downloadOwnerHarness = {owner:'owner-a',download:()=>{downloads += 1;}};
+  globalThis.fetch = async () => new Response(JSON.stringify({detail:{
+    code:'PDF_PAGE_COUNT_MISMATCH',actualPages:2,maxPages:1,message:'单页校验失败：实际为 2 页。',
+  }}),{status:422,headers:{'content-type':'application/json'}});
+  try {
+    const {downloadUrlFile} = await importDownloadHelper();
+    await assert.rejects(downloadUrlFile('/exports/download/resume-pdf/test','qa.pdf','owner-a'),/实际为 2 页/);
+    assert.equal(downloads,0);
+  } finally {globalThis.fetch=previousFetch;delete globalThis.__downloadOwnerHarness;}
+});
+
 
 test('deferred export POST rejects after auth owner changes from A to B', async () => {
   let resolvePost;

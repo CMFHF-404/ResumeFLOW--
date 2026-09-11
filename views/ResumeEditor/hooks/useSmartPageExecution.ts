@@ -1,4 +1,5 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { waitForResumeRenderReady } from '../../../utils/resumeRenderReadiness';
+import { useCallback, useLayoutEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { trackSmartOnePageTriggered } from '../../../utils/analyticsTracker';
 import type { ResumePrintLayoutMeasurement, SectionSpacingKey } from '../../../types/resume';
 import {
@@ -13,6 +14,8 @@ import {
     resolveSmartPageShrinkFit,
 } from '../smartPageExecutionUtils';
 
+const layoutKey = (layout: SmartPageLayout) => JSON.stringify([layout.topPaddingPx,layout.sectionSpacingKey,layout.itemSpacingEm,layout.lineHeight,layout.fontSize]);
+
 type SmartPageResult = SmartPageLayout | null;
 type SmartPageExecutionResult =
     | ({ status: 'fit' } & SmartPageLayout)
@@ -20,6 +23,8 @@ type SmartPageExecutionResult =
     | { status: 'skipped'; reason: 'busy' | 'unavailable' };
 
 type UseSmartPageExecutionParams = {
+    currentLayout: SmartPageLayout;
+    contentRevision: string;
     density: 'compact' | 'standard' | 'spacious';
     a4HeightRef: MutableRefObject<number | null>;
     smartPageAdjustingRef: MutableRefObject<boolean>;
@@ -41,6 +46,8 @@ type UseSmartPageExecutionParams = {
 };
 
 export const useSmartPageExecution = ({
+    currentLayout,
+    contentRevision,
     density,
     a4HeightRef,
     smartPageAdjustingRef,
@@ -57,6 +64,29 @@ export const useSmartPageExecution = ({
     buildDefaultSmartPageLayout,
     showToastInfo,
 }: UseSmartPageExecutionParams) => {
+    const activeRun = useRef<AbortController | null>(null);
+    const verified = useRef<{revision: string; layout: string} | null>(null);
+    const revisionRef = useRef(contentRevision);
+    const committedLayoutRef = useRef(currentLayout);
+    const expectedVisibleLayoutRef = useRef(currentLayout);
+    useLayoutEffect(() => {
+        committedLayoutRef.current = currentLayout;
+        if (activeRun.current && layoutKey(currentLayout) !== layoutKey(expectedVisibleLayoutRef.current)) {
+            activeRun.current.abort();
+            verified.current = null;
+        }
+        expectedVisibleLayoutRef.current = currentLayout;
+    }, [currentLayout]);
+    useLayoutEffect(() => {
+        revisionRef.current = contentRevision;
+        verified.current = null;
+        activeRun.current?.abort();
+        return () => { activeRun.current?.abort(); };
+    }, [contentRevision]);
+    const isSinglePageVerified = useCallback((layout: SmartPageLayout) => (
+        verified.current?.revision === revisionRef.current
+        && verified.current?.layout === layoutKey(layout)
+    ), []);
     const resolveA4Height = useCallback(() => {
         if (!a4HeightRef.current) {
             a4HeightRef.current = getA4PixelHeight();
@@ -77,12 +107,14 @@ export const useSmartPageExecution = ({
         tick(frames);
     }), []);
 
-    const waitForSmartPageIdle = useCallback(() => new Promise<void>((resolve) => {
+    const waitForSmartPageIdle = useCallback(() => new Promise<void>((resolve, reject) => {
+        const deadline = Date.now() + 35000;
         const tick = () => {
             if (!smartPageAdjustingRef.current) {
                 resolve();
                 return;
             }
+            if (Date.now() >= deadline) {reject(new Error("排版尚未完成，请稍后重试。"));return;}
             requestAnimationFrame(tick);
         };
         tick();
@@ -96,7 +128,8 @@ export const useSmartPageExecution = ({
         density,
     ]);
 
-    const applyVisibleLayout = useCallback((nextLayout: SmartPageLayout) => {
+    const commitVisibleLayout = useCallback((nextLayout: SmartPageLayout) => {
+        expectedVisibleLayoutRef.current = nextLayout;
         setTopPaddingPx(nextLayout.topPaddingPx);
         setSectionSpacingKey(nextLayout.sectionSpacingKey);
         setItemSpacingEm(nextLayout.itemSpacingEm);
@@ -111,6 +144,12 @@ export const useSmartPageExecution = ({
         setSectionSpacingKey,
         setTopPaddingPx,
     ]);
+
+    const applyVisibleLayout = useCallback((layout: SmartPageLayout) => {
+        activeRun.current?.abort();
+        verified.current = null;
+        commitVisibleLayout(layout);
+    }, [commitVisibleLayout]);
 
     const restoreDefaultLayout = useCallback((isApplied = false) => {
         const defaultLayout = resolveDefaultLayoutParams(resolveA4Height() ?? undefined);
@@ -130,8 +169,11 @@ export const useSmartPageExecution = ({
     ), [measurePreviewContentRef, measurePreviewRef]);
 
     const applyMeasureLayoutAndMeasure = useCallback(async (nextLayout: SmartPageLayout) => {
+        const run = activeRun.current;
+        if (run?.signal.aborted) throw new Error('排版运行已失效。');
         setMeasureLayout(nextLayout);
         await waitForPreviewUpdate(2);
+        if (run?.signal.aborted) throw new Error('排版运行已失效。');
         return measureContentLayout();
     }, [measureContentLayout, setMeasureLayout, waitForPreviewUpdate]);
 
@@ -150,14 +192,23 @@ export const useSmartPageExecution = ({
         options?: { announce?: boolean }
     ): Promise<SmartPageExecutionResult> => {
         if (smartPageAdjustingRef.current) {
-            return { status: 'skipped', reason: 'busy' };
+            if (!options?.announce || !activeRun.current) return { status: 'skipped', reason: 'busy' };
+            activeRun.current.abort();
+            await waitForSmartPageIdle();
+            if (smartPageAdjustingRef.current) return { status: 'skipped', reason: 'busy' };
         }
+        const run = new AbortController();
+        const revision = revisionRef.current;
+        const deadlineMs = Date.now() + 30000;
+        activeRun.current = run;
+        verified.current = null;
         smartPageAdjustingRef.current = true;
         setIsAutoSavePaused(true);
         try {
             if (!measurePreviewRef.current || !measurePreviewContentRef.current) {
                 return { status: 'skipped', reason: 'unavailable' };
             }
+            await waitForResumeRenderReady(measurePreviewRef.current, {signal:run.signal,deadlineMs});
             const a4Height = resolveA4Height();
             if (!a4Height) {
                 return { status: 'skipped', reason: 'unavailable' };
@@ -170,9 +221,14 @@ export const useSmartPageExecution = ({
             }
 
             const finalizeFit = async (layout: SmartPageLayout): Promise<SmartPageExecutionResult> => {
-                applyVisibleLayout(layout);
+                if (run.signal.aborted || revision !== revisionRef.current) return {status:'skipped',reason:'unavailable'};
+                commitVisibleLayout(layout);
                 setIsSmartPageApplied(true);
                 await waitForPreviewUpdate(2);
+                await waitForResumeRenderReady(measurePreviewRef.current!, {signal:run.signal,deadlineMs});
+                if (run.signal.aborted || revision !== revisionRef.current) return {status:'skipped',reason:'unavailable'};
+                if (!measureContentLayout()?.fits) return {status:'overflow',...layout};
+                verified.current = {revision,layout:layoutKey(layout)};
                 trackSmartOnePageTriggered({
                     lineHeight: layout.lineHeight,
                     fontSize: layout.fontSize,
@@ -180,16 +236,18 @@ export const useSmartPageExecution = ({
                 return { status: 'fit', ...layout };
             };
             const finalizeOverflow = async (layout: SmartPageLayout): Promise<SmartPageExecutionResult> => {
-                applyVisibleLayout(layout);
+                if (run.signal.aborted || revision !== revisionRef.current) return {status:'skipped',reason:'unavailable'};
+                commitVisibleLayout(layout);
                 setIsSmartPageApplied(true);
                 await waitForPreviewUpdate(2);
+                if (run.signal.aborted || revision !== revisionRef.current) return {status:'skipped',reason:'unavailable'};
                 return { status: 'overflow', ...layout };
             };
 
             const defaultLayout = resolveDefaultLayoutParams(a4Height);
             const initialFit = await tryMeasureLayout(a4Height, defaultLayout);
             if (initialFit) {
-                return finalizeFit(await resolveSmartPageExpansionFit({
+                return await finalizeFit(await resolveSmartPageExpansionFit({
                     a4Height,
                     defaultLayout,
                     initialFit,
@@ -206,16 +264,24 @@ export const useSmartPageExecution = ({
                 tryMeasureLayout,
             });
             if (fitLayout) {
-                return finalizeFit(fitLayout);
+                return await finalizeFit(fitLayout);
             }
 
-            return finalizeOverflow(hardFallbackLayout);
+            return await finalizeOverflow(hardFallbackLayout);
+        } catch {
+            if (!run.signal.aborted) showToastInfo('排版资源未就绪，请等待字体和图片加载后重试。');
+            return {status:'skipped',reason:'unavailable'};
         } finally {
-            smartPageAdjustingRef.current = false;
-            setIsAutoSavePaused(false);
+            if (activeRun.current === run) {
+                if (run.signal.aborted) setMeasureLayout(committedLayoutRef.current);
+                activeRun.current = null;
+                smartPageAdjustingRef.current = false;
+                setIsAutoSavePaused(false);
+            }
         }
     }, [
-        applyVisibleLayout,
+        commitVisibleLayout,
+        measureContentLayout,
         measurePreviewContentRef,
         measurePreviewRef,
         resolveA4Height,
@@ -226,9 +292,12 @@ export const useSmartPageExecution = ({
         smartPageAdjustingRef,
         tryMeasureLayout,
         waitForPreviewUpdate,
+        waitForSmartPageIdle,
+        setMeasureLayout,
     ]);
 
     return {
+        isSinglePageVerified,
         applyLayoutSnapshot,
         applyVisibleLayout,
         executeSmartPageAdjustment,

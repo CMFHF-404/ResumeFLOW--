@@ -349,6 +349,7 @@ export type AssistantLinkedDraftState = {
 };
 
 export type ResumePdfRenderSnapshot = {
+  pageConstraint?: { maxPages: 1 };
   resumeName: string;
   targetRole: string;
   profile: ResumeEditorProfile;

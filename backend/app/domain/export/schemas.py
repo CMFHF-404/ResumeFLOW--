@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from datetime import date, datetime
 from enum import Enum
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any, List, Optional, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
@@ -177,7 +177,12 @@ class SkillGroupViewSnapshot(BaseModel):
     )
 
 
+class ResumePdfPageConstraint(BaseModel):
+    maxPages: Literal[1]
+
+
 class ResumePdfRenderSnapshot(BaseModel):
+    pageConstraint: Optional[ResumePdfPageConstraint] = None
     resumeName: ExportShortText
     targetRole: ExportShortText = ""
     profile: ResumeEditorProfileSnapshot

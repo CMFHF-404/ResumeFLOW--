@@ -156,11 +156,36 @@
                 page-break-inside: avoid;
             }
 
-            .rf-print-preview-shell #basic-info,
             .rf-print-preview-shell [data-rf-section-id],
             .rf-print-preview-shell [data-rf-item-id] {
-                break-inside: avoid;
+                break-inside: auto;
+                page-break-inside: auto;
+            }
+            .rf-print-preview-shell [data-rf-print-heading] {
+                break-inside: avoid-page;
                 page-break-inside: avoid;
+                break-after: avoid-page;
+                page-break-after: avoid;
+            }
+            .rf-print-preview-shell #basic-info,
+            .rf-print-preview-shell [data-rf-print-atomic] {
+                break-inside: avoid-page;
+                page-break-inside: avoid;
+            }
+            .rf-print-preview-shell [data-rf-print-paragraph],
+            .rf-print-preview-shell p,
+            .rf-print-preview-shell li {
+                orphans: 2;
+                widows: 2;
+                break-inside: auto;
+                page-break-inside: auto;
+            }
+            .rf-print-preview-shell .rf-template-content-layout {
+                overflow: visible !important;
+            }
+            .rf-print-preview-shell .rf-template-sidebar,
+            .rf-print-preview-shell .rf-template-main {
+                display: block;
             }
         }
 
