@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 OPTIMIZER_VERSION = "resume_optimization_v1"
 POLICY_VERSION = "json_structure_v1"
+SIMPLE_POLICIES = ("json_structure_v1", "json_structure_v2", "json_structure_v3")
 PROMPT_VERSION = "resume_optimization_single_pass_v1"
 RESUME_EVALUATION_DIMENSION_NAMES = (
     "逻辑清晰",
@@ -52,6 +53,15 @@ class OptimizationModuleType(str, Enum):
     EXPERIENCE_STAR = "experience_star"
     PERSONAL_SUMMARY = "personal_summary"
     SKILLS_ORDER = "skills_order"
+    SKILL_TEXT = "skill_text"
+    EDUCATION_COURSES = "education_courses"
+    EDUCATION_NOTES = "education_notes"
+    CERTIFICATION_ORDER = "certification_order"
+    CERTIFICATION_HIDE = "certification_hide"
+    EXPERIENCE_ORDER = "experience_order"
+    EXPERIENCE_HIDE = "experience_hide"
+    EXPERIENCE_RESTRUCTURE = "experience_restructure"
+    SKILL_CREATE = "skill_create"
     SECTION_ORDER = "section_order"
     BANK_SUGGESTION = "bank_suggestion"
 
@@ -109,6 +119,8 @@ class OptimizationSemanticReview(BaseModel):
 
 
 class OptimizationChange(BaseModel):
+    display_before: list[str] | None = None
+    display_after: list[str] | None = None
     change_id: str
     issue_ids: list[str]
     dimension: str
@@ -209,7 +221,8 @@ class OptimizationQuestion(BaseModel):
     field_path: str
     text: str
     reason: str
-    answer_type: Literal["single_choice_with_text"] = "single_choice_with_text"
+    answer_type: Literal["single_choice_with_text", "skill_confirmation"] = "single_choice_with_text"
+    skill_original: dict[str, str] | None = None
     choices: list[OptimizationQuestionChoice] = Field(default_factory=list)
     affects_change_ids: list[str] = Field(default_factory=list)
     priority: int = Field(default=0, ge=0)
@@ -445,7 +458,7 @@ class ResumeOptimizationRunRead(BaseModel):
     resume_id: str
     status: ResumeOptimizationStatus
     optimizer_version: Literal[OPTIMIZER_VERSION] = OPTIMIZER_VERSION
-    policy_version: Literal["thin_safety_v1", "evidence_semantic_v2", POLICY_VERSION] = POLICY_VERSION
+    policy_version: Literal["thin_safety_v1", "evidence_semantic_v2", "json_structure_v1", "json_structure_v2", "json_structure_v3"] = POLICY_VERSION
     prompt_version: Literal["resume_optimization_prompt_v1", "resume_optimization_tasks_v2", PROMPT_VERSION] = PROMPT_VERSION
     source_resume_updated_at: datetime
     source_evaluation_signature: str

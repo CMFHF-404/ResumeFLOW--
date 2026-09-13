@@ -1064,6 +1064,10 @@ def _normalize_change(
     current_section_order: list[str],
     source_context: _SourceValidationContext | None,
 ) -> OptimizationChange:
+    if isinstance(raw,Mapping):
+        # New server display fields serialize as null on historical change objects.
+        # They are not model-authored preview overrides in the legacy protocol.
+        raw={k:v for k,v in raw.items() if not (k in ('display_before','display_after') and v is None)}
     value = _alias_object(raw, aliases=_CHANGE_KEYS, path=f"changes[{index}]")
     # These two addresses name unique current-resume collections. Canonicalize
     # only the documented resume alias; unknown IDs and mismatched fields still

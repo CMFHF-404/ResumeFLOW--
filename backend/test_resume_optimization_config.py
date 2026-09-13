@@ -28,6 +28,22 @@ class ResumeOptimizationConfigTests(unittest.TestCase):
         self.assertFalse(settings.enable_resume_optimization)
         self.assertEqual(settings.resume_optimization_max_questions, 5)
         self.assertEqual(settings.resume_optimization_max_bank_suggestions, 3)
+        self.assertEqual(settings.resume_score_model, 'gpt-5.6-luna')
+        self.assertEqual(settings.resume_score_thinking_level, 'medium')
+
+    def test_resume_review_model_override_does_not_change_global_profile(self) -> None:
+        settings = self._load_with(AI_ROUTE_PROFILE='gemini_primary', RESUME_SCORE_MODEL='gpt-5.6-luna',
+            ENABLE_EVIDENCE_RESUME_SCORE='true', ENABLE_RESUME_REVIEW_V4='true')
+        self.assertEqual(settings.ai_route_profile, 'gemini_primary')
+        self.assertEqual(settings.resume_score_model, 'gpt-5.6-luna')
+        self.assertTrue(settings.enable_resume_review_v4)
+        self.assertEqual(self._load_with(RESUME_SCORE_MODEL='').resume_score_model, '')
+
+    def test_active_luna_review_validates_its_url_even_with_global_gemini(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, 'AI_BASE_URL'):
+            self._load_with(RESUMEFLOW_DEPLOYMENT_MODE='production', AI_ROUTE_PROFILE='gemini_primary',
+                GEMINI_BASE_URL='https://gemini.example.com/v1beta', AI_BASE_URL='http://insecure.example.com/v1',
+                RESUME_SCORE_MODEL='gpt-5.6-luna', ENABLE_EVIDENCE_RESUME_SCORE='true', ENABLE_RESUME_REVIEW_V4='true')
 
     def test_resume_optimization_config_accepts_documented_bounds(self) -> None:
         minimums = self._load_with(

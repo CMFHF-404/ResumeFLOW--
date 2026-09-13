@@ -20,6 +20,7 @@ export type ReorderStateSnapshot = {
     educations: EducationView[];
     certifications: CertificationView[];
     skillGroups: SkillGroupView[];
+    skillGroupOrder?: string[];
     sectionOrder: string[];
 };
 

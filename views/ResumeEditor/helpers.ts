@@ -113,6 +113,7 @@ export const buildEducationView = (item: ExperienceListItem): EducationView => {
         isCurrent,
         gpa: star.gpa || undefined,
         courses: star.courses || undefined,
+        ...(typeof star.notes==='string'?{notes:star.notes}:{}),
     };
 };
 
@@ -443,8 +444,14 @@ export const buildResumeConfigSnapshot = (
     themeColorPresetId: ResumeThemeColorPresetId,
     experienceListMarkerStyle: ResumeExperienceListMarkerStyle,
     skillTagSeparator: string,
-    jdAnalysis?: ResumeJDAnalysis | null
+    jdAnalysis?: ResumeJDAnalysis | null,
+    careerStage: import('../../types/ai').CareerStage = 'unspecified',
+    localConfig: Pick<ResumeEditorConfig, 'skillOverrides' | 'localSkills' | 'educationOverrides'> = {}
 ): ResumeEditorConfig => ({
+    ...(careerStage !== 'unspecified' ? { careerStage } : {}),
+    ...(localConfig.skillOverrides && Object.keys(localConfig.skillOverrides).length ? { skillOverrides: localConfig.skillOverrides } : {}),
+    ...(localConfig.localSkills && Object.keys(localConfig.localSkills).length ? { localSkills: localConfig.localSkills } : {}),
+    ...(localConfig.educationOverrides && Object.keys(localConfig.educationOverrides).length ? { educationOverrides: localConfig.educationOverrides } : {}),
     profile: profileSyncMode === PROFILE_SYNC_MODES.local ? { ...profile } : undefined,
     ...(hasPersonalSummaryOverride ? { personalSummary } : {}),
     ...(bossGreeting?.greeting.trim() ? { bossGreeting: { ...bossGreeting } } : {}),

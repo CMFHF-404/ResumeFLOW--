@@ -1,5 +1,6 @@
 import React, { useId, useMemo } from 'react';
 import { LockKeyhole } from 'lucide-react';
+import { SkillConfirmation } from './SkillConfirmation';
 
 import type {
     ResumeOptimizationAnswerState,
@@ -57,6 +58,7 @@ export const ResumeOptimizationQuestionCard: React.FC<ResumeOptimizationQuestion
         && !isQuickChoiceSelected;
     const customAnswerValue = draft.state === 'answered' && !isQuickChoiceSelected ? draft.value : '';
     const optionsDisabled = controlsDisabled || hasCustomAnswer;
+    if(question.answerType==='skill_confirmation')return <SkillConfirmation question={question} value={draft.value} disabled={controlsDisabled} onChange={onChange}/>;
 
     return (
         <fieldset

@@ -16,6 +16,7 @@ import {
 } from '../../../services/resumeOptimizationService';
 import type { ResumeEvaluation } from '../../../types/ai';
 import { isGuidanceAuditEvaluation } from '../../../types/ai';
+import { isCurrentScoreVersion } from '../../../utils/resumeScore.mjs';
 import type {
   ResumeOptimizationAnswer,
   ResumeOptimizationAnswerState,
@@ -482,8 +483,7 @@ export const isResumeOptimizationEvaluationPersistedAndTrusted = (
   evaluationSignature: string,
   isEvaluationOutdated: boolean,
 ) => Boolean(
-  evaluation?.evaluationVersion === 'resume_score_v2'
-  && evaluation.scoringVersion === 'single_pass_v1'
+  isCurrentScoreVersion(evaluation)
   && !isEvaluationOutdated
   && doesResumeOptimizationEvaluationReceiptMatch(
     persistedEvaluationSignature,
@@ -502,7 +502,7 @@ export const resolveResumeOptimizationStartAvailability = (
   else if (!input.resumeId) disabledReason = '请先选择简历。';
   else if (input.isJDAnalysisOutdated) disabledReason = 'JD 匹配已过期，请重新进行 JD 匹配。';
   else if (!input.evaluation || !input.evaluationSignature.trim()) disabledReason = '请先生成最新六维评分。';
-  else if (input.evaluation?.evaluationVersion !== 'resume_score_v2') disabledReason = '请重新生成六维评分后再优化。';
+  else if (!isCurrentScoreVersion(input.evaluation)) disabledReason = '评估规则已更新，请重新生成六维评分后再优化。';
   else if (!isResumeOptimizationEvaluationPersistedAndTrusted(
     input.evaluation,
     input.persistedEvaluationSignature,
@@ -1605,7 +1605,7 @@ export const useResumeOptimizationFlow = ({
     if (selectedSuggestionIds.length === 0) selectedSuggestionIds = startAttemptRef.current?.selectedSuggestionIds ?? [];
     if (selectedSuggestionIds.length === 0 && replaceUnreviewableRun && replacedRun?.sourceEvaluationSignature === evaluationSignature) {
       const current = latestInputsRef.current.persistedEvaluation;
-      const available = new Set(current?.evaluationVersion === 'resume_score_v2' ? current.suggestions.map(row => row.suggestionId) : []);
+      const available = new Set(current && (current.evaluationVersion === 'resume_score_v2' || current.evaluationVersion === 'resume_score_v3' || current.evaluationVersion === 'resume_score_v4') ? current.suggestions.filter(row => current.evaluationVersion === 'resume_score_v2' || row.editable).map(row => row.suggestionId) : []);
       selectedSuggestionIds = [...new Set(effectivePlan(replacedRun).changes.flatMap(change => change.issueIds ?? []))].filter(id => available.has(id));
     }
     if (!selectedSuggestionIds.length) { setError('请先在评分报告中选择需要优化的模块。'); return null; }

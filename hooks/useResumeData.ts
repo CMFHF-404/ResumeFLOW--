@@ -103,7 +103,12 @@ type UseResumeDataOptions = {
     setSectionOrder: Dispatch<SetStateAction<string[]>>;
     setDensity: Dispatch<SetStateAction<'compact' | 'standard' | 'spacious'>>;
     setIsSummaryVisible: Dispatch<SetStateAction<boolean>>;
+    setCareerStage?: Dispatch<SetStateAction<import('../types/ai').CareerStage>>;
     applyLayoutConfig: (config: ResumeEditorConfig) => void;
+    setSkillOverrides?: Dispatch<SetStateAction<NonNullable<ResumeEditorConfig['skillOverrides']>>>;
+    setLocalSkills?: Dispatch<SetStateAction<NonNullable<ResumeEditorConfig['localSkills']>>>;
+    setSkillGroupOrder?: Dispatch<SetStateAction<string[]>>;
+    setEducationOverrides?: Dispatch<SetStateAction<NonNullable<ResumeEditorConfig['educationOverrides']>>>;
     setExperienceItems: Dispatch<SetStateAction<ResumeExperienceView[]>>;
     setSelectedExpIds: Dispatch<SetStateAction<Set<string>>>;
     setEducations: Dispatch<SetStateAction<EducationView[]>>;

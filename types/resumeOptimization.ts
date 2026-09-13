@@ -40,6 +40,8 @@ export type ResumeOptimizationModuleType =
   | 'experience_star'
   | 'personal_summary'
   | 'skills_order'
+  | 'skill_text'
+  | 'education_courses' | 'education_notes' | 'certification_order' | 'certification_hide' | 'experience_order' | 'experience_hide' | 'experience_restructure' | 'skill_create'
   | 'section_order'
   | 'bank_suggestion';
 
@@ -67,6 +69,8 @@ export type ResumeOptimizationSourceLabel =
   | '已验证来源';
 
 export interface ResumeOptimizationChange {
+  displayBefore?: string[] | null;
+  displayAfter?: string[] | null;
   changeId: string;
   issueIds: string[];
   dimension: string;
@@ -97,7 +101,8 @@ export interface ResumeOptimizationQuestion {
   fieldPath: string;
   text: string;
   reason: string;
-  answerType: 'single_choice_with_text';
+  answerType: 'single_choice_with_text' | 'skill_confirmation';
+  skillOriginal?: {name: string; category: string} | null;
   choices: ResumeOptimizationQuestionChoice[];
   affectsChangeIds: string[];
   priority: number;

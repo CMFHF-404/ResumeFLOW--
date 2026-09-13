@@ -8,6 +8,7 @@ import {
     DELETE_SKILL_CATEGORY_LABEL,
 } from '../constants';
 import { MatchBadge } from './Badges';
+import {LocalSkillItem} from './LocalSkillItem';
 
 type SkillListSectionProps = {
     title: string;
@@ -367,7 +368,7 @@ const SkillGroupBody: React.FC<{
 }> = ({ group, skill, selectedIds, matchScores, matchTrends, onToggleSelection, disabled = false }) => (
     <div className="p-3 bg-white dark:bg-gray-800/50">
         <div className="flex flex-wrap gap-2">
-            {group.skills.map((item) => (
+            {group.skills.map((item) => skill.localSkillIds?.has(item.id)?<LocalSkillItem key={item.id} item={item} category={group.name} actions={skill} selected={selectedIds.has(item.id)} onToggle={onToggleSelection} disabled={disabled}/>: (
                 <SkillTag
                     key={item.id}
                     skill={item}
@@ -387,6 +388,8 @@ const SkillGroupBody: React.FC<{
                     disabled={disabled}
                 />
             ))}
+            {group.skills.filter(item=>skill.overriddenIds?.has(item.id)).map(item=><button key={'restore-'+item.id} type="button" disabled={disabled}
+                    className="text-xs text-emerald-700 underline" onClick={()=>skill.restoreSkillOriginal?.(item.id)}>{skill.localSkillIds?.has(item.id)?'恢复创建时内容':'恢复技能库原文'}：{item.name}</button>)}
             {skill.skillDraftContext?.mode === 'group'
                 && skill.skillDraftContext?.groupName === group.name ? (
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-200 dark:shadow-none text-xs">

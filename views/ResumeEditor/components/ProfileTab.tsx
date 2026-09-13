@@ -1,6 +1,9 @@
 import React from 'react';
+import { CAREER_STAGES } from '../../../utils/evidenceResumeScore.mjs';
+import type { CareerStage } from '../../../types/ai';
 import { Edit3, Plus, Trash2, Wrench, ChevronDown } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
+import {EducationLocalDetails} from './EducationLocalDetails';
 import type {
     EducationEditDraft,
     EducationView,
@@ -11,6 +14,10 @@ import { buildExperienceDate } from '../../../utils/dateUtils';
 import { ADD_EDUCATION_LABEL, PROFILE_SYNC_MODES } from '../constants';
 
 type ProfileTabProps = {
+    onLocalEducationChange?: (id:string,field:'courses'|'notes',value:string)=>void;
+    onResetLocalEducation?: (id:string)=>void;
+    careerStage?: CareerStage;
+    onCareerStageChange?: (value: CareerStage) => void;
     profile: ResumeEditorProfile;
     setProfile: React.Dispatch<React.SetStateAction<ResumeEditorProfile>>;
     targetRole: string;
@@ -42,6 +49,8 @@ type ProfileTabProps = {
 };
 
 const ProfileTab: React.FC<ProfileTabProps> = ({
+    onLocalEducationChange,onResetLocalEducation,
+    careerStage = 'unspecified', onCareerStageChange,
     profile,
     setProfile,
     targetRole,
@@ -181,6 +190,15 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                 </div>
             </div>
         </div>
+        {(onCareerStageChange || careerStage !== 'unspecified') && <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            <label className="block text-xs font-medium" htmlFor={`${agentFieldId}-career-stage`}>求职阶段</label>
+            <select id={`${agentFieldId}-career-stage`} value={careerStage} disabled={!onCareerStageChange}
+                onChange={event => onCareerStageChange?.(event.target.value as CareerStage)}
+                className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+                {Object.entries(CAREER_STAGES).map(([value,label])=><option key={value} value={value}>{label}</option>)}
+            </select><p className="mt-2 text-xs text-slate-500">用于简历评估，修改后自动保存；不会显示在简历正文中。</p>
+        </div>}
+        {onLocalEducationChange&&onResetLocalEducation&&<EducationLocalDetails items={educations.filter(e=>selectedEduIds.has(e.id))} onChange={onLocalEducationChange} onReset={onResetLocalEducation}/>}
         <EducationSection
             educations={educations}
             selectedEduIds={selectedEduIds}

@@ -99,8 +99,12 @@ const createSkillHelperContext = (
             expectedAuthCacheKey: operation.expectedAuthCacheKey,
         });
         await ownerGuard.assertOperationCurrent(operation);
+        if (domain.isCurrent?.() === false) return;
         domain.setGroups(helpers.buildSkillGroups(items));
-        const validIds = new Set(items.map((skill) => skill.id));
+        const validIds = new Set([
+            ...items.map((skill) => skill.id),
+            ...(domain.localSkillIds ?? []),
+        ]);
         domain.setSelectedIds((prev) => {
             const next = new Set([...prev].filter((id) => validIds.has(id)));
             if (options?.selectId) {
@@ -259,8 +263,11 @@ const createSkillRenameHandlers = (
         try {
             const operation = await ownerGuard.beginOperation();
             const skillsInGroup = domain.groups.find((g) => g.name === oldName)?.skills || [];
-            await Promise.all(
-                skillsInGroup.map((skill) =>
+            const localIds = skillsInGroup.filter(skill => domain.localSkillIds?.has(skill.id)).map(skill => skill.id);
+            const bankSkills = skillsInGroup.filter(skill => !domain.localSkillIds?.has(skill.id));
+            if (localIds.length && !domain.onCategoryRenamed) throw new Error('Local skill rename handler missing');
+            const results = await Promise.allSettled(
+                bankSkills.map((skill) =>
                     skillsService.update(
                         skill.id,
                         { category: trimmedNewName },
@@ -269,7 +276,13 @@ const createSkillRenameHandlers = (
                 )
             );
             await ownerGuard.assertOperationCurrent(operation);
-            await helperContext.refreshSkillState({ operation });
+            if (domain.isCurrent?.() === false) return;
+            domain.onCategoryRenamed?.([
+                ...localIds, ...bankSkills.filter((_, index) => results[index].status === 'fulfilled').map(skill => skill.id),
+            ], trimmedNewName);
+            if (bankSkills.length) await helperContext.refreshSkillState({ operation });
+            const failed = results.find(result => result.status === 'rejected');
+            if (failed?.status === 'rejected') throw failed.reason;
         } catch (error) {
             if (!isAuthContextChangedError(error)) {
                 console.error('[ResumeEditor] 重命名分类失败:', error);
@@ -283,7 +296,7 @@ const createSkillRenameHandlers = (
 };
 
 const createSkillDeleteHandlers = (
-    _domain: SkillDomain,
+    domain: SkillDomain,
     state: SkillState,
     confirmCopy: ConfirmCopy,
     openDeleteConfirm: (payload: ConfirmDialogState) => void,
@@ -339,11 +352,20 @@ const createSkillDeleteHandlers = (
                     if (state.skillDraftContext?.groupName === categoryName) {
                         draftHandlers.cancelSkillEdit();
                     }
-                    await Promise.all(skillIds.map((id) => skillsService.delete(id, {
+                    const localIds = skillIds.filter(id => domain.localSkillIds?.has(id));
+                    const bankIds = skillIds.filter(id => !domain.localSkillIds?.has(id));
+                    if (localIds.length && !domain.onSkillsDeleted) throw new Error('Local skill delete handler missing');
+                    const results = await Promise.allSettled(bankIds.map((id) => skillsService.delete(id, {
                         expectedAuthCacheKey: operation.expectedAuthCacheKey,
                     })));
                     await ownerGuard.assertOperationCurrent(operation);
-                    await helperContext.refreshSkillState({ operation });
+                    if (domain.isCurrent?.() === false) return;
+                    domain.onSkillsDeleted?.([
+                        ...localIds, ...bankIds.filter((_, index) => results[index].status === 'fulfilled'),
+                    ]);
+                    if (bankIds.length) await helperContext.refreshSkillState({ operation });
+                    const failed = results.find(result => result.status === 'rejected');
+                    if (failed?.status === 'rejected') throw failed.reason;
                 }
             );
         } catch (error) {

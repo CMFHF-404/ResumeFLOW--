@@ -1,3 +1,4 @@
+import { withResumeReportDeadline } from '../services/resumeReportDeadline';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuthOwnerOperationGuard } from "./useAuthOwnerOperationGuard";
 import { isAuthContextChangedError } from "../services/apiClient";
@@ -157,7 +158,7 @@ export const resolveResumeEvaluationOutdated = ({
   persistedEvaluationIsOutdated?: boolean;
   hasMissingAttachmentText: boolean;
 }) => (
-  (evaluationVersion !== 'resume_score_v2' && evaluationVersion !== GUIDANCE_AUDIT_EVALUATION_VERSION)
+  (evaluationVersion !== 'resume_score_v4' && evaluationVersion !== 'resume_score_v3' && evaluationVersion !== 'resume_score_v2' && evaluationVersion !== GUIDANCE_AUDIT_EVALUATION_VERSION)
   || boundEvaluationSignature !== currentEvaluationSignature
   || persistedEvaluationIsOutdated === true
   || hasMissingAttachmentText
@@ -165,6 +166,9 @@ export const resolveResumeEvaluationOutdated = ({
 
 export const resolveResumeEvaluationError = (cause: unknown, hasReport: boolean) => {
   const code = typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null;
+  if (code === 'ai_runtime_timeout') {
+    return `简历报告未能在120秒内完成，请重试。${hasReport ? '已保留上一份报告。' : ''}`;
+  }
   if (code === 'resume_evaluation_integrity_failed') {
     return `AI 返回的 JSON 格式或必要字段无效，请重试。${hasReport ? '已保留上一份报告。' : ''}`;
   }
@@ -315,13 +319,14 @@ export const useResumeEvaluation = ({
     setError(null);
     setThinkingText("");
     setIsEvaluating(true);
+    let reportSignal: AbortSignal | undefined;
     let hasThoughtTitle = false;
     let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>> | null = null;
     const isCurrent = () => (
       runIdRef.current === runId
       && activeResumeIdRef.current === resumeId
       && jdResultIdentityRef.current === requestJDResultIdentity
-      && Boolean(operation && ownerGuard.isOperationCurrent(operation))
+      && (!operation || ownerGuard.isOperationCurrent(operation))
     );
     const validateLiveInputs = (): ResumeEvaluationOutcome | null => {
       const latest = latestInputsRef.current;
@@ -346,7 +351,7 @@ export const useResumeEvaluation = ({
       return null;
     };
     const onEvent = (event: AnalyzeStreamEvent) => {
-      if (!isCurrent()) return;
+      if (!isCurrent() || reportSignal?.aborted) return;
       const resolution = resolveThoughtDisplayEvent(event, {
         includeProgress: true,
         progressTitleByNode: JD_ANALYSIS_PROGRESS_NODE_TITLES,
@@ -362,41 +367,46 @@ export const useResumeEvaluation = ({
       }
     };
     try {
-      operation = await ownerGuard.beginOperation();
-      if (runIdRef.current !== runId) {
-        return { status: "aborted" };
-      }
-      const preProviderFailure = validateLiveInputs();
-      if (preProviderFailure) {
-        return preProviderFailure;
-      }
-      const evaluation = await aiService.evaluateResume({
-        text: requestJDText,
-        resumeText: canonicalStringify(requestSnapshot),
-        ...(requestJDMatchPercentage !== undefined
-          ? { jdMatchPercentage: requestJDMatchPercentage }
-          : {}),
-      }, onEvent, controller.signal, {
-        expectedAuthCacheKey: operation.expectedAuthCacheKey,
-      });
-      await ownerGuard.assertOperationCurrent(operation);
-      if (!isCurrent()) return { status: "aborted" };
-      const postProviderFailure = validateLiveInputs();
-      if (postProviderFailure) {
-        return postProviderFailure;
-      }
-      if (evaluation.jdMatch !== (requestJDMatchPercentage ?? null)) {
-        return { status: "aborted" };
-      }
-      if (!latestInputsRef.current.persistEvaluation(
-        evaluation,
-        requestEvaluationSignature,
-        requestJDResultIdentity,
-        requestJDMatchPercentage
-      )) {
-        return { status: "aborted" };
-      }
-      return { status: "success", evaluation };
+      return await withResumeReportDeadline<ResumeEvaluationOutcome>(async (deadlineSignal) => {
+        reportSignal = deadlineSignal;
+        operation = await ownerGuard.beginOperation();
+        deadlineSignal.throwIfAborted();
+        if (runIdRef.current !== runId) {
+          return { status: "aborted" };
+        }
+        const preProviderFailure = validateLiveInputs();
+        if (preProviderFailure) {
+          return preProviderFailure;
+        }
+        const evaluation = await aiService.evaluateResume({
+          text: requestJDText,
+          resumeText: canonicalStringify(requestSnapshot),
+          ...(requestJDMatchPercentage !== undefined
+            ? { jdMatchPercentage: requestJDMatchPercentage }
+            : {}),
+        }, onEvent, deadlineSignal, {
+          expectedAuthCacheKey: operation.expectedAuthCacheKey,
+        });
+        await ownerGuard.assertOperationCurrent(operation);
+        deadlineSignal.throwIfAborted();
+        if (!isCurrent()) return { status: "aborted" };
+        const postProviderFailure = validateLiveInputs();
+        if (postProviderFailure) {
+          return postProviderFailure;
+        }
+        if (evaluation.jdMatch !== (requestJDMatchPercentage ?? null)) {
+          return { status: "aborted" };
+        }
+        if (!latestInputsRef.current.persistEvaluation(
+          evaluation,
+          requestEvaluationSignature,
+          requestJDResultIdentity,
+          requestJDMatchPercentage
+        )) {
+          return { status: "aborted" };
+        }
+        return { status: "success", evaluation };
+      }, controller.signal);
     } catch (cause) {
       if (isAbortError(cause) || isAuthContextChangedError(cause)) {
         return { status: "aborted" };

@@ -13,6 +13,10 @@ export function ScoreAnnotationProvider({ suggestions, reportKey, onLocate, chil
   useEffect(() => { setSelection({ key: reportKey, ids: [] }); setActive(null); }, [reportKey]);
   const experienceNameFor = (id: string) => experiences.find(item => item.id === id)?.company.trim() || undefined;
   const labelFor = (row: ResumeScoreSuggestion) => {
+    if (['experience_restructure','experience_hide'].includes(row.moduleType) || (row.executionBlockReason && row.fieldPath==='experience')) {
+      const company=experienceNameFor(row.moduleId);
+      return company && !row.label.includes(company) ? `${company} · ${row.label}` : row.label;
+    }
     if (row.moduleType !== 'experience_star') return row.label;
     const name = experienceNameFor(row.moduleId) || '未命名经历';
     const field = ({ s: '背景', t: '任务', a: '行动', r: '结果' } as Record<string, string>)[row.fieldPath.split('.').pop() || ''];

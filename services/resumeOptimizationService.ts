@@ -78,6 +78,8 @@ const SAFE_PUBLIC_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.free
   resume_optimization_answer_claim_lost: '本次补充处理已失效，请刷新优化方案后重试。',
   resume_optimization_planning_claim_lost: '本次优化规划已失效，请刷新后重试。',
   resume_optimization_plan_invalid: 'AI 返回的优化结果结构异常，请重试。',
+  resume_optimization_selection_conflict: '所选方案存在重叠或冲突，请不要同时选择同一经历的隐藏、整段重排与单字段修改；创建技能后再调整技能顺序。',
+  resume_optimization_confirmation_limit: '所选方案需要确认的信息过多，请减少本次勾选的方案后重试。',
   resume_optimization_run_invalid: '简历优化记录数据异常，请重新生成优化方案。',
   resume_optimization_apply_invalid: '优化方案或应用选择无效，请刷新后重试。',
   resume_optimization_apply_conflict: '当前优化方案状态不允许再次应用。',

@@ -1,3 +1,4 @@
+import { applySkillGroupOverrides,applyEducationOverrides } from '../../utils/skillOverrides';
 import type React from 'react';
 import type { ExperienceListItem } from '../../services/experienceService';
 import type { Certification as CertificationRecord } from '../../services/certificationsService';
@@ -210,7 +211,7 @@ export const buildDashboardResumePreviewState = (
     const selectedWorkItems = orderedWork.filter((item) => selectedExpIds.has(item.id));
     const selectedProjectItems = orderedProject.filter((item) => selectedExpIds.has(item.id));
 
-    const educationViews = educationExperiences.map(buildEducationView);
+    const educationViews = applyEducationOverrides(educationExperiences.map(buildEducationView),config.educationOverrides);
     const orderedEducations = applyExplicitOrder(educationViews, (item) => item.id, orders?.educationIds);
     const selectedEduIds = resolveFallbackSelection(
         config.selection?.educationIds,
@@ -228,11 +229,11 @@ export const buildDashboardResumePreviewState = (
         true
     );
 
-    const skillGroups = buildSkillGroups(skills);
+    const skillGroups = applySkillGroupOverrides(buildSkillGroups(skills), config.skillOverrides, config.localSkills);
     const orderedSkillGroups = applyExplicitOrder(skillGroups, (group) => group.name, orders?.skillGroupNames);
     const selectedSkillIds = resolveFallbackSelection(
         config.selection?.skillIds,
-        skills.map((skill) => skill.id),
+        skillGroups.flatMap(group=>group.skills.map(skill=>skill.id)),
         true
     );
 

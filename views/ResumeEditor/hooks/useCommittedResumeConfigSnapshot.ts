@@ -22,6 +22,10 @@ import {
 import { buildResumeConfigSnapshot } from '../helpers';
 
 type UseCommittedResumeConfigSnapshotParams = {
+    skillOverrides?: import('../../../utils/skillOverrides').SkillOverrides;
+    localSkills?: import('../../../utils/skillOverrides').SkillOverrides;
+    educationOverrides?: import('../../../utils/skillOverrides').EducationOverrides;
+    careerStage?: import('../../../types/ai').CareerStage;
     authUserKey?: string | null;
     resumeId: string | null;
     resumeDetail: ResumeDetail | null;
@@ -55,6 +59,9 @@ type UseCommittedResumeConfigSnapshotParams = {
 };
 
 export const useCommittedResumeConfigSnapshot = ({
+    skillOverrides,
+    localSkills, educationOverrides,
+    careerStage = 'unspecified',
     authUserKey,
     resumeId,
     resumeDetail,
@@ -124,10 +131,13 @@ export const useCommittedResumeConfigSnapshot = ({
             themeColorPresetId,
             experienceListMarkerStyle,
             skillTagSeparator,
-            authoritativeJDAnalysis
+            authoritativeJDAnalysis,
+            careerStage,
+            { skillOverrides, localSkills, educationOverrides }
         );
         return graftJDAnalysisAuthority(draft, authoritativeJDAnalysis);
     }, [
+        skillOverrides, localSkills, educationOverrides, careerStage,
         authUserKey,
         backendPersistedJDAnalysis,
         bossGreetingSnapshot,

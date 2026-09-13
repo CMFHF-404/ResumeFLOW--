@@ -1,3 +1,4 @@
+import { withResumeReportDeadline } from './resumeReportDeadline';
 import apiClient, { type AuthOwnerOptions } from './apiClient';
 import { normalizeCurrentJDAnalysisResult, normalizeResumeEvaluation } from './aiNormalizeUtils';
 import { postStreamRequest } from './aiStreamUtils';
@@ -488,7 +489,7 @@ const streamResumeEvaluationRequest = async (
     onEvent?: (event: AnalyzeStreamEvent) => void,
     signal?: AbortSignal,
     options?: AuthOwnerOptions,
-): Promise<ResumeEvaluation> => postStreamRequest<AnalyzeStreamEvent, ResumeEvaluation>({
+): Promise<ResumeEvaluation> => withResumeReportDeadline((boundedSignal) => postStreamRequest<AnalyzeStreamEvent, ResumeEvaluation>({
     path: '/api/resume-evaluation/stream',
     body: JSON.stringify({
         text: payload.text,
@@ -498,8 +499,8 @@ const streamResumeEvaluationRequest = async (
             : {}),
     }),
     contentType: 'application/json',
-    signal,
-    onEvent,
+    signal: boundedSignal,
+    onEvent: (event) => { if (!boundedSignal.aborted) onEvent?.(event); },
     expectedAuthCacheKey: options?.expectedAuthCacheKey,
     getFinalResult: (parsed) => {
         if (parsed.type !== 'final') {
@@ -513,7 +514,7 @@ const streamResumeEvaluationRequest = async (
         }
         return evaluation;
     },
-});
+}), signal);
 
 const streamPolishRequest = async (
     payload: Record<string, unknown>,

@@ -1,0 +1,3 @@
+-r requirements.txt
+# Offline verification of the provider response schema (not a runtime dependency).
+jsonschema>=4.23,<5

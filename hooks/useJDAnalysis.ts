@@ -115,6 +115,7 @@ type UseJDAnalysisOptions = {
   hasPersonalSummaryOverride: boolean;
   isSummaryVisible: boolean;
   targetRole: string;
+  careerStage?: import('../types/ai').CareerStage;
   educations: EducationView[];
   selectedExperienceIds: ReadonlySet<string>;
   selectedEducationIds: ReadonlySet<string>;
@@ -209,6 +210,7 @@ export const useJDAnalysis = ({
   hasPersonalSummaryOverride,
   isSummaryVisible,
   targetRole,
+  careerStage = 'unspecified',
   educations,
   selectedExperienceIds,
   selectedEducationIds,
@@ -268,6 +270,7 @@ export const useJDAnalysis = ({
   const skillGroupsRef = useRef(skillGroups);
   const jdTextRef = useRef(jdText);
   const evaluationInput = useMemo<ResumeEvaluationInputContext>(() => ({
+    careerStage,
     profile,
     personalSummary,
     hasPersonalSummaryOverride,
@@ -280,6 +283,7 @@ export const useJDAnalysis = ({
     selectedSkillIds,
     sectionOrder,
   }), [
+    careerStage,
     educations,
     hasPersonalSummaryOverride,
     isSummaryVisible,

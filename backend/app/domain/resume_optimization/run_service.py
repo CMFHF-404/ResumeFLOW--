@@ -401,7 +401,7 @@ async def _create_or_claim_run(
         resume_id=parsed_resume_id,
         status=ResumeOptimizationStatus.PLANNING.value,
         optimizer_version=OPTIMIZER_VERSION,
-        policy_version=POLICY_VERSION,
+        policy_version='json_structure_v3' if (before_snapshot or {}).get('evaluation',{}).get('metadata',{}).get('responseSchemaVersion') in ('review_json_schema_v4','review_json_schema_v5','review_json_schema_v6') else 'json_structure_v2' if (before_snapshot or {}).get('evaluation',{}).get('metadata',{}).get('responseSchemaVersion')=='review_json_schema_v3' else POLICY_VERSION,
         prompt_version=PROMPT_VERSION,
         source_resume_updated_at=payload.expected_resume_updated_at,
         source_evaluation_signature=payload.evaluation_signature,

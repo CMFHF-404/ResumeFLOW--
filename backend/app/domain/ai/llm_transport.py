@@ -74,6 +74,7 @@ LANE_DEFAULT = "default"
 LANE_TOOL_CALL = "tool_call"
 LANE_THINKING = "thinking"
 LANE_RESUME_PARSE = "resume_parse"
+LANE_RESUME_REVIEW = "resume_review"
 _guidance_http_client: ContextVar[Any] = ContextVar('guidance_http_client', default=None)
 
 
@@ -265,6 +266,12 @@ def _resolve_ai_route(
 ) -> AIRoute:
     profile = _route_profile()
     normalized_lane = lane or LANE_DEFAULT
+    # Explicit review models are independent of the app-wide route. A blank
+    # model retains the existing global-provider behavior.
+    if normalized_lane == LANE_RESUME_REVIEW and model:
+        if model.lower().startswith("gemini"):
+            return _resolve_gemini_route(model=model)
+        return _resolve_openai_compatible_route(lane=normalized_lane, model=model)
     if profile == AI_ROUTE_PROFILE_GEMINI:
         return _resolve_gemini_route(model=model)
     if normalized_lane == LANE_RESUME_PARSE:
@@ -2837,6 +2844,8 @@ async def _call_llm(
     gemini_thinking_level: Optional[str] = None,
     gemini_stream: bool = False,
     gemini_response_json_schema: Optional[Dict[str, Any]] = None,
+    openai_response_json_schema: Optional[Dict[str, Any]] = None,
+    openai_reasoning_effort: Optional[str] = None,
 ) -> Dict[str, Any]:
     route = _resolve_ai_route(lane=lane, model=model)
     if _is_gemini_route(route):
@@ -2890,7 +2899,13 @@ async def _call_llm(
         "model": resolved_model,
         "messages": messages,
         "temperature": 0.3,
+        **({"reasoning_effort": openai_reasoning_effort} if openai_reasoning_effort is not None else {}),
     })
+    if openai_response_json_schema is not None:
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "resume_review", "strict": True, "schema": openai_response_json_schema},
+        }
     url = f"{route.base_url.rstrip('/')}/chat/completions"
     should_retry_fallback = False
     usage_attempt = _UsageAttempt(

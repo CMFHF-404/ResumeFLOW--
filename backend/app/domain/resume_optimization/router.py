@@ -104,6 +104,8 @@ class OptimizationPersistedRunInvalidError(RuntimeError):
 
 
 _SAFE_DOMAIN_MESSAGES = {
+    "resume_optimization_selection_conflict": "所选方案有重叠或冲突。请不要同时选择同一经历的隐藏、整段重排与单字段修改；创建技能后再调整技能顺序。",
+    "resume_optimization_confirmation_limit": "所选方案需要确认的信息过多，请减少本次勾选的方案后重试。",
     "resume_optimization_run_not_found": "未找到该简历优化记录。",
     "resume_optimization_idempotency_conflict": "该幂等键已用于不同的优化请求。",
     "invalid_optimization_transition": "当前优化状态不允许执行此操作。",
@@ -356,7 +358,7 @@ def _run_to_read(run: ResumeOptimizationRun) -> ResumeOptimizationRunRead:
             isinstance(run.before_snapshot, dict)
             and isinstance(run.before_snapshot.get("evaluation"), dict)
             and run.before_snapshot["evaluation"].get("scoringVersion")
-            in {"guidance_audit_v1", "single_pass_v1"}
+            in {"guidance_audit_v1", "single_pass_v1", "evidence_rubric_v1", "evidence_rubric_v2"}
         )
         source_before_score = (
             source_before_score_from_run(run, allow_legacy=True)

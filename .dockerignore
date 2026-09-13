@@ -16,6 +16,7 @@ docs/
 node_modules/
 dist/
 dist-ssr/
+.artifacts/
 .env.local
 
 # Python caches / local environments

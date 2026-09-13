@@ -128,6 +128,10 @@ export type CertificationDomain = {
 
 export type SkillDomain = {
     groups: SkillGroupView[];
+    localSkillIds?: ReadonlySet<string>;
+    isCurrent?: () => boolean;
+    onCategoryRenamed?: (ids: string[], category: string) => void;
+    onSkillsDeleted?: (ids: string[]) => void;
     setGroups: Dispatch<SetStateAction<SkillGroupView[]>>;
     selectedIds: Set<string>;
     setSelectedIds: Dispatch<SetStateAction<Set<string>>>;

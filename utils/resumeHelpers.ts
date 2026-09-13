@@ -39,6 +39,7 @@ export type ResumeAICertificationEntry = {
 };
 
 export type ResumeAIEducationEntry = {
+  notes?: string;
   id: string;
   school: string;
   major: string;
@@ -89,6 +90,7 @@ export const normalizeEducationStar = (star?: Record<string, any>) => ({
   degree: normalizeStarValue(star?.degree),
   gpa: normalizeStarValue(star?.gpa),
   courses: normalizeStarValue(star?.courses),
+  ...(star?.notes!==undefined?{notes:normalizeStarValue(star.notes)}:{}),
 });
 
 export const buildExperienceAnalyzeEntry = (
@@ -122,6 +124,7 @@ export const buildEducationAnalyzeEntry = (
   end_date: education.endDate || undefined,
   gpa: education.gpa || undefined,
   courses: education.courses || undefined,
+  ...(education.notes!==undefined?{notes:education.notes}:{}),
 });
 
 export const buildSkillAnalyzeEntry = (

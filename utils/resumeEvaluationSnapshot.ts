@@ -27,6 +27,7 @@ type BuildResumeEvaluationSnapshotParams = {
   hasPersonalSummaryOverride: boolean;
   isSummaryVisible: boolean;
   targetRole: string;
+  careerStage?: import('../types/ai').CareerStage;
   experiences: ResumeExperienceView[];
   selectedExperienceIds: ReadonlySet<string>;
   educations: EducationView[];
@@ -89,6 +90,7 @@ const buildEvaluationEducation = (item: EducationView) => {
     degree: plainText(education.degree),
     gpa: plainText(education.gpa) || undefined,
     courses: plainText(education.courses) || undefined,
+    ...(education.notes!==undefined?{notes:plainText(education.notes)}:{}),
   };
 };
 
@@ -98,6 +100,7 @@ export const buildResumeEvaluationSnapshot = ({
   hasPersonalSummaryOverride,
   isSummaryVisible,
   targetRole,
+  careerStage = 'unspecified',
   experiences,
   selectedExperienceIds,
   educations,
@@ -158,6 +161,7 @@ export const buildResumeEvaluationSnapshot = ({
     add(`${base}.end_date`, item.endDate);
     add(`${base}.gpa`, item.gpa);
     add(`${base}.courses`, item.courses);
+    add(`${base}.notes`, item.notes);
   });
   selectedCertifications.forEach((item, index) => {
     const base = `resume.certifications[${index}]`;
@@ -174,6 +178,7 @@ export const buildResumeEvaluationSnapshot = ({
   return {
     evaluation_scope: "full_resume" as const,
     target_role: plainText(targetRole),
+    ...(careerStage !== 'unspecified' ? { career_stage: careerStage } : {}),
     resume: {
       section_order: normalizedSectionOrder,
       profile: resumeProfile,

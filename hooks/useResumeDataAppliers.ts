@@ -22,6 +22,8 @@ import type {
 } from '../types/resume';
 import { parseYearMonthValue } from '../utils/dateUtils';
 import { applyExplicitOrder } from '../utils/explicitOrder';
+import { normalizeCareerStage } from '../utils/evidenceResumeScore.mjs';
+import { normalizeSkillOverrides,normalizeLocalSkills,normalizeEducationOverrides } from '../utils/skillOverrides';
 
 export { applyExplicitOrder } from '../utils/explicitOrder';
 
@@ -35,6 +37,10 @@ type ProfileSyncResolver = (config?: ResumeEditorConfig, profile?: Profile | nul
 type ProfileSnapshotResolver = (config?: ResumeEditorConfig, profile?: Profile | null) => ResumeEditorProfile;
 
 export type ResumeDataApplierOptions = {
+    setSkillOverrides?: Dispatch<SetStateAction<NonNullable<ResumeEditorConfig['skillOverrides']>>>;
+    setLocalSkills?: Dispatch<SetStateAction<NonNullable<ResumeEditorConfig['localSkills']>>>;
+    setSkillGroupOrder?: Dispatch<SetStateAction<string[]>>;
+    setEducationOverrides?: Dispatch<SetStateAction<NonNullable<ResumeEditorConfig['educationOverrides']>>>;
     setProfile: Dispatch<SetStateAction<ResumeEditorProfile>>;
     setPersonalSummary: Dispatch<SetStateAction<string>>;
     setHasPersonalSummaryOverride: Dispatch<SetStateAction<boolean>>;
@@ -43,6 +49,7 @@ export type ResumeDataApplierOptions = {
     setSectionOrder: Dispatch<SetStateAction<string[]>>;
     setDensity: Dispatch<SetStateAction<'compact' | 'standard' | 'spacious'>>;
     setIsSummaryVisible: Dispatch<SetStateAction<boolean>>;
+    setCareerStage?: Dispatch<SetStateAction<import('../types/ai').CareerStage>>;
     applyLayoutConfig: (config: ResumeEditorConfig) => void;
     setExperienceItems: Dispatch<SetStateAction<ResumeExperienceView[]>>;
     setSelectedExpIds: Dispatch<SetStateAction<Set<string>>>;
@@ -100,9 +107,11 @@ export const createApplyResumeConfig = (
     applyLayoutConfig: ResumeDataApplierOptions['applyLayoutConfig'],
     normalizeSectionOrder: ResumeDataApplierOptions['normalizeSectionOrder'],
     resolveProfileSyncMode: ResumeDataApplierOptions['resolveProfileSyncMode'],
-    resolveProfileSnapshot: ResumeDataApplierOptions['resolveProfileSnapshot']
+    resolveProfileSnapshot: ResumeDataApplierOptions['resolveProfileSnapshot'],
+    setCareerStage?: ResumeDataApplierOptions['setCareerStage']
 ) => {
     return (config: ResumeEditorConfig, profileData?: Profile | null) => {
+        setCareerStage?.(normalizeCareerStage(config.careerStage));
         const syncMode = resolveProfileSyncMode(config, profileData || undefined);
         setProfileSyncMode(syncMode);
         if (profileData) {
@@ -239,7 +248,7 @@ export const createApplySkillState = (
             config.layout?.orders?.skillGroupNames
         );
         setSkillGroups(ordered);
-        const validIds = new Set(items.map((skill) => skill.id));
+        const validIds = new Set([...items.map((skill) => skill.id),...Object.keys(normalizeLocalSkills(config.localSkills))]);
         setSelectedSkillIds(resolvePersistedSelection(
             config.selection?.skillIds,
             validIds,
@@ -250,6 +259,7 @@ export const createApplySkillState = (
 
 export const useResumeConfigApplier = (options: ResumeDataApplierOptions) => {
     const {
+        setCareerStage,
         setProfile,
         setPersonalSummary,
         setHasPersonalSummaryOverride,
@@ -263,7 +273,7 @@ export const useResumeConfigApplier = (options: ResumeDataApplierOptions) => {
         resolveProfileSyncMode,
         resolveProfileSnapshot,
     } = options;
-    return useCallback(
+    const apply = useCallback(
         createApplyResumeConfig(
             setProfile,
             setPersonalSummary,
@@ -276,9 +286,11 @@ export const useResumeConfigApplier = (options: ResumeDataApplierOptions) => {
             applyLayoutConfig,
             normalizeSectionOrder,
             resolveProfileSyncMode,
-            resolveProfileSnapshot
+            resolveProfileSnapshot,
+            setCareerStage
         ),
         [
+            setCareerStage,
             normalizeSectionOrder,
             resolveProfileSnapshot,
             resolveProfileSyncMode,
@@ -293,6 +305,13 @@ export const useResumeConfigApplier = (options: ResumeDataApplierOptions) => {
             setSectionOrder,
         ]
     );
+    return useCallback((config: ResumeEditorConfig, profileData?: Profile | null) => {
+        options.setSkillOverrides?.(normalizeSkillOverrides(config.skillOverrides));
+        options.setLocalSkills?.(normalizeLocalSkills(config.localSkills));
+        options.setEducationOverrides?.(normalizeEducationOverrides(config.educationOverrides));
+        options.setSkillGroupOrder?.((config.layout?.orders?.skillGroupNames ?? []).filter(name => typeof name === 'string'));
+        return apply(config, profileData);
+    }, [apply, options.setSkillOverrides,options.setLocalSkills,options.setEducationOverrides,options.setSkillGroupOrder]);
 };
 
 export const useExperienceStateApplier = (

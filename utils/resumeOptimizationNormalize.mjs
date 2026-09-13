@@ -22,6 +22,8 @@ const MODULE_VALUES = new Set([
   'experience_star',
   'personal_summary',
   'skills_order',
+  'skill_text',
+  'education_courses','education_notes','certification_order','certification_hide','experience_order','experience_hide','experience_restructure','skill_create',
   'section_order',
   'bank_suggestion',
 ]);
@@ -265,8 +267,18 @@ const normalizeChange = (value, index) => {
   }
   const generalValue = cloneJsonValue(aliased(record, 'generalValue', 'general_value'));
   const targetedValue = cloneJsonValue(aliased(record, 'targetedValue', 'targeted_value'));
+  for(const preview of [record.display_before??record.displayBefore,record.display_after??record.displayAfter]){
+    if(preview!=null&&(!Array.isArray(preview)||!preview.every(item=>typeof item==='string')))fail(`${fieldName} invalid display values`);
+  }
   if (actionKind === 'rewrite_now' && (generalValue === null || targetedValue === null)) {
     fail(`${fieldName} rewrite_now values are required`);
+  }
+  if(moduleType==='skill_text') {
+    for(const v of [aliased(record,'beforeValue','before_value'),generalValue,targetedValue]) {
+      if(v===null)continue;
+      if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).sort().join(',')!=='category,name'||typeof v.name!=='string'||!v.name.trim()||typeof v.category!=='string'||!v.category.trim())fail(`${fieldName} invalid skill text`);
+    }
+    if(aliased(record,'fieldPath','field_path')!=='skill.text')fail(`${fieldName} invalid skill path`);
   }
   const isTextModule = moduleType === 'experience_star' || moduleType === 'personal_summary';
   const isTextChanging = isTextModule && (
@@ -283,6 +295,8 @@ const normalizeChange = (value, index) => {
   );
   return {
     changeId,
+    displayBefore: record.display_before ?? record.displayBefore ?? null,
+    displayAfter: record.display_after ?? record.displayAfter ?? null,
     issueIds: uniqueTextArray(
       aliased(record, 'issueIds', 'issue_ids'),
       `${fieldName}.issue_ids`,
@@ -333,8 +347,12 @@ const normalizeQuestion = (value, index) => {
     fail(`${fieldName}.choices must have unique values`);
   }
   const answerType = record.answer_type ?? record.answerType ?? 'single_choice_with_text';
-  if (answerType !== 'single_choice_with_text') {
+  if (!['single_choice_with_text','skill_confirmation'].includes(answerType)) {
     fail(`${fieldName}.answer_type has an unsupported value`);
+  }
+  if(answerType==='skill_confirmation'){
+    const original=record.skill_original??record.skillOriginal;
+    if(!original||typeof original.name!=='string'||!original.name.trim()||typeof original.category!=='string'||!original.category.trim()||choices.length)fail(`${fieldName} skill confirmation requires original text and no inferred choices`);
   }
   const affectsChangeIds = uniqueTextArray(
     aliased(record, 'affectsChangeIds', 'affects_change_ids'),
@@ -359,6 +377,7 @@ const normalizeQuestion = (value, index) => {
     text: requiredText(record.text, `${fieldName}.text`),
     reason: requiredText(record.reason, `${fieldName}.reason`),
     answerType,
+    skillOriginal: record.skill_original ?? record.skillOriginal ?? null,
     choices,
     affectsChangeIds,
     priority: integer(record.priority ?? 0, `${fieldName}.priority`, { min: 0 }),
@@ -638,7 +657,7 @@ export const normalizeResumeOptimizationRun = (value) => {
   const record = toRecord(value, 'run');
   const status = enumValue(record.status, STATUS_VALUES, 'run.status');
   if (record.optimizer_version !== 'resume_optimization_v1') fail('run.optimizer_version is unsupported');
-  if (!['thin_safety_v1', 'evidence_semantic_v2', 'json_structure_v1'].includes(record.policy_version)) fail('run.policy_version is unsupported');
+  if (!['thin_safety_v1', 'evidence_semantic_v2', 'json_structure_v1', 'json_structure_v2', 'json_structure_v3'].includes(record.policy_version)) fail('run.policy_version is unsupported');
   if (!['resume_optimization_prompt_v1', 'resume_optimization_tasks_v2', 'resume_optimization_single_pass_v1'].includes(record.prompt_version)) fail('run.prompt_version is unsupported');
 
   const plan = normalizePlan(record.plan, 'run.plan');
