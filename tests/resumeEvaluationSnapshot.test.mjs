@@ -113,6 +113,29 @@ test('evaluation signature changes for profile and selection while match-candida
   assert.equal(candidateSignature, buildMatchCandidateSignature(experiences, certifications, skillGroups));
 });
 
+test('selected skill text preserves explicit proficiency and category in the evaluation snapshot', async () => {
+  const { buildAnalyzePayload, buildAnalyzeSignature } = await importSnapshotUtils();
+  const groups = [
+    { name: '编程', skills: [{ id: 'basic', name: '具备Python/C++基础开发经验' }] },
+    { name: 'Agent编排', skills: [{ id: 'aware', name: '了解LangGraph/LangChain与ReAct等编排范式' }] },
+    { name: '隐藏技能', skills: [{ id: 'hidden', name: 'PyTorch' }] },
+  ];
+  const inputs = { ...context, selectedSkillIds: new Set(['aware', 'basic']) };
+  const result = buildAnalyzePayload(experiences, certifications, groups, inputs);
+  assert.deepEqual(result.resume.skills, [
+    { id: 'aware', name: groups[1].skills[0].name, category: 'Agent编排' },
+    { id: 'basic', name: groups[0].skills[0].name, category: '编程' },
+  ]);
+  assert.equal(result.fact_metadata.find(f => f.source === 'resume.skills[1].name').content,
+    '具备Python/C++基础开发经验');
+  assert.ok(result.match_candidates.skills.some(s => s.name === 'PyTorch'));
+  assert.ok(!JSON.stringify(result.resume).includes('PyTorch'));
+  const changed = structuredClone(groups);
+  changed[0].skills[0].name = 'Python基础开发，仅用于课程练习';
+  assert.notEqual(buildAnalyzeSignature(experiences, certifications, groups, inputs),
+    buildAnalyzeSignature(experiences, certifications, changed, inputs));
+});
+
 test('evaluation signature tracks rendered section order while match candidates remain stable', async () => {
   const { buildAnalyzePayload, buildAnalyzeSignature, buildMatchCandidateSignature } = await importSnapshotUtils();
   const reorderedContext = {

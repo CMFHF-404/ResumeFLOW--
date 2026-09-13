@@ -32,6 +32,7 @@ export type ResumeEvaluationInputContext = {
   hasPersonalSummaryOverride?: boolean;
   isSummaryVisible?: boolean;
   targetRole?: string;
+  careerStage?: import('../types/ai').CareerStage;
   educations?: EducationView[];
   selectedExperienceIds?: ReadonlySet<string>;
   selectedEducationIds?: ReadonlySet<string>;
@@ -63,6 +64,7 @@ export const buildAnalyzePayload = (
   hasPersonalSummaryOverride: context.hasPersonalSummaryOverride ?? false,
   isSummaryVisible: context.isSummaryVisible ?? true,
   targetRole: context.targetRole ?? "",
+  careerStage: context.careerStage,
   experiences,
   selectedExperienceIds: context.selectedExperienceIds ?? allIds(experiences),
   educations: context.educations ?? [],

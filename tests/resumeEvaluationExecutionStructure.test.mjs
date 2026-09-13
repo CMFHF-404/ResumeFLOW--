@@ -6,6 +6,52 @@ import { build } from 'esbuild';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
+for (const phase of ['owner', 'provider', 'post-provider-owner-check']) {
+  test(`report deadline includes ${phase} and discards late completion`, async (t) => {
+    const runtime = createHookRuntime();
+    globalThis.__resumeEvaluationHooks = runtime;
+    let release, providerCalls=0, saves=0;
+    const stalled = new Promise(resolve => { release=resolve; });
+    globalThis.__resumeEvaluationOwnerGuard = {
+      beginOperation: () => phase==='owner' ? stalled : Promise.resolve({expectedAuthCacheKey:'owner-a'}),
+      assertOperationCurrent: () => phase==='post-provider-owner-check' ? stalled : Promise.resolve(),
+      isOperationCurrent: () => true,
+    };
+    globalThis.__evaluateResume = () => {
+      providerCalls++;
+      return phase==='provider' ? stalled : Promise.resolve({evaluationVersion:'resume_score_v2',jdMatch:null});
+    };
+    try {
+      const {useResumeEvaluation}=await importResumeEvaluationHook();
+      const options={authUserKey:'owner-a',resumeId:'resume-a',jdText:'',jdAvailable:false,
+        hasMissingJdContext:false,hasPendingJdFileSelection:()=>false,isJdAnalysisInputCurrent:true,
+        jdAnalysisResult:{resumeEvaluation:{evaluationVersion:'resume_score_v2'}},isEvaluationOutdated:false,
+        snapshot:{profile:{}},evaluationSignature:'signature-a',persistEvaluation:()=>{saves++;return true;}};
+      const render=()=>runtime.render(()=>useResumeEvaluation(options));
+      const view=render();runtime.flushPassiveEffects();
+      t.mock.timers.enable({apis:['setTimeout']});
+      const pending=view.generateEvaluation();
+      await Promise.resolve();await Promise.resolve();
+      t.mock.timers.tick(60_000);
+      await Promise.resolve();
+      assert.equal(render().isEvaluating,true,'the previous 60-second boundary no longer cancels the report');
+      assert.equal(render().evaluationError,null);
+      t.mock.timers.tick(60_000);
+      assert.deepEqual(await pending,{status:'error'});
+      assert.equal(render().isEvaluating,false);
+      assert.match(render().evaluationError,/120秒/);
+      release(phase==='owner'?{expectedAuthCacheKey:'owner-a'}:{evaluationVersion:'resume_score_v2',jdMatch:null});
+      await Promise.resolve();await Promise.resolve();
+      assert.equal(saves,0);assert.equal(providerCalls,phase==='owner'?0:1);
+    } finally {
+      t.mock.timers.reset();
+      delete globalThis.__resumeEvaluationHooks;
+      delete globalThis.__resumeEvaluationOwnerGuard;
+      delete globalThis.__evaluateResume;
+    }
+  });
+}
+
 let hookImportSequence = 0;
 
 const importResumeEvaluationHook = async () => {

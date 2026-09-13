@@ -160,14 +160,62 @@ export type GuidanceAuditEvaluation = {
 
 export type ResumeScoreSuggestion = {
   suggestionId: string; moduleType: string; moduleId: string; fieldPath: string;
-  dimension: ResumeEvaluationDimensionName; problem: string; direction: string; label: string; editable: boolean;
+  dimension?: ResumeEvaluationDimensionName | '个人贡献' | '成果证据'; problem: string; direction: string; label: string; editable: boolean;
+  targetId?: string; dimensionId?: string; severity?: 'high' | 'medium' | 'low';
+  evidenceState?: 'stated' | 'not_demonstrated' | 'conflicting' | 'role_reference';
+  sourceRefs?: string[]; jdSourceRefs?: string[]; impact?: string; action?: 'retain' | 'move_forward' | 'compress' | 'delete' | 'rewrite' | 'ask' | 'verify'; needsFacts?: boolean;
+  diagnosticId?: string; primaryCriterionId?: string; handling?: 'organize' | 'ask_user' | 'manual_review';
+  factGaps?: {gapId: string; kind?: string; question: string; reason: string; sourceRefs: string[]}[];
+  strategySteps?: string[];
+  recommendationKind?: 'fix' | 'enhance';
+  skillAction?: 'reorder'|'regroup'|'clarify_existing'|'add_tool'|'change_proficiency'|null;
+  evidenceSpanIds?: string[];
+  objectId?: string; operationId?: string | null; relatedObjectIds?: string[];
+  skillFocus?: 'usage'|'methods'|'proficiency'|'category';
+  executionBlockReason?: {code:string;message:string};
+  strategyType?: string;
+  selectedItems?: string[];
+  candidateText?: string | null;
+  candidateSourceRef?: string | null;
+  operations?: {kind:string;moduleId:string;fieldPath:string;selectedItems:string[]}[];
+  executionRequirements?: string[];
+  availableItems?: {id:string;text?:string}[];
 };
-export type ResumeScoreEvaluation = {
+export type LegacyResumeScoreEvaluation = {
   evaluationVersion: 'resume_score_v2'; scoringVersion: 'single_pass_v1'; evaluationScope: 'full_resume';
   overallScore: number; summary: string;
   dimensions: { dimension: ResumeEvaluationDimensionName; score: number; comment: string }[];
   suggestions: ResumeScoreSuggestion[]; jdMatch: number | null;
 };
+export type CareerStage = 'unspecified' | 'graduate' | 'junior';
+export type ExpressionAction={status:'retain'|'adjust'|'not_applicable';reason:string;spanIds:string[]};
+export type EvidenceCriterion = { criterionId: string; label: string; level: number; reason?: string; sourceRefs?: string[]; jdSourceRefs?: string[];
+  anchorId?: string; anchorText?: string; unmetConditions?: {conditionId: string; label: string; reason: string}[];
+  gapExplanation?: string; diagnosticIds?: string[] };
+export type EvidenceResumeScoreEvaluation = Omit<LegacyResumeScoreEvaluation, 'evaluationVersion' | 'scoringVersion' | 'dimensions'> & {
+  evidenceSpans?: {spanId:string;sourceRef:string;start:number;end:number;text:string}[];
+  expressionPlan?: {moduleId:string; retain:ExpressionAction;compress:ExpressionAction;lead:ExpressionAction;readingOrder:string[];diagnosticIds:string[]}[];
+  metricReview?: {moduleId:string;aspects:{aspect:string;status:'stated'|'explain'|'confirm'|'not_applicable';reason:string;spanIds:string[];diagnosticIds:string[]}[]}[];
+  evaluationVersion: 'resume_score_v3' | 'resume_score_v4'; scoringVersion: 'evidence_rubric_v1' | 'evidence_rubric_v2';
+  overallLevel: string; focusRationale: string; contextNotice: string;
+  focusObjectIds?: string[]; reportStatus?: 'complete'|'partial'; unavailableSuggestionCount?: number;
+  objectCatalog?: {objectId:string;kind:string;moduleId:string;label:string;sourceRef:string}[];
+  assessmentContext: {targetRole: string; careerStage: CareerStage; mode: 'general' | 'role_reference' | 'jd'; assessmentAsOf: string;
+    inputCapabilities: {structuredText: true; pageImages: false; layoutMeasurements: false}};
+  dimensions: {dimensionId: string; dimension: string; weight: number; score: number; comment: string; criteria: EvidenceCriterion[]; sourceRefs?: string[]; jdSourceRefs?: string[]}[];
+  reviewCoverage: {area: string; status: 'findings' | 'clear' | 'not_applicable'; reason: string}[];
+  reviewInventory?: {checkId: string; topic: string; label: string; scopeRefs: string[]}[];
+  reviewChecks?: {checkId: string; topic: string; label: string; scopeRefs: string[]; sourceRefs: string[]; diagnosticIds: string[]; status: 'findings' | 'clear' | 'not_applicable'; reason: string}[];
+  strengths: {text: string; reason: string; sourceRefs: string[]; jdSourceRefs?: string[]}[];
+  requirements: {requirement: string; reason: string; status: 'demonstrated' | 'weak' | 'not_demonstrated' | 'unknown'; sourceRefs: string[]; jdSourceRefs: string[]}[];
+  sources: {sourceId: string; path: string; text: string; kind: 'text' | 'scope'}[];
+  scoreCalculation: {dimensions: {dimensionId: string; levelSum: number; weight: number; rawScore: number}[]; rawTotal: number;
+    roundingRule: 'round_half_up'; finalScore: number; calibrationStatus: 'pending_human_validation'};
+  metadata: {promptVersion: string; rubricVersion: string; guideVersion: string; inputHash: string;
+    responseSchemaVersion?: string; responseSchemaHash?: string; factQuestionVersion?: string;
+    model: string; provider: string; transport: string; reasoning: Record<string, unknown>};
+};
+export type ResumeScoreEvaluation = LegacyResumeScoreEvaluation | EvidenceResumeScoreEvaluation;
 export type ResumeEvaluation = LegacyResumeEvaluation | GuidanceAuditEvaluation | ResumeScoreEvaluation;
 
 export const isGuidanceAuditEvaluation = (

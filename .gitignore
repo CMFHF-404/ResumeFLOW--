@@ -73,3 +73,6 @@ venv.bak/
 /android/**/*.p12
 /android/**/*.jks
 /android/**/*.keystore
+
+# Local resume evidence QA captures and author-provided calibration data.
+/.artifacts/evidence-*/

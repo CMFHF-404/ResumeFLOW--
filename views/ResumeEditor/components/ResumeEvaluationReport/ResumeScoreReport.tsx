@@ -2,8 +2,10 @@ import React, { useEffect, useRef } from 'react';
 import { RefreshCw, Square } from 'lucide-react';
 import { trackResumeOptimizationCtaView, trackResumeOptimizationCtaClick } from '../../../../utils/analyticsTracker';
 import type { ResumeScoreEvaluation } from '../../../../types/ai';
-import { groupScoreSuggestions } from '../../../../utils/resumeScore.mjs';
+import { groupScoreSuggestions, isCurrentScoreVersion } from '../../../../utils/resumeScore.mjs';
+import { EvidenceContext, EvidenceStrengths, EvidenceMethod, CriterionExplanation } from './EvidenceScoreDetails';
 import { useScoreAnnotations } from './ScoreAnnotations';
+import { ScoreActionList } from './ScoreActionList';
 
 export function ScoreRadar({ dimensions, pending = false }: { dimensions: { dimension: string; score: number }[]; pending?: boolean }) {
   const point = (index: number, radius: number) => { const angle = index * Math.PI / 3 - Math.PI / 2; return [150 + Math.cos(angle) * radius, 135 + Math.sin(angle) * radius]; };
@@ -37,10 +39,37 @@ export function ResumeScoreReport({ report, outdated, enabled, busy, canStart, d
     const frame = requestAnimationFrame(record); return () => cancelAnimationFrame(frame);
   }, [enabled, canStart, outdated, busy]);
   const groups = groupScoreSuggestions(report.suggestions) as [string, ResumeScoreEvaluation['suggestions']][];
+  const evidence = report.evaluationVersion === 'resume_score_v3' || report.evaluationVersion === 'resume_score_v4' ? report : null;
+  const historical = !isCurrentScoreVersion(report);
+  const selectionDisabled=historical || outdated || busy || generating;
+  const selected=report.suggestions.filter(s=>s.editable&&!s.executionBlockReason&&annotations.selected.includes(s.suggestionId)).map(s=>s.suggestionId);
+  const launch=enabled&&onStart&&<button ref={buttonRef} type="button" disabled={selectionDisabled||!canStart||!selected.length}
+    onClick={()=>{trackResumeOptimizationCtaClick();onStart(selected);}} data-resume-optimization-focus-return="true"
+    className="min-h-11 w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+    {evidence?'执行所选方案':'优化所选模块'}（{selected.length}）
+  </button>;
+  const scoring=<>
+    <ScoreRadar dimensions={report.dimensions}/>
+    <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+      {report.dimensions.map(row=><div key={row.dimension} className="py-3">
+        <div className="mb-1 flex items-center justify-between"><h5 className="text-xs font-semibold text-slate-900 dark:text-slate-100">{row.dimension}</h5><span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{row.score} 分</span></div>
+        <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{row.comment}</p>
+      </div>)}
+    </div>
+    {evidence&&<>
+      {evidence.dimensions.map(d=><details key={d.dimensionId} className="border-t border-slate-100 text-xs dark:border-slate-800">
+        <summary className="cursor-pointer py-3 font-medium">{d.dimension} · 评分说明</summary>
+        <ul className="space-y-3 pb-3">{d.criteria.map(c=><li key={c.criterionId}>
+          <p className="font-medium">{c.label}：{c.level}/4 档</p><CriterionExplanation criterion={c}/>
+        </li>)}</ul>
+      </details>)}
+      <EvidenceMethod report={evidence}/>
+    </>}
+  </>;
   return <section aria-label="六维简历评分" className="space-y-4">
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="flex items-center justify-between gap-3">
-        <div><p className="mb-1 text-[10px] font-semibold tracking-widest text-emerald-700 dark:text-emerald-400">简历诊断</p><h4 className="text-base font-bold text-slate-900 dark:text-white">六维简历评分</h4></div>
+        <div><p className="mb-1 text-[10px] font-semibold tracking-widest text-emerald-700 dark:text-emerald-400">简历诊断</p><h4 className="text-base font-bold text-slate-900 dark:text-white">{evidence?'简历诊断与修改方案':'六维简历评分'}</h4></div>
         <div className="flex shrink-0 items-center gap-2">
           {(onGenerate || (generating && onStop)) && <button type="button" aria-label={generating ? '停止生成' : '重新评分'} title={generating ? '停止生成' : '重新评分'}
             disabled={generating ? !onStop : busy} onClick={generating ? onStop : onGenerate}
@@ -54,23 +83,33 @@ export function ResumeScoreReport({ report, outdated, enabled, busy, canStart, d
       </div>
       {generating && <p role="status" className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">正在生成六维评分…</p>}
       <p className="mt-4 border-l-2 border-emerald-400 pl-3 text-[13px] leading-6 text-slate-600 dark:text-slate-300">{report.summary}</p>
+      {historical&&<p className="mt-2 text-xs text-amber-700">历史评分，请重新评分后再优化；不同版本分数不直接比较。</p>}
+      {evidence&&<EvidenceContext report={evidence}/>}
       {error ? <p role="alert" className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>
         : outdated ? <p role="status" className="mt-2 text-xs text-amber-700">简历内容已变化，请重新评分后再选择优化。</p> : null}
-      <ScoreRadar dimensions={report.dimensions} />
-      <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">{report.dimensions.map(row => <div key={row.dimension} className="py-3"><div className="mb-1 flex items-center justify-between"><h5 className="text-xs font-semibold text-slate-900 dark:text-slate-100">{row.dimension}</h5><span className="text-xs font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{row.score}<span className="ml-1 font-normal text-slate-400">分</span></span></div><p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{row.comment}</p></div>)}</div>
+      {!evidence&&scoring}
     </div>
-    <h5 className="text-sm font-bold text-slate-900 dark:text-white">选择需要优化的模块</h5>
-    {groups.length === 0 && <p className="text-xs text-slate-500">本次未发现需要优化的模块。</p>}
-    {groups.map(([key, rows]) => { const ids = rows.filter(row => row.editable).map(row => row.suggestionId); return <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 transition focus-within:border-emerald-400 dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex items-center gap-2">
-        {ids.length > 0 && <input type="checkbox" aria-label={`选择优化 ${annotations.labelFor(rows[0])}`} disabled={outdated || busy || generating} checked={ids.every(id => annotations.selected.includes(id))} onChange={() => annotations.toggle(ids)} />}
-        <button type="button" className="text-left text-[13px] font-semibold leading-5 text-slate-900 hover:text-emerald-700 dark:text-slate-100" onClick={() => annotations.locate(key)}>{annotations.labelFor(rows[0])}</button>
-        {!ids.length && <span className="text-[10px] text-slate-500">手动修改</span>}
-      </div>
-      {rows.map(row => <div key={row.suggestionId} className="mt-2 text-xs leading-relaxed"><p className="text-slate-500 dark:text-slate-400">{row.problem}</p><p className="mt-2 rounded-lg bg-emerald-50/70 p-2.5 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"><span className="mb-1 block text-[10px] font-bold tracking-wide">改进方向</span>{row.direction}</p></div>)}
-    </div>; })}
-    {enabled && onStart && <button ref={buttonRef} type="button" disabled={outdated || busy || generating || !canStart || annotations.selected.length === 0} onClick={() => { trackResumeOptimizationCtaClick(); onStart(annotations.selected); }}
-      data-resume-optimization-focus-return="true" className="min-h-11 w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">优化所选模块（{annotations.selected.length}）</button>}
-    {disabledReason && <p className="text-xs text-slate-500">{disabledReason}</p>}
+    {evidence?<>
+      <ScoreActionList suggestions={report.suggestions} disabled={selectionDisabled}>
+        {launch}{disabledReason&&<p className="text-xs text-slate-500">{disabledReason}</p>}
+      </ScoreActionList>
+      <EvidenceStrengths report={evidence}/>
+      <details className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700 dark:text-slate-200">六维评分与说明</summary>
+        {scoring}
+      </details>
+    </>:<>
+      <h5 className="text-sm font-bold text-slate-900 dark:text-white">选择需要优化的模块</h5>
+      {!groups.length&&<p className="text-xs text-slate-500">本次未发现需要优化的模块。</p>}
+      {groups.map(([key,rows])=>{const ids=rows.filter(row=>row.editable).map(row=>row.suggestionId);return <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center gap-2">
+          {!!ids.length&&<input type="checkbox" aria-label={`选择优化 ${annotations.labelFor(rows[0])}`} disabled={selectionDisabled} checked={ids.every(id=>annotations.selected.includes(id))} onChange={()=>annotations.toggle(ids)}/>}
+          <button type="button" className="text-left text-[13px] font-semibold text-slate-900 dark:text-slate-100" onClick={()=>annotations.locate(key)}>{annotations.labelFor(rows[0])}</button>
+          {!ids.length&&<span className="text-[10px] text-slate-500">手动修改</span>}
+        </div>
+        {rows.map(row=><div key={row.suggestionId} className="mt-2 text-xs leading-relaxed"><p className="text-slate-500 dark:text-slate-400">{row.problem}</p><p className="mt-2 rounded-lg bg-emerald-50/70 p-2.5 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">{row.direction}</p></div>)}
+      </div>;})}
+      {launch}{disabledReason&&<p className="text-xs text-slate-500">{disabledReason}</p>}
+    </>}
   </section>;
 }

@@ -517,6 +517,7 @@ def _terminal_answer_change(change: OptimizationChange) -> OptimizationChange:
             "action_kind": OptimizationAction.LEAVE_UNCHANGED,
             "general_value": None,
             "targeted_value": None,
+            "display_after": ["保留原文"] if change.display_after is not None else None,
             "source_refs": [],
             "introduced_terms": [],
             "expected_score_gain": 0,
@@ -1001,6 +1002,10 @@ async def answer_optimization_questions(
             - candidate_answered_ids
             - unresolved_change_ids
         )
+        if run.policy_version in ('json_structure_v2','json_structure_v3'):
+            mixed_ids=answered_affected_ids & terminal_affected_ids
+            answered_affected_ids-=mixed_ids
+            terminal_only_ids|=mixed_ids
         rewrite_questions = []
         answers_for_rewrite: list[OptimizationAnswer] = []
         for answer in merged_answers:

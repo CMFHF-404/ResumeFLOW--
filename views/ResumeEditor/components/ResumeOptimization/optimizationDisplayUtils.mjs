@@ -116,6 +116,9 @@ const MODULE_LABELS = new Map([
   ['experience_star', '经历 STAR'],
   ['personal_summary', '个人总结'],
   ['skills_order', '技能顺序'],
+  ['skill_text', '当前简历技能'],
+  ['skill_create', '创建专属技能'], ['education_courses', '课程取舍'], ['education_notes', '教育补充说明'],
+  ['certification_order', '证书与奖项排序'], ['certification_hide', '隐藏证书或奖项'], ['experience_order','经历排序'], ['experience_hide','隐藏经历'], ['experience_restructure','整段正文重排'],
   ['section_order', '模块顺序'],
   ['bank_suggestion', '经历库机会'],
 ]);
@@ -1367,7 +1370,7 @@ export const buildResumeOptimizationOverviewMetrics = (plan) => {
 
 const resolveResumeOptimizationModuleOrderKey = (change) => {
   if (change?.moduleType === 'personal_summary') return 'summary';
-  if (change?.moduleType === 'skills_order') return 'skills';
+  if (['skills_order','skill_text'].includes(change?.moduleType)) return 'skills';
   if (change?.moduleType === 'section_order') return 'sections';
   return text(change?.moduleId);
 };
@@ -1607,6 +1610,7 @@ const formatSectionOrderPreviewLines = (value) => {
 };
 
 const formatChangePreviewLines = (moduleType, fieldPath, value, skillNameById) => {
+  if (moduleType === 'skill_text' && value && typeof value === 'object') return [String(value.category), String(value.name)];
   if (moduleType === 'skills_order') {
     return formatSkillOrderPreviewLines(value, skillNameById);
   }
@@ -1620,10 +1624,10 @@ const formatChangePreviewLines = (moduleType, fieldPath, value, skillNameById) =
 };
 
 export const buildResumeOptimizationChangePreview = (change, skillNameById = {}) => ({
-  before: formatChangePreviewLines(change?.moduleType, undefined, change?.beforeValue, skillNameById),
+  before: change?.displayBefore ?? formatChangePreviewLines(change?.moduleType, undefined, change?.beforeValue, skillNameById),
   after: change?.targetedValue === null
     ? ['保留原文']
-    : formatChangePreviewLines(
+    : change?.displayAfter ?? formatChangePreviewLines(
       change?.moduleType,
       change?.fieldPath,
       change?.targetedValue,

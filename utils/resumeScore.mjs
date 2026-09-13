@@ -1,7 +1,15 @@
+import {normalizeEvidenceResumeScore,REVIEW_RESPONSE_SCHEMA_VERSION} from './evidenceResumeScore.mjs';
 export const SCORE_VERSION = 'resume_score_v2';
 export const SCORE_DIMENSIONS = ['逻辑清晰', 'STAR应用', '内容可读', '内容完整', '专业表达', '成果量化'];
+export const EVIDENCE_SCORE_ENABLED = import.meta.env?.VITE_ENABLE_EVIDENCE_RESUME_SCORE === 'true';
+export const REVIEW_V4_ENABLED = EVIDENCE_SCORE_ENABLED && import.meta.env?.VITE_ENABLE_RESUME_REVIEW_V4 === 'true';
+export const isCurrentScoreVersion = value => EVIDENCE_SCORE_ENABLED
+  ? REVIEW_V4_ENABLED ? value?.evaluationVersion === 'resume_score_v4' && value.scoringVersion === 'evidence_rubric_v2' && value.metadata?.responseSchemaVersion === REVIEW_RESPONSE_SCHEMA_VERSION
+    : value?.evaluationVersion === 'resume_score_v3' && value.scoringVersion === 'evidence_rubric_v1'
+  : value?.evaluationVersion === 'resume_score_v2' && value.scoringVersion === 'single_pass_v1';
 
 export function normalizeResumeScore(value) {
+  if (value?.evaluationVersion === 'resume_score_v3' || value?.evaluationVersion === 'resume_score_v4') return normalizeEvidenceResumeScore(value);
   if (!value || value.evaluationVersion !== SCORE_VERSION || value.scoringVersion !== 'single_pass_v1'
     || typeof value.summary !== 'string' || !Array.isArray(value.dimensions) || value.dimensions.length !== 6) return undefined;
   const dimensions = new Map();
@@ -25,7 +33,20 @@ export function normalizeResumeScore(value) {
     jdMatch: value.jdMatch ?? null };
 }
 
-export const scoreModuleKey = row => `${row.moduleType}:${row.moduleId}`;
+export const scoreModuleKey = row => {
+  if(row.executionBlockReason){
+    if(row.fieldPath==='experience')return `experience_star:${row.moduleId}`;
+    if(row.fieldPath==='education')return 'read_only:educations';
+    if(row.fieldPath==='certification')return 'read_only:certifications';
+    if(row.fieldPath==='skill')return `skill_text:${row.moduleId}`;
+    if(row.fieldPath==='summary')return 'personal_summary:current_resume';
+  }
+  if(['experience_restructure','experience_hide'].includes(row.moduleType))return `experience_star:${row.moduleId}`;
+  if(['education_courses','education_notes'].includes(row.moduleType))return 'read_only:educations';
+  if(['certification_order','certification_hide'].includes(row.moduleType))return 'read_only:certifications';
+  if(row.moduleType==='skill_create')return 'skills_order:skills';
+  return `${row.moduleType}:${row.moduleId}`;
+};
 export function groupScoreSuggestions(suggestions) {
   const groups = new Map();
   for (const row of suggestions) {

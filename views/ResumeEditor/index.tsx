@@ -1,7 +1,9 @@
+import { applySkillGroupOverrides, applyEducationOverrides, renameSkillCategories, removeSkillEntries } from '../../utils/skillOverrides';
 import ResumeEditorViewport from './components/ResumeEditorViewport';
 import { ScoreAnnotationProvider } from './components/ResumeEvaluationReport/ScoreAnnotations';
 import PersistentAssistantPortal from './components/PersistentAssistantPortal';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { EVIDENCE_SCORE_ENABLED } from '../../utils/resumeScore.mjs';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ToastContainer, useToast } from '../../components/Toast';
 import { useExperienceActions } from '../../hooks/useExperienceActions';
@@ -240,11 +242,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         isSavingProfile, setIsSavingProfile,
         originalProfile, setOriginalProfile,
         originalProfileSyncMode, setOriginalProfileSyncMode,
-        educations, setEducations,
+        educations: bankEducations, setEducations,
         educationSourceMap, setEducationSourceMap,
         certifications, setCertifications,
         certificationSourceMap, setCertificationSourceMap,
-        skillGroups, setSkillGroups,
+        skillGroups: bankSkillGroups, setSkillGroups,
         selectedEduIds, setSelectedEduIds,
         selectedCertIds, setSelectedCertIds,
         selectedSkillIds, setSelectedSkillIds,
@@ -290,9 +292,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         themeColorPresetId, setThemeColorPresetId,
         experienceListMarkerStyle, setExperienceListMarkerStyle,
         skillTagSeparator, setSkillTagSeparator,
-        layoutOrders,
+        layoutOrders: sourceLayoutOrders,
         bossGreetingSnapshot,
     } = useResumeEditorCoreState();
+    const [careerStage, setCareerStage] = useState<import('../../types/ai').CareerStage>('unspecified');
+    const [skillOverrides,setSkillOverrides]=useState<import('../../utils/skillOverrides').SkillOverrides>({});
+    const [localSkills,setLocalSkills]=useState<import('../../utils/skillOverrides').SkillOverrides>({});
+    const [educationOverrides,setEducationOverrides]=useState<import('../../utils/skillOverrides').EducationOverrides>({});
+    const [skillGroupOrder, setSkillGroupOrder] = useState<string[]>([]);
+    const skillGroups=useMemo(()=>applySkillGroupOverrides(bankSkillGroups,skillOverrides,localSkills,skillGroupOrder),[bankSkillGroups,skillOverrides,localSkills,skillGroupOrder]);
+    const layoutOrders = useMemo(() => ({ ...sourceLayoutOrders, skillGroupNames: skillGroups.map(group => group.name) }), [sourceLayoutOrders, skillGroups]);
+    const educations=useMemo(()=>applyEducationOverrides(bankEducations,educationOverrides),[bankEducations,educationOverrides]);
     const previousLayoutDensityRef = useRef(density);
     const isCacheOwnerMatched = Boolean(
         cachedResumesOwnerKey && authUserKey && cachedResumesOwnerKey === authUserKey
@@ -402,6 +412,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         handleSectionDrop,
     } = useResumeEditorReorder({
         authUserKey,
+        sourceEducations: bankEducations,
+        sourceSkillGroups: bankSkillGroups,
+        skillGroupOrder,
+        setSkillGroupOrder,
         experienceItems,
         setExperienceItems,
         educations,
@@ -439,9 +453,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 themeColorPresetId,
                 experienceListMarkerStyle,
                 skillTagSeparator,
-                persistedJDAnalysisSnapshot
+                persistedJDAnalysisSnapshot,
+                careerStage,
+                { skillOverrides, localSkills, educationOverrides }
             ),
         [
+            skillOverrides, localSkills, educationOverrides,
+            careerStage,
             density,
             bossGreetingSnapshot,
             fontSize,
@@ -500,6 +518,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         suppressAutoSaveForConfig,
         clearSuppressedAutoSave,
     } = useResumeData({
+        setSkillOverrides, setLocalSkills, setEducationOverrides, setSkillGroupOrder,
+        setCareerStage,
         configSnapshot: resumeConfigSnapshot,
         persistedJDAnalysisSnapshot,
         autoSaveDelayMs: AUTO_SAVE_DELAY_MS,
@@ -563,6 +583,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsBossGreetingVisible,
     });
     const buildCommittedResumeConfigSnapshot = useCommittedResumeConfigSnapshot({
+        skillOverrides, localSkills, educationOverrides, careerStage,
         authUserKey,
         resumeId,
         resumeDetail,
@@ -652,6 +673,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         thinkingText,
         handleStopAnalysis,
     } = useJDAnalysis({
+        careerStage,
         resumeId,
         experienceItems,
         setExperienceItems,
@@ -882,6 +904,20 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         },
         skill: {
             groups: skillGroups,
+            localSkillIds: new Set(Object.keys(localSkills)),
+            isCurrent: () => latestResumeIdRef.current === resumeId,
+            onCategoryRenamed: (ids, category) => {
+                setLocalSkills(previous => renameSkillCategories(previous, ids, category));
+                setSkillOverrides(previous => renameSkillCategories(previous, ids, category));
+                setSkillGroupOrder([...new Set(skillGroups.map(group =>
+                    group.skills.every(item => ids.includes(item.id)) ? category : group.name
+                ))]);
+            },
+            onSkillsDeleted: (ids) => {
+                setLocalSkills(previous => removeSkillEntries(previous, ids));
+                setSkillOverrides(previous => removeSkillEntries(previous, ids));
+                setSelectedSkillIds(previous => new Set([...previous].filter(id => !ids.includes(id))));
+            },
             setGroups: setSkillGroups,
             selectedIds: selectedSkillIds,
             setSelectedIds: setSelectedSkillIds,
@@ -2327,6 +2363,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             onOpenDetailsSidebar: handleOpenJDAnalysisDetailsSidebar,
         },
         profileTabProps: {
+            onLocalEducationChange: !isLoadingResume && !hasResumeVersionConflict ? (id:string,field:'courses'|'notes',value:string)=>setEducationOverrides(previous=>({...previous,[id]:{...previous[id],[field]:value}})) : undefined,
+            onResetLocalEducation: (id:string)=>setEducationOverrides(previous=>{const next={...previous};delete next[id];return next;}),
+            careerStage,
+            onCareerStageChange: EVIDENCE_SCORE_ENABLED && !isLoadingResume && !isEditingProfile && !hasResumeVersionConflict ? setCareerStage : undefined,
             profile,
             setProfile,
             targetRole,
@@ -2357,7 +2397,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         experienceTabProps: {
             experience,
             certification,
-            skill,
+            skill: {...skill, localSkillIds: new Set(Object.keys(localSkills)), updateLocalSkill: (id: string, value: {name: string; category: string}) => { setLocalSkills(previous => ({...previous, [id]: value})); setSkillOverrides(previous=>{const next={...previous};delete next[id];return next;}); }, deleteLocalSkill: (id: string) => { setLocalSkills(previous=>{const next={...previous};delete next[id];return next;});setSelectedSkillIds(previous=>{const next=new Set(previous);next.delete(id);return next;});setSkillOverrides(previous=>{const next={...previous};delete next[id];return next;}); }, overriddenIds: new Set(Object.keys(skillOverrides)), restoreSkillOriginal: (id: string) => setSkillOverrides(previous => { const next={...previous}; delete next[id]; return next; })},
             selection: trackedSelection,
             personalSummary: editablePersonalSummary,
             isSummaryVisible,
@@ -2625,7 +2665,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 return true;
             }
             mobileEditorDrawer.dismissImmediately();
-        } : undefined} suggestions={!isEvaluationOutdated && analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v2' ? analysisResult.resumeEvaluation.suggestions : []}
+        } : undefined} suggestions={!isEvaluationOutdated && (analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v2' || analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v3' || analysisResult?.resumeEvaluation?.evaluationVersion === 'resume_score_v4') ? analysisResult.resumeEvaluation.suggestions : []}
             reportKey={JSON.stringify([resumeId, evaluationSignature, analysisResult?.resumeEvaluation, isEvaluationOutdated])}>
         <ResumeEditorViewport
             scrollContainerRef={mobileEditorScrollContainerRef}

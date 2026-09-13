@@ -2,7 +2,9 @@
 import json
 import logging
 import math
+import hashlib
 from copy import deepcopy
+from dataclasses import replace
 
 from . import runtime_budget
 from .llm_transport import _call_llm
@@ -75,6 +77,23 @@ def normalize_score(raw, *, catalog=None, jd_match=None):
 
 
 async def generate_score(text, resume_text, jd_match_percentage=None):
+    from .lean_review import TIMEOUT_SECONDS
+    budget = replace(runtime_budget.get_ai_runtime_budget(), stream_total_timeout_seconds=TIMEOUT_SECONDS)
+    return await runtime_budget.run_with_total_timeout(
+        _dispatch_score(text, resume_text, jd_match_percentage), budget=budget)
+
+
+async def _dispatch_score(text, resume_text, jd_match_percentage=None):
+    from . import evidence_rubric
+    if evidence_rubric.enabled():
+        from . import evidence_rubric_v2
+        if evidence_rubric_v2.enabled():
+            return await generate_review_score(text, resume_text, jd_match_percentage)
+        return await generate_evidence_score(text, resume_text, jd_match_percentage)
+    return await generate_legacy_score(text, resume_text, jd_match_percentage)
+
+
+async def generate_legacy_score(text, resume_text, jd_match_percentage=None, *, usage_callback=None):
     from .resume_evaluation_service import _build_full_resume_evaluation_input
     data = _build_full_resume_evaluation_input(text, resume_text, jd_match_percentage)
     resume = data.get('resume')
@@ -91,13 +110,131 @@ async def generate_score(text, resume_text, jd_match_percentage=None):
     try:
         raw = await _call_llm([dict(role='system', content=prompt), dict(role='user', content=json.dumps(
             dict(resume=resume, modules=catalog, jd=text), ensure_ascii=False))],
-            json_mode=False, request_label='resume_score_single_pass', gemini_thinking_level='low', gemini_stream=False)
+            json_mode=False, request_label='resume_score_single_pass', gemini_thinking_level='low', gemini_stream=False, usage_callback=usage_callback)
         raw = parse_single_pass_json(raw)
         return {'resumeEvaluation': normalize_score(raw, catalog=catalog, jd_match=jd_match_percentage)}
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
     except (ValueError, TypeError) as exc:
         # Log only schema diagnostics, never provider text or resume content.
         reason = 'invalid_json' if isinstance(exc, json.JSONDecodeError) else 'invalid_structure'
         logger.warning('Resume score response rejected: reason=%s', reason)
         raise ResumeEvaluationIntegrityError('评分 JSON 或必要字段无效，请重试。') from exc
+    finally:
+        runtime_budget.provider_retries_managed.reset(token)
+
+
+async def generate_evidence_score(text, resume_text, jd_match_percentage=None, *, usage_callback=None):
+    from . import evidence_rubric as rubric
+    return await _generate_evidence_score(text, resume_text, jd_match_percentage, rubric=rubric, usage_callback=usage_callback)
+
+
+async def generate_review_score(text, resume_text, jd_match_percentage=None, *, usage_callback=None, model=None, thinking_level=None):
+    from ...config import load_settings
+    from . import object_review as rubric
+    settings = load_settings()
+    budget = replace(runtime_budget.get_ai_runtime_budget(), stream_total_timeout_seconds=rubric.TIMEOUT_SECONDS)
+    return await runtime_budget.run_with_total_timeout(
+        _generate_evidence_score(text, resume_text, jd_match_percentage, rubric=rubric, usage_callback=usage_callback,
+            model=model if model is not None else settings.resume_score_model or None,
+            thinking_level=thinking_level if thinking_level is not None else settings.resume_score_thinking_level), budget=budget)
+
+
+async def _generate_evidence_score(text, resume_text, jd_match_percentage=None, *, rubric, usage_callback=None, model=None, thinking_level='low'):
+    from .resume_evaluation_service import _build_full_resume_evaluation_input
+    from .llm_transport import _resolve_ai_route, _is_gemini_route, _prepare_chat_completion_payload, LANE_RESUME_REVIEW, LANE_DEFAULT
+    from ...ai_model_capabilities import resolve_openai_reasoning_effort
+    data = _build_full_resume_evaluation_input(text, resume_text, jd_match_percentage)
+    token = runtime_budget.provider_retries_managed.set(True)
+    stage = 'input'
+    try:
+        resume = data.get('resume')
+        if not isinstance(resume, dict) or not resume or 'raw_text' in resume:
+            raise ValueError('structured resume required')
+        required = {'profile', 'personal_summary', 'section_order', 'experiences', 'educations', 'certifications', 'skills'}
+        if not required.issubset(resume) or not isinstance(resume['profile'], dict) or not isinstance(resume['personal_summary'], str):
+            raise ValueError('incomplete structured extraction')
+        if not isinstance(resume['section_order'], list) or any(not isinstance(s, str) for s in resume['section_order']):
+            raise ValueError('invalid section order')
+        for key in ('experiences', 'educations', 'certifications', 'skills'):
+            if key in resume and not isinstance(resume[key], list):
+                raise ValueError('invalid resume collection')
+            if any(not isinstance(item, dict) for item in resume.get(key, [])):
+                raise ValueError('invalid resume item')
+        identities = []
+        for item in resume['experiences']:
+            identity = item.get('id')
+            if not isinstance(identity, str) or not identity or not isinstance(item.get('star'), dict) or any(not isinstance(item['star'].get(k), str) for k in 'star'):
+                raise ValueError('invalid visible experience')
+            identities.append(identity)
+        if len(set(identities)) != len(identities):
+            raise ValueError('duplicate visible experience')
+        context = rubric.assessment_context(data, text)
+        sources, modules = rubric.source_catalog(resume, text), rubric.modules_for(resume)
+        stage = 'request_setup'
+        if thinking_level not in ('low', 'medium', 'high'):
+            raise ValueError('unsupported scoring thinking level')
+        v4 = hasattr(rubric, 'review_inventory')
+        lane = LANE_RESUME_REVIEW if v4 else LANE_DEFAULT
+        route = _resolve_ai_route(model=model,lane=lane)
+        if model and route.model != model:
+            raise ValueError('requested scoring model differs from resolved route')
+        openai_effort = None
+        if not _is_gemini_route(route):
+            native_effort = resolve_openai_reasoning_effort(route.model)
+            if v4 and native_effort is not None:
+                if native_effort == 'high' and thinking_level != 'high':
+                    raise ValueError('scoring thinking override unsupported for this model')
+                openai_effort = thinking_level
+            elif thinking_level != 'low' and native_effort != thinking_level:
+                raise ValueError('scoring thinking override unsupported for this provider')
+        reasoning_payload = _prepare_chat_completion_payload(dict(model=route.model,temperature=.3,
+            **({'reasoning_effort':openai_effort} if openai_effort is not None else {})))
+        metadata = dict(promptVersion=rubric.PROMPT_VERSION, rubricVersion=rubric.SCORING_VERSION,
+                        guideVersion=rubric.GUIDE_VERSION, inputHash=rubric.binding(data, text),
+                        model=route.model, provider=route.provider, transport=route.transport,
+                        reasoning={'geminiThinkingLevel': thinking_level} if _is_gemini_route(route) else {
+                            k: v for k, v in reasoning_payload.items()
+                            if k in ('reasoning_effort', 'temperature')})
+        stage = 'model_response'
+        payload = rubric.model_payload(data,text,sources,modules,context) if v4 else dict(resume=resume, assessmentContext=context, sources=sources, modules=modules, jd=text)
+        response_schema = rubric.response_schema(sources,payload.get('reviewInventory', []),modules) if v4 else None
+        server_schema = response_schema
+        if v4:
+            metadata['responseSchemaVersion']=rubric.RESPONSE_SCHEMA_VERSION
+            from .provider_review_schema import compact, VERSION as provider_shape_version
+            metadata['serverSchemaHash']=hashlib.sha256(json.dumps(response_schema,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+            response_schema=compact(response_schema)
+            metadata['providerSchemaVersion']=provider_shape_version
+            if not _is_gemini_route(route):
+                from .provider_review_schema import openai_review, OPENAI_VERSION
+                response_schema=openai_review(server_schema,payload)
+                metadata['providerSchemaVersion']=OPENAI_VERSION
+            metadata['responseSchemaHash']=hashlib.sha256(json.dumps(response_schema,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+        raw = await _call_llm([dict(role='system', content=rubric.prompt() if v4 else rubric.build_prompt()),
+            dict(role='user', content=json.dumps(payload, ensure_ascii=False))], model=model,
+            json_mode=False, request_label='resume_score_review_single_pass' if v4 else 'resume_score_evidence_single_pass', gemini_thinking_level=thinking_level, gemini_stream=False, usage_callback=usage_callback,
+            **({'lane':lane} if v4 else {}),
+            **({'gemini_response_json_schema':response_schema} if v4 and _is_gemini_route(route) else
+               {'openai_response_json_schema':response_schema,'openai_reasoning_effort':openai_effort} if v4 else {}))
+        stage = 'json_parse'
+        parsed = parse_single_pass_json(raw)
+        if v4 and not _is_gemini_route(route):
+            from .provider_review_schema import omit_optional_nulls
+            parsed = omit_optional_nulls(parsed,server_schema)
+        stage = 'rubric_validation'
+        return {'resumeEvaluation': rubric.normalize(parsed, sources=sources, modules=modules,
+            context=context, metadata=metadata, jd_match=jd_match_percentage,
+            **({'inventory':payload.get('reviewInventory', [])} if v4 else {}))}
+    except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS:
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        # Only code-owned diagnostics; never log exception values/provider bodies.
+        frame = exc.__traceback__
+        while frame and frame.tb_next:
+            frame = frame.tb_next
+        logger.warning('Evidence score response rejected: stage=%s error_type=%s function=%s line=%s',
+                       stage, type(exc).__name__, frame.tb_frame.f_code.co_name if frame else 'unknown', frame.tb_lineno if frame else 0)
+        raise ResumeEvaluationIntegrityError('评分 JSON、来源引用或必要字段无效，请重试。') from exc
     finally:
         runtime_budget.provider_retries_managed.reset(token)

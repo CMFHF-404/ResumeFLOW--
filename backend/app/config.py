@@ -763,6 +763,10 @@ class Settings:
     ai_thinking_budget_boss_greeting: int
     enable_dev_auth_bypass: bool
     enable_resume_optimization: bool
+    enable_evidence_resume_score: bool
+    enable_resume_review_v4: bool
+    resume_score_model: str
+    resume_score_thinking_level: str
     resume_optimization_max_questions: int
     resume_optimization_max_bank_suggestions: int
     dev_user_id: str
@@ -805,6 +809,7 @@ def load_settings() -> Settings:
     jwks_url = f"{logto_issuer}{DEFAULT_JWKS_PATH}"
     jwks_ttl_seconds = int(os.getenv(ENV_LOGTO_JWKS_TTL, DEFAULT_JWKS_TTL_SECONDS))
     ai_route_profile = _resolve_ai_route_profile(os.getenv(ENV_AI_ROUTE_PROFILE))
+    resume_score_model = os.getenv('RESUME_SCORE_MODEL', 'gpt-5.6-luna').strip()
     ai_api_key = _configured_env_value(os.getenv(ENV_AI_API_KEY))
     gemini_api_key = _configured_env_value(os.getenv(ENV_GEMINI_API_KEY))
     gemini_base_url = os.getenv(ENV_GEMINI_BASE_URL, DEFAULT_GEMINI_BASE_URL)
@@ -849,7 +854,13 @@ def load_settings() -> Settings:
                 gemini_base_url,
                 ENV_GEMINI_BASE_URL,
             )
-        if primary_base_active:
+        review_base_active = (
+            _get_bool_env('ENABLE_EVIDENCE_RESUME_SCORE', False)
+            and _get_bool_env('ENABLE_RESUME_REVIEW_V4', False)
+            and bool(resume_score_model)
+            and not resume_score_model.lower().startswith('gemini')
+        )
+        if primary_base_active or review_base_active:
             ai_base_url = _normalize_deployment_http_base_url(
                 ai_base_url,
                 ENV_AI_BASE_URL,
@@ -1112,6 +1123,10 @@ def load_settings() -> Settings:
         ai_thinking_budget_boss_greeting=ai_thinking_budget_boss_greeting,
         enable_dev_auth_bypass=enable_dev_auth_bypass,
         enable_resume_optimization=enable_resume_optimization,
+        enable_evidence_resume_score=_get_bool_env('ENABLE_EVIDENCE_RESUME_SCORE', False),
+        enable_resume_review_v4=_get_bool_env('ENABLE_RESUME_REVIEW_V4', False),
+        resume_score_model=resume_score_model,
+        resume_score_thinking_level=os.getenv('RESUME_SCORE_THINKING_LEVEL', 'medium').strip().lower(),
         resume_optimization_max_questions=resume_optimization_max_questions,
         resume_optimization_max_bank_suggestions=resume_optimization_max_bank_suggestions,
         dev_user_id=dev_user_id,

@@ -306,7 +306,7 @@ def _allowlist_current_resume(
         if not isinstance(raw_rows, list):
             return []
         return [
-            {field: _string(row.get(field)) for field in fields}
+            {field: _string(row.get(field)) for field in fields if field != "notes" or field in row}
             for row in raw_rows
             if isinstance(row, Mapping)
         ]
@@ -337,6 +337,7 @@ def _allowlist_current_resume(
                 "end_date",
                 "gpa",
                 "courses",
+                "notes",
             ),
         ),
         "certifications": allowlist_rows(
@@ -1340,9 +1341,16 @@ def _actual_frontend_collections(
                 ("end_date", _frontend_year_month(getattr(latest, "end_date", None))),
                 ("gpa", _frontend_plain_text(_frontend_star_value(star.get("gpa")))),
                 ("courses", _frontend_plain_text(_frontend_star_value(star.get("courses")))),
+                ("notes", _frontend_plain_text(_frontend_star_value(star.get("notes")))),
             ):
                 if value:
                     education[key] = value
+            from .local_actions import education as effective_education
+            education = effective_education(education, config)
+            # The editor omits empty courses in its signed evaluation snapshot,
+            # while the config keeps the empty override to hide bank courses.
+            if not education.get("courses"):
+                education.pop("courses", None)
             education_views.append(education)
 
     work_views.sort(
@@ -1387,14 +1395,23 @@ def _actual_frontend_collections(
         user_skill, skill = _row_pair(raw_row, field_name="skill bank")
         category = _string(getattr(skill, "category", "")).strip() or "未分类"
         user_skill_id = _string(getattr(user_skill, "id", ""))
+        from .skill_text import effective
+        visible=effective(dict(id=user_skill_id,name=_string(getattr(skill,'name','')),category=category),config)
+        category=visible['category']
         raw_skill_ids.append(user_skill_id)
         grouped_skills.setdefault(category, []).append(
             {
                 "id": user_skill_id,
-                "name": _string(getattr(skill, "name", "")),
+                "name": visible['name'],
                 "category": category,
             }
         )
+    from .local_actions import local_skills
+    from .skill_text import effective
+    for local in local_skills(config):
+        visible=effective(local,config)
+        grouped_skills.setdefault(visible["category"],[]).append(visible)
+        raw_skill_ids.append(visible["id"])
     raw_group_order = orders.get("skillGroupNames")
     group_names = list(grouped_skills)
     if isinstance(raw_group_order, list) and raw_group_order:
@@ -1597,7 +1614,7 @@ def _trusted_frontend_evaluation_snapshot(
             "major": _frontend_plain_text(item.get("major")),
             "degree": _frontend_plain_text(item.get("degree")),
         }
-        for key in ("start_date", "end_date", "gpa", "courses"):
+        for key in ("start_date", "end_date", "gpa", "courses", "notes"):
             normalized = _frontend_plain_text(item.get(key))
             if normalized:
                 education[key] = normalized
@@ -2001,15 +2018,37 @@ async def build_frozen_optimization_context(
     if set(source_documents) != _SOURCE_DOCUMENT_ROOTS:
         raise AssertionError("Unexpected optimization source document root")
     from ..ai.resume_score import VERSION, normalize_score, module_catalog
-    if evaluation.get("evaluationVersion") != VERSION:
+    from ..ai import evidence_rubric
+    from ..ai import evidence_rubric_v2
+    if evidence_rubric_v2.enabled():
+        evidence_rubric = evidence_rubric_v2
+    expected_version = evidence_rubric.VERSION if evidence_rubric.enabled() else VERSION
+    if evaluation.get("evaluationVersion") != expected_version:
         raise OptimizationContextStaleError("评估规则已更新，请重新进行六维评分后再优化。")
+    if expected_version == evidence_rubric_v2.VERSION and evaluation.get('metadata',{}).get('responseSchemaVersion') != 'review_json_schema_v6':
+        raise OptimizationContextStaleError('审阅协议已更新，请重新评分后再优化。')
+    if expected_version == evidence_rubric.VERSION:
+        persisted_stage = (getattr(resume, 'config', None) or {}).get('careerStage', 'unspecified')
+        if (signed_resume_snapshot.get('career_stage', 'unspecified') != persisted_stage
+                or evaluation.get('assessmentContext', {}).get('careerStage') != persisted_stage):
+            raise OptimizationContextStaleError('求职阶段已变化，请重新评分。')
     try:
-        evaluation = normalize_score(dict(evaluation), catalog=module_catalog(current_resume))
+        if expected_version == evidence_rubric.VERSION:
+            jd_source = _canonical_persisted_jd(analysis)[0] if jd_available else ''
+            sources = evidence_rubric.source_catalog(signed_resume_snapshot['resume'], jd_source)
+            if sources != evaluation.get('sources') or evidence_rubric.binding(signed_resume_snapshot, jd_source) != evaluation.get('metadata', {}).get('inputHash'):
+                raise ValueError('evidence snapshot mismatch')
+            evaluation = evidence_rubric.normalize(dict(evaluation), sources=sources,
+                modules=evidence_rubric.modules_for(signed_resume_snapshot['resume']),
+                context=evaluation.get('assessmentContext'), metadata=evaluation.get('metadata'), jd_match=evaluation.get('jdMatch'),
+                **({'inventory':evidence_rubric.review_inventory(signed_resume_snapshot['resume'],sources)} if expected_version == evidence_rubric_v2.VERSION else {}))
+        else:
+            evaluation = normalize_score(dict(evaluation), catalog=module_catalog(current_resume))
         ids = request.selected_suggestion_ids
         available = {row['suggestionId']: row for row in evaluation['suggestions']}
         if not ids or len(ids) != len(set(ids)) or any(identity not in available or not available[identity]['editable'] for identity in ids):
             raise ValueError("Select valid editable suggestions")
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
         raise OptimizationSelectionInvalidError("请选择有效的优化模块。") from exc
     evaluation['selectedSuggestionIds'] = list(ids)
     _parse_persisted_frontend_evaluation_signature(

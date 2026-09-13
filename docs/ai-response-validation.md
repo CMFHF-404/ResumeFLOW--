@@ -1,6 +1,14 @@
 # AI 回答校验职责
 
-## 当前评估：resume_score_v2 / single_pass_v1
+## 模块审阅 v4（新增灰度开关默认关闭）
+
+在证据评分总开关之上启用 `ENABLE_RESUME_REVIEW_V4` 后使用 `resume_score_v4` / `evidence_rubric_v2`。新增统一阅读视图、服务端模块检查目录、18项专属档位标准、检查与诊断关联及结构化 `factGaps`。仍由模型直接判档，程序校验计算；不增加模型审核、修复或自动复评。前端配套构建开关为 `VITE_ENABLE_RESUME_REVIEW_V4`。见 [v4验收说明](qa/evidence-score/v4.md)。
+
+## 证据评分 v3（质量验收开关默认关闭）
+
+`ENABLE_EVIDENCE_RESUME_SCORE=true` 后，新评分使用 `resume_score_v3` / `evidence_rubric_v1`：一次模型判档，后端计算六维加权分；来源、观察项与可执行动作由程序校验。前端对应构建开关为 `VITE_ENABLE_EVIDENCE_RESUME_SCORE`，历史报告不混算。完整协议、校准工具、启用与回滚方式见 [证据评分验收说明](qa/evidence-score/README.md)。不增加审核、修复或自动复评调用。
+
+## 默认评估：resume_score_v2 / single_pass_v1
 
 评分和所选模块优化接受裸 JSON 或完整的 Markdown JSON 代码块外壳；只移除完整外壳后执行一次 JSON 解析，不从解释文字中截取对象、不修复缺失符号、不重生成。块内语法或必要结构错误仍明确失败。该处理独立于其他 AI 功能的历史解析器。
 

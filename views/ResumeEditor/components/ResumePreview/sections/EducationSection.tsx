@@ -253,6 +253,7 @@ const EducationSection: React.FC<EducationSectionProps> = ({
                                     )}
                                     {edu.gpa ? <p className="text-xs text-gray-900">GPA: {edu.gpa}</p> : null}
                                     {edu.courses ? <p className="text-xs text-gray-900">课程：{edu.courses}</p> : null}
+                                    {edu.notes ? <p className="whitespace-pre-wrap text-xs text-gray-900">{edu.notes}</p> : null}
                                 </div>
                             </div>
                         );

@@ -207,6 +207,10 @@ export type ResumeBossGreeting = {
 };
 
 export type ResumeEditorConfig = {
+  skillOverrides?: Record<string, {name: string; category: string}>;
+  localSkills?: Record<string, {name: string; category: string}>;
+  educationOverrides?: Record<string, {courses?: string; notes?: string}>;
+  careerStage?: import('./ai').CareerStage;
   profile?: ResumeEditorProfile;
   personalSummary?: string;
   bossGreeting?: ResumeBossGreeting;
@@ -268,6 +272,7 @@ export type ExperienceEditDraft = {
 };
 
 export type EducationView = {
+  notes?: string;
   id: string;
   school: string;
   major: string;
@@ -419,6 +424,11 @@ export type CertificationActions = {
 };
 
 export type SkillActions = {
+  localSkillIds?: Set<string>;
+  updateLocalSkill?: (id:string,value:{name:string;category:string})=>void;
+  deleteLocalSkill?: (id:string)=>void;
+  overriddenIds?: Set<string>;
+  restoreSkillOriginal?: (id: string) => void;
   editingSkillId: string | null;
   skillDraft: SkillEditDraft | null;
   skillDraftContext: SkillDraftContext | null;

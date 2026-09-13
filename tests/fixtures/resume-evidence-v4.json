@@ -1,0 +1,1245 @@
+{
+  "evaluationVersion": "resume_score_v4",
+  "scoringVersion": "evidence_rubric_v2",
+  "evaluationScope": "full_resume",
+  "summary": "贡献和交付已有基础，补清核查范围。",
+  "focusRationale": "财务相关实习为主线",
+  "contextNotice": "",
+  "assessmentContext": {
+    "targetRole": "银行财务",
+    "careerStage": "graduate",
+    "mode": "role_reference",
+    "assessmentAsOf": "2026-09-12",
+    "inputCapabilities": {
+      "structuredText": true,
+      "pageImages": false,
+      "layoutMeasurements": false
+    }
+  },
+  "dimensions": [
+    {
+      "dimensionId": "logic",
+      "dimension": "逻辑清晰",
+      "weight": 15,
+      "score": 75,
+      "comment": "按当前材料判断",
+      "criteria": [
+        {
+          "criterionId": "logic_1",
+          "label": "主线可辨",
+          "level": 3,
+          "reason": "主线可辨",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "logic_1:L3",
+          "anchorText": "主要经历共同支持清楚的能力主线，局部关联可加强",
+          "unmetConditions": [
+            {
+              "conditionId": "logic_1:L4",
+              "label": "主线明确且由主要经历持续支撑；跨专业材料已解释可迁移能力，无明显方向冲突",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "logic_2",
+          "label": "重点顺序合理",
+          "level": 3,
+          "reason": "重点顺序合理",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "logic_2:L3",
+          "anchorText": "主要经历和亮点位置合理，少量内容可前置",
+          "unmetConditions": [
+            {
+              "conditionId": "logic_2:L4",
+              "label": "阅读顺序与材料价值一致，主要能力和证据易于优先识别",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "logic_3",
+          "label": "内容取舍有效",
+          "level": 3,
+          "reason": "内容取舍有效",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "logic_3:L3",
+          "anchorText": "核心内容得到充分展开，次要内容基本精简",
+          "unmetConditions": [
+            {
+              "conditionId": "logic_3:L4",
+              "label": "信息取舍有理由：重要证据保留，弱相关内容只保留必要的可迁移价值",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        }
+      ]
+    },
+    {
+      "dimensionId": "contribution",
+      "dimension": "个人贡献",
+      "weight": 25,
+      "score": 75,
+      "comment": "按当前材料判断",
+      "criteria": [
+        {
+          "criterionId": "contribution_1",
+          "label": "承担任务清楚",
+          "level": 3,
+          "reason": "承担任务清楚",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "contribution_1:L3",
+          "anchorText": "任务、负责对象和主要范围明确",
+          "unmetConditions": [
+            {
+              "conditionId": "contribution_1:L4",
+              "label": "任务范围与责任边界交代充分，可区分本人承担和他人承担的环节",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": [
+            "diag-1"
+          ]
+        },
+        {
+          "criterionId": "contribution_2",
+          "label": "具体行动明确",
+          "level": 3,
+          "reason": "具体行动明确",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "contribution_2:L3",
+          "anchorText": "主要行动、具体方法或处理环节可辨认",
+          "unmetConditions": [
+            {
+              "conditionId": "contribution_2:L4",
+              "label": "关键行动与问题相连，方法、选择或异常处理足以解释本人如何解决问题",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "contribution_3",
+          "label": "个人与团队边界清楚",
+          "level": 3,
+          "reason": "个人与团队边界清楚",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "contribution_3:L3",
+          "anchorText": "本人动作、交付和协作分工基本明确",
+          "unmetConditions": [
+            {
+              "conditionId": "contribution_3:L4",
+              "label": "本人可负责的成果与团队共同成果区分充分，不夸大独立性或决策权限",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        }
+      ]
+    },
+    {
+      "dimensionId": "readability",
+      "dimension": "内容可读",
+      "weight": 10,
+      "score": 75,
+      "comment": "按当前材料判断",
+      "criteria": [
+        {
+          "criterionId": "readability_1",
+          "label": "句意易懂",
+          "level": 3,
+          "reason": "句意易懂",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "readability_1:L3",
+          "anchorText": "句意清楚，只有少量不妨碍理解的表达问题",
+          "unmetConditions": [
+            {
+              "conditionId": "readability_1:L4",
+              "label": "关键陈述直接易懂，未出现实质歧义或语义断裂",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "readability_2",
+          "label": "信息紧凑",
+          "level": 3,
+          "reason": "信息紧凑",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "readability_2:L3",
+          "anchorText": "信息紧凑，局部可以压缩",
+          "unmetConditions": [
+            {
+              "conditionId": "readability_2:L4",
+              "label": "信息密度与理解需求适配，必要背景保留，重复套话很少",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "readability_3",
+          "label": "指代与文本组织清楚",
+          "level": 3,
+          "reason": "指代与文本组织清楚",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "readability_3:L3",
+          "anchorText": "主体、条目归属和段落组织基本清楚",
+          "unmetConditions": [
+            {
+              "conditionId": "readability_3:L4",
+              "label": "全文主体与引用明确，同一经历内组织连贯，易于追踪事实关系",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        }
+      ]
+    },
+    {
+      "dimensionId": "completeness",
+      "dimension": "内容完整",
+      "weight": 15,
+      "score": 75,
+      "comment": "按当前材料判断",
+      "criteria": [
+        {
+          "criterionId": "completeness_1",
+          "label": "经历背景可识别",
+          "level": 3,
+          "reason": "经历背景可识别",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "completeness_1:L3",
+          "anchorText": "主要经历的角色、对象和业务/研究场景充分",
+          "unmetConditions": [
+            {
+              "conditionId": "completeness_1:L4",
+              "label": "必要背景足以独立理解主要经历，既不依赖猜测，也没有无关背景堆叠",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "completeness_2",
+          "label": "必要时间信息清楚",
+          "level": 3,
+          "reason": "必要时间信息清楚",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "completeness_2:L3",
+          "anchorText": "持续经历的时间可理解，事件日期表达适当",
+          "unmetConditions": [
+            {
+              "conditionId": "completeness_2:L4",
+              "label": "必要时间信息充分一致；单日期事件、在读毕业计划和至今状态均能正确理解",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "completeness_3",
+          "label": "具备理解所需上下文",
+          "level": 3,
+          "reason": "具备理解所需上下文",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "completeness_3:L3",
+          "anchorText": "主要上下文足够，仅有局部说明空间",
+          "unmetConditions": [
+            {
+              "conditionId": "completeness_3:L4",
+              "label": "当前材料可独立支持理解，无实质性背景缺口",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        }
+      ]
+    },
+    {
+      "dimensionId": "professionalism",
+      "dimension": "专业表达",
+      "weight": 10,
+      "score": 75,
+      "comment": "按当前材料判断",
+      "criteria": [
+        {
+          "criterionId": "professionalism_1",
+          "label": "用词准确",
+          "level": 3,
+          "reason": "用词准确",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "professionalism_1:L3",
+          "anchorText": "用词准确规范，局部可进一步校准",
+          "unmetConditions": [
+            {
+              "conditionId": "professionalism_1:L4",
+              "label": "专业词汇含义准确且与材料中的工作一致，无实质误用",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "professionalism_2",
+          "label": "陈述具体",
+          "level": 3,
+          "reason": "陈述具体",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "professionalism_2:L3",
+          "anchorText": "陈述具体，主观修饰较少",
+          "unmetConditions": [
+            {
+              "conditionId": "professionalism_2:L4",
+              "label": "主要陈述均由具体对象、动作或交付支撑，概括不超出事实",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "professionalism_3",
+          "label": "术语与实际工作对应",
+          "level": 3,
+          "reason": "术语与实际工作对应",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "professionalism_3:L3",
+          "anchorText": "主要工具与方法对应具体工作场景",
+          "unmetConditions": [
+            {
+              "conditionId": "professionalism_3:L4",
+              "label": "重要专业表述均能对应使用对象、动作或产出，不靠名称推断能力",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        }
+      ]
+    },
+    {
+      "dimensionId": "outcomes",
+      "dimension": "成果证据",
+      "weight": 25,
+      "score": 75,
+      "comment": "按当前材料判断",
+      "criteria": [
+        {
+          "criterionId": "outcomes_1",
+          "label": "交付或结果明确",
+          "level": 3,
+          "reason": "交付或结果明确",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "outcomes_1:L3",
+          "anchorText": "交付物具体，完成状态或验收方式清楚",
+          "unmetConditions": [
+            {
+              "conditionId": "outcomes_1:L4",
+              "label": "核心交付的范围、完成状态和对应行动充分清楚",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "outcomes_2",
+          "label": "应用或效果可辨",
+          "level": 3,
+          "reason": "应用或效果可辨",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "outcomes_2:L3",
+          "anchorText": "明确被使用、采纳、验收，或出现能对应场景的效果",
+          "unmetConditions": [
+            {
+              "conditionId": "outcomes_2:L4",
+              "label": "关键使用结果解释充分，反馈、验证或业务价值足以支持结论",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        },
+        {
+          "criterionId": "outcomes_3",
+          "label": "结果与行动及必要口径对应",
+          "level": 3,
+          "reason": "结果与行动及必要口径对应",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "jdSourceRefs": [],
+          "anchorId": "outcomes_3:L3",
+          "anchorText": "动作和结果可对应，必要口径基本清楚",
+          "unmetConditions": [
+            {
+              "conditionId": "outcomes_3:L4",
+              "label": "结果的范围、验证依据及贡献边界充分；不同评价指标的含义明确",
+              "reason": "局部证据尚待补充"
+            }
+          ],
+          "gapExplanation": "",
+          "diagnosticIds": []
+        }
+      ]
+    }
+  ],
+  "overallScore": 75,
+  "overallLevel": "材料较成熟",
+  "reviewCoverage": [
+    {
+      "area": "positioning",
+      "status": "findings",
+      "reason": "本主题检查2项，其中1项有发现；具体依据见逐项审阅。"
+    },
+    {
+      "area": "capability",
+      "status": "clear",
+      "reason": "本主题检查3项，其中0项有发现；具体依据见逐项审阅。"
+    },
+    {
+      "area": "contribution",
+      "status": "clear",
+      "reason": "本主题检查1项，其中0项有发现；具体依据见逐项审阅。"
+    },
+    {
+      "area": "outcomes",
+      "status": "clear",
+      "reason": "本主题检查1项，其中0项有发现；具体依据见逐项审阅。"
+    },
+    {
+      "area": "selection",
+      "status": "clear",
+      "reason": "本主题检查3项，其中0项有发现；具体依据见逐项审阅。"
+    },
+    {
+      "area": "consistency",
+      "status": "clear",
+      "reason": "本主题检查2项，其中0项有发现；具体依据见逐项审阅。"
+    },
+    {
+      "area": "expression",
+      "status": "clear",
+      "reason": "本主题检查1项，其中0项有发现；具体依据见逐项审阅。"
+    },
+    {
+      "area": "reading_order",
+      "status": "clear",
+      "reason": "本主题检查1项，其中0项有发现；具体依据见逐项审阅。"
+    }
+  ],
+  "strengths": [
+    {
+      "text": "交付已采纳",
+      "reason": "已有定性结果应保留",
+      "sourceRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "jdSourceRefs": []
+    }
+  ],
+  "suggestions": [
+    {
+      "moduleType": "personal_summary",
+      "moduleId": "current_resume",
+      "fieldPath": "personal_summary",
+      "label": "个人总结",
+      "suggestionId": "suggestion-1",
+      "targetId": "target_1",
+      "dimensionId": "contribution",
+      "dimension": "个人贡献",
+      "severity": "medium",
+      "evidenceState": "not_demonstrated",
+      "sourceRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "jdSourceRefs": [],
+      "problem": "核查范围尚未交代",
+      "impact": "读者难以判断个人责任",
+      "action": "ask",
+      "direction": "请说明核查对象及承担的环节",
+      "needsFacts": true,
+      "editable": true,
+      "diagnosticId": "diag-1",
+      "primaryCriterionId": "contribution_1",
+      "handling": "ask_user",
+      "factGaps": [
+        {
+          "gapId": "diag-1-gap-1",
+          "question": "你实际承担的任务、对象和范围是什么？",
+          "reason": "明确个人责任范围",
+          "sourceRefs": [
+            "src_a83a31320d921b888a48"
+          ],
+          "kind": "task_scope"
+        }
+      ],
+      "recommendationKind": "fix",
+      "strategySteps": [
+        "先确认实际负责的核查对象与范围",
+        "在对应经历中据实说明个人承担的环节"
+      ],
+      "skillAction": null,
+      "evidenceSpanIds": [],
+      "strategyType": "existing_edit",
+      "selectedItems": [],
+      "candidateText": null,
+      "candidateSourceRef": null,
+      "operations": [
+        {
+          "kind": "personal_summary",
+          "moduleId": "current_resume",
+          "fieldPath": "personal_summary",
+          "selectedItems": []
+        }
+      ],
+      "executionRequirements": [
+        "补充必要事实"
+      ],
+      "availableItems": []
+    }
+  ],
+  "requirements": [],
+  "sources": [
+    {
+      "sourceId": "src_a83a31320d921b888a48",
+      "path": "resume",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_f2b4e343a305a985f861",
+      "path": "resume.certifications",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_5f288cb95d016f0917c5",
+      "path": "resume.educations",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_1aab8860d143abd5e7d7",
+      "path": "resume.educations[0]",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_0c4964b2f021582368b9",
+      "path": "resume.educations[0].end_date",
+      "text": "2027-06",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_bf4cbeac54b63364a293",
+      "path": "resume.educations[0].school",
+      "text": "大学",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_ea1366c593be41788f0e",
+      "path": "resume.experiences",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_fed70baccb992c6ad42c",
+      "path": "resume.experiences[0]",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_f5b815ef60b32694f3b5",
+      "path": "resume.experiences[0].id",
+      "text": "exp1",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_7ba59df0022b0e73bcb1",
+      "path": "resume.experiences[0].org",
+      "text": "企业财务部",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_8ccce78605e53f0fc62d",
+      "path": "resume.experiences[0].star",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_278635794b7f7451669f",
+      "path": "resume.experiences[0].star.a",
+      "text": "核查费用",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_7fa639f99b3e93336968",
+      "path": "resume.experiences[0].star.r",
+      "text": "对账清单获采纳",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_ea93afdc6d1d2d3ea64f",
+      "path": "resume.experiences[0].star.s",
+      "text": "",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_d915c293df61cf1968f3",
+      "path": "resume.experiences[0].star.t",
+      "text": "",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_30825399e4f85804c168",
+      "path": "resume.experiences[0].title",
+      "text": "费用审核实习",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_b6c852374b4ecf48e0ba",
+      "path": "resume.personal_summary",
+      "text": "完成费用核查并交付对账清单",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_1a3d58b51155fe448868",
+      "path": "resume.profile",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_456a55b9ff89e0a8ffde",
+      "path": "resume.section_order",
+      "text": "",
+      "kind": "scope"
+    },
+    {
+      "sourceId": "src_f803fdec78e810e94860",
+      "path": "resume.section_order[0]",
+      "text": "work",
+      "kind": "text"
+    },
+    {
+      "sourceId": "src_bbf4f4b41b5d2675ed50",
+      "path": "resume.skills",
+      "text": "",
+      "kind": "scope"
+    }
+  ],
+  "metadata": {
+    "promptVersion": "resume_review_prompt_v7",
+    "rubricVersion": "evidence_rubric_v2",
+    "guideVersion": "early_career_roles_v5",
+    "responseSchemaVersion": "review_json_schema_v4",
+    "inputHash": "15c2e408c70818d7ecd7836bba3e472e6c5b16262737b41160648be2a5ab78c2",
+    "model": "test-double",
+    "provider": "fixture",
+    "transport": "mock",
+    "reasoning": {
+      "geminiThinkingLevel": "low"
+    },
+    "readingVersion": "visible_reading_v1"
+  },
+  "jdMatch": null,
+  "scoreCalculation": {
+    "dimensions": [
+      {
+        "dimensionId": "logic",
+        "levelSum": 9,
+        "weight": 15,
+        "rawScore": 75.0
+      },
+      {
+        "dimensionId": "contribution",
+        "levelSum": 9,
+        "weight": 25,
+        "rawScore": 75.0
+      },
+      {
+        "dimensionId": "readability",
+        "levelSum": 9,
+        "weight": 10,
+        "rawScore": 75.0
+      },
+      {
+        "dimensionId": "completeness",
+        "levelSum": 9,
+        "weight": 15,
+        "rawScore": 75.0
+      },
+      {
+        "dimensionId": "professionalism",
+        "levelSum": 9,
+        "weight": 10,
+        "rawScore": 75.0
+      },
+      {
+        "dimensionId": "outcomes",
+        "levelSum": 9,
+        "weight": 25,
+        "rawScore": 75.0
+      }
+    ],
+    "rawTotal": 75.0,
+    "roundingRule": "round_half_up",
+    "finalScore": 75,
+    "calibrationStatus": "pending_human_validation"
+  },
+  "reviewInventory": [
+    {
+      "checkId": "positioning",
+      "topic": "positioning",
+      "label": "求职方向与职业主线；无方向时明确说明，不能替用户猜测",
+      "scopeRefs": [
+        "src_a83a31320d921b888a48"
+      ]
+    },
+    {
+      "checkId": "education_1",
+      "topic": "selection",
+      "label": "教育：课程相关性、数理/专业基础、GPA与学术亮点的保留和取舍",
+      "scopeRefs": [
+        "src_1aab8860d143abd5e7d7"
+      ]
+    },
+    {
+      "checkId": "academic_evidence",
+      "topic": "capability",
+      "label": "科研与学术亮点：已提及的论文、课题、竞赛是否交代问题、方法、结论与个人贡献；不存在则说明不适用",
+      "scopeRefs": [
+        "src_5f288cb95d016f0917c5",
+        "src_ea1366c593be41788f0e"
+      ]
+    },
+    {
+      "checkId": "experience_1_framing",
+      "topic": "positioning",
+      "label": "本段：场景/研究问题、方案选择与结果能否形成清楚主线；已有痛点分散时建议提炼，而不是说完全没有背景",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ]
+    },
+    {
+      "checkId": "experience_1_contribution",
+      "topic": "contribution",
+      "label": "本段：实际承担对象、具体行动、团队与个人边界",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ]
+    },
+    {
+      "checkId": "experience_1_outcomes",
+      "topic": "outcomes",
+      "label": "本段：区分目的/预期与已发生结果；交付、使用/验收、必要口径与价值，认可研究验证及定性结果",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ]
+    },
+    {
+      "checkId": "experience_1_validation",
+      "topic": "consistency",
+      "label": "本段：指标含义、样本/范围、比较基线或验收反馈是否足以理解；不得忽略原有测量，也不为每段强求数字",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ]
+    },
+    {
+      "checkId": "experience_1_selection",
+      "topic": "selection",
+      "label": "本段：相关性与信息价值，明确保留、前置、压缩或无需修改；短经历不天然无价值",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ]
+    },
+    {
+      "checkId": "awards_credentials",
+      "topic": "selection",
+      "label": "奖项与证书：包含教育、技能及总结中提及的荣誉语言，检查具体性、归类、取舍；不强迫取得未要求的证书",
+      "scopeRefs": [
+        "src_f2b4e343a305a985f861",
+        "src_5f288cb95d016f0917c5",
+        "src_bbf4f4b41b5d2675ed50",
+        "src_b6c852374b4ecf48e0ba"
+      ]
+    },
+    {
+      "checkId": "skills_evidence",
+      "topic": "capability",
+      "label": "技能：分组主次、项目实用证据、基础/了解/熟练等已有边界是否清楚；不把列名当精通，不忽略原本已写的程度",
+      "scopeRefs": [
+        "src_bbf4f4b41b5d2675ed50",
+        "src_ea1366c593be41788f0e"
+      ]
+    },
+    {
+      "checkId": "evidence_verifiability",
+      "topic": "capability",
+      "label": "可验证材料：是否有可安全展示的项目成果、演示或复现说明；研究工程可考虑代码/数据/模型版本与配置，非公开内容可用脱敏说明，不强迫开源",
+      "scopeRefs": [
+        "src_ea1366c593be41788f0e",
+        "src_5f288cb95d016f0917c5",
+        "src_bbf4f4b41b5d2675ed50",
+        "src_1a3d58b51155fe448868"
+      ]
+    },
+    {
+      "checkId": "expression",
+      "topic": "expression",
+      "label": "表达：空泛自评、MBTI、术语和事实边界；不要把熟练夸大为精通",
+      "scopeRefs": [
+        "src_a83a31320d921b888a48"
+      ]
+    },
+    {
+      "checkId": "time_consistency",
+      "topic": "consistency",
+      "label": "必要时间、对象和数值是否矛盾；区分单日期事件、在读毕业计划与持续经历",
+      "scopeRefs": [
+        "src_a83a31320d921b888a48"
+      ]
+    },
+    {
+      "checkId": "reading_order",
+      "topic": "reading_order",
+      "label": "文本阅读顺序与重点；不评字号留白分页，不惩罚技术字段的分布",
+      "scopeRefs": [
+        "src_a83a31320d921b888a48"
+      ]
+    }
+  ],
+  "reviewChecks": [
+    {
+      "checkId": "positioning",
+      "topic": "positioning",
+      "label": "求职方向与职业主线；无方向时明确说明，不能替用户猜测",
+      "scopeRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "status": "findings",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "diagnosticIds": [
+        "diag-1"
+      ]
+    },
+    {
+      "checkId": "education_1",
+      "topic": "selection",
+      "label": "教育：课程相关性、数理/专业基础、GPA与学术亮点的保留和取舍",
+      "scopeRefs": [
+        "src_1aab8860d143abd5e7d7"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_1aab8860d143abd5e7d7"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "academic_evidence",
+      "topic": "capability",
+      "label": "科研与学术亮点：已提及的论文、课题、竞赛是否交代问题、方法、结论与个人贡献；不存在则说明不适用",
+      "scopeRefs": [
+        "src_5f288cb95d016f0917c5",
+        "src_ea1366c593be41788f0e"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_5f288cb95d016f0917c5",
+        "src_ea1366c593be41788f0e"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "experience_1_framing",
+      "topic": "positioning",
+      "label": "本段：场景/研究问题、方案选择与结果能否形成清楚主线；已有痛点分散时建议提炼，而不是说完全没有背景",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "experience_1_contribution",
+      "topic": "contribution",
+      "label": "本段：实际承担对象、具体行动、团队与个人边界",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "experience_1_outcomes",
+      "topic": "outcomes",
+      "label": "本段：区分目的/预期与已发生结果；交付、使用/验收、必要口径与价值，认可研究验证及定性结果",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "experience_1_validation",
+      "topic": "consistency",
+      "label": "本段：指标含义、样本/范围、比较基线或验收反馈是否足以理解；不得忽略原有测量，也不为每段强求数字",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "experience_1_selection",
+      "topic": "selection",
+      "label": "本段：相关性与信息价值，明确保留、前置、压缩或无需修改；短经历不天然无价值",
+      "scopeRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_fed70baccb992c6ad42c"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "awards_credentials",
+      "topic": "selection",
+      "label": "奖项与证书：包含教育、技能及总结中提及的荣誉语言，检查具体性、归类、取舍；不强迫取得未要求的证书",
+      "scopeRefs": [
+        "src_f2b4e343a305a985f861",
+        "src_5f288cb95d016f0917c5",
+        "src_bbf4f4b41b5d2675ed50",
+        "src_b6c852374b4ecf48e0ba"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_f2b4e343a305a985f861",
+        "src_5f288cb95d016f0917c5",
+        "src_bbf4f4b41b5d2675ed50",
+        "src_b6c852374b4ecf48e0ba"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "skills_evidence",
+      "topic": "capability",
+      "label": "技能：分组主次、项目实用证据、基础/了解/熟练等已有边界是否清楚；不把列名当精通，不忽略原本已写的程度",
+      "scopeRefs": [
+        "src_bbf4f4b41b5d2675ed50",
+        "src_ea1366c593be41788f0e"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_bbf4f4b41b5d2675ed50",
+        "src_ea1366c593be41788f0e"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "evidence_verifiability",
+      "topic": "capability",
+      "label": "可验证材料：是否有可安全展示的项目成果、演示或复现说明；研究工程可考虑代码/数据/模型版本与配置，非公开内容可用脱敏说明，不强迫开源",
+      "scopeRefs": [
+        "src_ea1366c593be41788f0e",
+        "src_5f288cb95d016f0917c5",
+        "src_bbf4f4b41b5d2675ed50",
+        "src_1a3d58b51155fe448868"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_ea1366c593be41788f0e",
+        "src_5f288cb95d016f0917c5",
+        "src_bbf4f4b41b5d2675ed50",
+        "src_1a3d58b51155fe448868"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "expression",
+      "topic": "expression",
+      "label": "表达：空泛自评、MBTI、术语和事实边界；不要把熟练夸大为精通",
+      "scopeRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "time_consistency",
+      "topic": "consistency",
+      "label": "必要时间、对象和数值是否矛盾；区分单日期事件、在读毕业计划与持续经历",
+      "scopeRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "diagnosticIds": []
+    },
+    {
+      "checkId": "reading_order",
+      "topic": "reading_order",
+      "label": "文本阅读顺序与重点；不评字号留白分页，不惩罚技术字段的分布",
+      "scopeRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "status": "clear",
+      "reason": "已根据当前内容检查",
+      "sourceRefs": [
+        "src_a83a31320d921b888a48"
+      ],
+      "diagnosticIds": []
+    }
+  ],
+  "expressionPlan": [
+    {
+      "moduleId": "exp1",
+      "retain": {
+        "status": "retain",
+        "reason": "已有具体场景与行动，保留理解所需的内容",
+        "spanIds": [
+          "span_90f2807d5c0f964f4cbe"
+        ]
+      },
+      "compress": {
+        "status": "retain",
+        "reason": "已有具体场景与行动，保留理解所需的内容",
+        "spanIds": [
+          "span_90f2807d5c0f964f4cbe"
+        ]
+      },
+      "lead": {
+        "status": "retain",
+        "reason": "已有具体场景与行动，保留理解所需的内容",
+        "spanIds": [
+          "span_90f2807d5c0f964f4cbe"
+        ]
+      },
+      "readingOrder": [
+        "problem_result",
+        "personal_actions",
+        "validation"
+      ],
+      "diagnosticIds": []
+    }
+  ],
+  "metricReview": [
+    {
+      "moduleId": "exp1",
+      "aspects": [
+        {
+          "aspect": "meaning",
+          "status": "stated",
+          "reason": "依当前经历的结果信息判断",
+          "spanIds": [
+            "span_90f2807d5c0f964f4cbe"
+          ],
+          "diagnosticIds": []
+        },
+        {
+          "aspect": "scope",
+          "status": "stated",
+          "reason": "依当前经历的结果信息判断",
+          "spanIds": [
+            "span_90f2807d5c0f964f4cbe"
+          ],
+          "diagnosticIds": []
+        },
+        {
+          "aspect": "comparison",
+          "status": "stated",
+          "reason": "依当前经历的结果信息判断",
+          "spanIds": [
+            "span_90f2807d5c0f964f4cbe"
+          ],
+          "diagnosticIds": []
+        },
+        {
+          "aspect": "validation",
+          "status": "stated",
+          "reason": "依当前经历的结果信息判断",
+          "spanIds": [
+            "span_90f2807d5c0f964f4cbe"
+          ],
+          "diagnosticIds": []
+        },
+        {
+          "aspect": "conclusion",
+          "status": "stated",
+          "reason": "依当前经历的结果信息判断",
+          "spanIds": [
+            "span_90f2807d5c0f964f4cbe"
+          ],
+          "diagnosticIds": []
+        }
+      ]
+    }
+  ],
+  "evidenceSpans": [
+    {
+      "spanId": "span_0662744ca3e0c95bb3d1",
+      "sourceRef": "src_0c4964b2f021582368b9",
+      "start": 0,
+      "end": 7,
+      "text": "2027-06"
+    },
+    {
+      "spanId": "span_4a8fad8198881ad8f4c9",
+      "sourceRef": "src_bf4cbeac54b63364a293",
+      "start": 0,
+      "end": 2,
+      "text": "大学"
+    },
+    {
+      "spanId": "span_7d96e51bdc0e52f4a50f",
+      "sourceRef": "src_f5b815ef60b32694f3b5",
+      "start": 0,
+      "end": 4,
+      "text": "exp1"
+    },
+    {
+      "spanId": "span_066f86d3756f61ecc0eb",
+      "sourceRef": "src_7ba59df0022b0e73bcb1",
+      "start": 0,
+      "end": 5,
+      "text": "企业财务部"
+    },
+    {
+      "spanId": "span_90f2807d5c0f964f4cbe",
+      "sourceRef": "src_278635794b7f7451669f",
+      "start": 0,
+      "end": 4,
+      "text": "核查费用"
+    },
+    {
+      "spanId": "span_03589c0e1cbbc170c139",
+      "sourceRef": "src_7fa639f99b3e93336968",
+      "start": 0,
+      "end": 7,
+      "text": "对账清单获采纳"
+    },
+    {
+      "spanId": "span_fbcc4203ac17a9764561",
+      "sourceRef": "src_30825399e4f85804c168",
+      "start": 0,
+      "end": 6,
+      "text": "费用审核实习"
+    },
+    {
+      "spanId": "span_a1d5bc0e16ddd20d3931",
+      "sourceRef": "src_b6c852374b4ecf48e0ba",
+      "start": 0,
+      "end": 13,
+      "text": "完成费用核查并交付对账清单"
+    },
+    {
+      "spanId": "span_8b9df90794a27e4dceb0",
+      "sourceRef": "src_f803fdec78e810e94860",
+      "start": 0,
+      "end": 4,
+      "text": "work"
+    }
+  ]
+}

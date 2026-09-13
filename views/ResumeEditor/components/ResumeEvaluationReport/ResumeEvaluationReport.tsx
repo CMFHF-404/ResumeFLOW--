@@ -1,5 +1,6 @@
 import { ResumeScoreReport, ScoreRadar } from './ResumeScoreReport';
-import { normalizeResumeScore } from '../../../../utils/resumeScore.mjs';
+import { normalizeResumeScore, EVIDENCE_SCORE_ENABLED } from '../../../../utils/resumeScore.mjs';
+import { EVIDENCE_DIMENSIONS } from '../../../../utils/evidenceResumeScore.mjs';
 import type { ResumeScoreEvaluation } from '../../../../types/ai';
 import React from 'react';
 import { ListChecks } from 'lucide-react';
@@ -87,7 +88,7 @@ export const ResumeEvaluationReport: React.FC<ResumeEvaluationReportProps> = ({
             <h4 className="text-sm font-bold text-slate-900 dark:text-white">六维简历评分</h4>
             {hasHistoricalScores ? <span className="text-xl font-bold text-emerald-700">{(evaluation as any).overallScore} 分<span className="ml-1 text-[10px]">历史评分</span></span> : <span className="text-xs text-slate-500">待评分</span>}
         </div>
-        <ScoreRadar pending={!hasHistoricalScores} dimensions={hasHistoricalScores ? (evaluation as any).dimensions : EVALUATION_DIMENSIONS.map(dimension => ({dimension, score: 0}))} />
+        <ScoreRadar pending={!hasHistoricalScores} dimensions={hasHistoricalScores ? (evaluation as any).dimensions : (EVIDENCE_SCORE_ENABLED ? EVIDENCE_DIMENSIONS.map(([,name])=>name) : EVALUATION_DIMENSIONS).map(dimension => ({dimension, score: 0}))} />
         <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
             {report?.kind === 'guidance' ? '当前保存的是旧版文字指导，没有六维分数。生成六维评分后，将显示总分、雷达图和可选择的优化模块。'
                 : hasHistoricalScores ? '这是历史数值报告。重新评分后可选择需要优化的模块。' : '评分同时标注可优化模块和改进方向。'}

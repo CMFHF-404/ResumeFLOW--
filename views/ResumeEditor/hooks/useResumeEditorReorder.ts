@@ -21,10 +21,14 @@ type UseResumeEditorReorderParams = {
     experienceItems: ResumeExperienceView[];
     setExperienceItems: Dispatch<SetStateAction<ResumeExperienceView[]>>;
     educations: EducationView[];
+    sourceEducations?: EducationView[];
     setEducations: Dispatch<SetStateAction<EducationView[]>>;
     certifications: CertificationView[];
     setCertifications: Dispatch<SetStateAction<CertificationView[]>>;
     skillGroups: SkillGroupView[];
+    sourceSkillGroups?: SkillGroupView[];
+    skillGroupOrder?: string[];
+    setSkillGroupOrder?: Dispatch<SetStateAction<string[]>>;
     setSkillGroups: Dispatch<SetStateAction<SkillGroupView[]>>;
     sectionOrder: string[];
     setSectionOrder: Dispatch<SetStateAction<string[]>>;
@@ -68,10 +72,14 @@ export const useResumeEditorReorder = ({
     experienceItems,
     setExperienceItems,
     educations,
+    sourceEducations = educations,
     setEducations,
     certifications,
     setCertifications,
     skillGroups,
+    sourceSkillGroups = skillGroups,
+    skillGroupOrder,
+    setSkillGroupOrder,
     setSkillGroups,
     sectionOrder,
     setSectionOrder,
@@ -190,9 +198,11 @@ export const useResumeEditorReorder = ({
     const captureReorderStateSnapshot = () => {
         reorderStateSnapshotRef.current = {
             experienceItems: [...experienceItems],
-            educations: [...educations],
+            // Setters own the source collections, before resume-local overlays.
+            educations: [...sourceEducations],
             certifications: [...certifications],
-            skillGroups: [...skillGroups],
+            skillGroups: [...sourceSkillGroups],
+            skillGroupOrder: skillGroupOrder ? [...skillGroupOrder] : undefined,
             sectionOrder: [...sectionOrder],
         };
     };
@@ -234,7 +244,8 @@ export const useResumeEditorReorder = ({
             setExperienceItems(snapshot.experienceItems);
             setEducations(snapshot.educations);
             setCertifications(snapshot.certifications);
-            setSkillGroups(snapshot.skillGroups);
+            if (setSkillGroupOrder) setSkillGroupOrder(snapshot.skillGroupOrder ?? []);
+            else setSkillGroups(snapshot.skillGroups);
             setSectionOrder(snapshot.sectionOrder);
         }
         clearDragState();
@@ -296,6 +307,15 @@ export const useResumeEditorReorder = ({
             return;
         }
 
+        if (setSkillGroupOrder) {
+            const names = skillGroups.map(group => group.name);
+            const draggedIndex = names.indexOf(dragged.id);
+            const targetIndex = names.indexOf(target.id);
+            if (draggedIndex >= 0 && targetIndex >= 0) {
+                setSkillGroupOrder(moveItemWithDropPosition(names, draggedIndex, targetIndex, position));
+            }
+            return;
+        }
         setSkillGroups((prev) => {
             const draggedIndex = prev.findIndex((group) => group.name === dragged.id);
             const targetIndex = prev.findIndex((group) => group.name === target.id);

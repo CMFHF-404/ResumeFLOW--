@@ -845,6 +845,12 @@ def normalize_resume_evaluation(
     if isinstance(raw, dict) and raw.get("evaluationVersion") == "resume_score_v2":
         from .resume_score import normalize_score
         return normalize_score(raw)
+    if isinstance(raw, dict) and raw.get("evaluationVersion") == "resume_score_v4":
+        from .evidence_rubric_v2 import normalize
+        return normalize(raw)
+    if isinstance(raw, dict) and raw.get("evaluationVersion") == "resume_score_v3":
+        from .evidence_rubric import normalize
+        return normalize(raw)
     if isinstance(raw, dict) and raw.get("evaluationVersion") == "guidance_audit_v1":
         from .guidance_evaluation import normalize_guidance_report
         return normalize_guidance_report(raw)

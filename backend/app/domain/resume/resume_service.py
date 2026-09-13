@@ -152,6 +152,10 @@ def _resume_evaluation_config_projection(config: Any) -> Dict[str, Any]:
     }
     return {
         "profileSyncMode": _value_with_presence(config, "profileSyncMode"),
+        "careerStage": config.get("careerStage", "unspecified"),
+        "skillOverrides": config.get("skillOverrides", {}),
+        "educationOverrides": config.get("educationOverrides", {}),
+        "localSkills": config.get("localSkills", {}),
         "profile": profile_projection,
         "personalSummary": (
             _value_with_presence(config, "personalSummary")

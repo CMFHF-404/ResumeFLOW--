@@ -43,6 +43,7 @@ from .run_service import (
     hash_canonical_json,
 )
 from .schemas import (
+    SIMPLE_POLICIES,
     OptimizationAction,
     OptimizationAnswer,
     OptimizationChange,
@@ -58,6 +59,7 @@ from .schemas import (
     ResumeOptimizationStatus,
 )
 from .safety import preserves_rich_text_structure, verify_plan_changes
+from . import local_actions
 from .state_machine import InvalidOptimizationTransitionError, require_status_transition
 
 
@@ -408,7 +410,7 @@ def _accepted_changes(
         )
 
     plan = _strict_final_plan(run)
-    simple = run.policy_version == "json_structure_v1"
+    simple = run.policy_version in SIMPLE_POLICIES
     if simple:
         from .simple_planner import validate_stored_plan
         validate_stored_plan(run, plan)
@@ -563,7 +565,7 @@ def project_plan_with_current_safety(
     if not actionable:
         return copied
 
-    if run.policy_version == "json_structure_v1":
+    if run.policy_version in SIMPLE_POLICIES:
         from .simple_planner import validate_stored_plan
         return validate_stored_plan(run, copied)
     source_documents = _current_safety_source_documents(run, plan=copied)
@@ -748,6 +750,12 @@ def _canonical_target(
     change: OptimizationChange,
     frozen_links: Mapping[str, _FrozenLink],
 ) -> tuple[str, str]:
+    if change.module_type == OptimizationModuleType.EXPERIENCE_RESTRUCTURE:
+        if change.module_id not in frozen_links or change.field_path!='experience_restructure':raise OptimizationApplyValidationError('Invalid body target')
+        return (f'link:{frozen_links[change.module_id].link_id}','star')
+    if change.module_type in local_actions.CONFIG_KINDS:
+        if change.field_path!=change.module_type:raise OptimizationApplyValidationError('Invalid local action path')
+        return ('config',f'{change.module_type}:{change.module_id}')
     if change.module_type == OptimizationModuleType.EXPERIENCE_STAR:
         if change.field_path not in _STAR_PATHS:
             raise OptimizationApplyValidationError("Unsupported experience path")
@@ -765,6 +773,9 @@ def _canonical_target(
         if change.module_id != "skills" or change.field_path not in _SKILL_PATHS:
             raise OptimizationApplyValidationError("Unsupported skill-order path")
         return ("config", "selection.skillIds")
+    if change.module_type == OptimizationModuleType.SKILL_TEXT:
+        if change.field_path!='skill.text':raise OptimizationApplyValidationError('Unsupported skill text path')
+        return ('config','skillOverrides.'+change.module_id)
     if change.module_type == OptimizationModuleType.SECTION_ORDER:
         if change.module_id != "sections" or change.field_path not in _SECTION_PATHS:
             raise OptimizationApplyValidationError("Unsupported section-order path")
@@ -822,11 +833,43 @@ def build_apply_patch(
             raise OptimizationApplyValidationError(
                 "Accepted changes conflict on the same persisted field"
             )
+        if any(t[0]==target[0] and t[0].startswith('link:') and (t[1]=='star' or target[1]=='star') for t in targets):
+            raise OptimizationApplyValidationError('Whole-body and field edits overlap')
         targets.add(target)
         value = deepcopy(change.targeted_value)
-        if run.policy_version == "json_structure_v1" and isinstance(value, str):
+        if run.policy_version in SIMPLE_POLICIES and isinstance(value, str):
             value = _frontend_sanitized_html(value)
 
+        if change.module_type in local_actions.CONFIG_KINDS:
+            if run.policy_version!='json_structure_v3':raise OptimizationApplyValidationError('New actions require v3 policy')
+            try:local_actions.update_config(next_config,change,snapshot['current_resume'],str(run.id))
+            except ValueError as exc:raise OptimizationApplyStaleError() from exc
+            has_effective_change|=change.before_value!=value
+            continue
+        if change.module_type==OptimizationModuleType.EXPERIENCE_RESTRUCTURE:
+            effective=_frozen_effective_star(snapshot,change.module_id);record=frozen_links[change.module_id];link_id=str(record.link_id)
+            if run.policy_version!='json_structure_v3' or change.before_value!=effective or link_id not in current_link_overrides:raise OptimizationApplyStaleError()
+            original_star=current_link_overrides[link_id].get('star',{})
+            if not isinstance(original_star,Mapping):raise OptimizationApplyValidationError('Invalid current body override')
+            next_stars[link_id]=local_actions.restructured_star(_deep_merge(effective,original_star),value)
+            has_effective_change|=any(next_stars[link_id][k]!=effective[k] for k in 'star')
+            continue
+
+        if change.module_type == OptimizationModuleType.SKILL_TEXT:
+            from .skill_text import value as skill_value
+            frozen=next((s for s in snapshot['current_resume'].get('skills',[]) if s['id']==change.module_id),None)
+            selected=current_resume_config.get('selection',{}).get('skillIds',[s['id'] for s in snapshot['current_resume'].get('skills',[])])
+            if frozen is None or change.module_id not in selected or change.before_value!={k:frozen[k] for k in ('name','category')}:
+                raise OptimizationApplyStaleError()
+            try:value=skill_value(value)
+            except ValueError as exc:raise OptimizationApplyValidationError('Invalid skill text') from exc
+            overrides=deepcopy(next_config.get('skillOverrides',{}))
+            if not isinstance(overrides,dict):raise OptimizationApplyValidationError('Invalid skill overrides')
+            if change.module_id in overrides and overrides[change.module_id]!=change.before_value:raise OptimizationApplyStaleError()
+            overrides[change.module_id]=value
+            next_config['skillOverrides']=overrides
+            has_effective_change|=value!=change.before_value
+            continue
         if change.module_type == OptimizationModuleType.EXPERIENCE_STAR:
             if not isinstance(value, str):
                 raise OptimizationApplyValidationError(
@@ -853,7 +896,7 @@ def build_apply_patch(
                 raise OptimizationApplyValidationError(
                     "Experience change before value no longer matches the frozen snapshot"
                 )
-            if change.field_path == "star.a" and enforce_current_safety and run.policy_version != "json_structure_v1":
+            if change.field_path == "star.a" and enforce_current_safety and run.policy_version not in SIMPLE_POLICIES:
                 value = normalize_action_paragraph_endings(value)
                 if enforce_current_safety and not preserves_rich_text_structure(
                     change.before_value,
@@ -992,7 +1035,10 @@ def build_apply_patch(
     after_has_selection = "selection" in next_config
     before_selection = current_resume_config.get("selection")
     after_selection = next_config.get("selection")
-    if not skills_changed:
+    if run.policy_version=='json_structure_v3':
+        # Every new selection operation is a typed transform validated above.
+        pass
+    elif not skills_changed:
         if (
             before_has_selection != after_has_selection
             or deepcopy(before_selection) != deepcopy(after_selection)
@@ -1265,7 +1311,9 @@ async def _lock_current_selected_resume_links(
     resume: Resume,
     frozen_records: Mapping[str, _FrozenLink],
     applied_config: Any,
+    allow_hidden: bool = False,
 ) -> list[ResumeExperienceLink]:
+    if allow_hidden:return await _lock_frozen_links(session,user_id=user_id,resume=resume,records=frozen_records)
     config = _snapshot_object(applied_config, field_name="applied resume config")
     selection = config.get("selection")
     explicit_master_ids: list[str] | None = None
@@ -1429,11 +1477,17 @@ def _value_presence(mapping: Mapping[str, Any], path: tuple[str, ...]) -> dict[s
 def _touched_config_paths(changes: list[OptimizationChange]) -> dict[str, tuple[str, ...]]:
     result: dict[str, tuple[str, ...]] = {}
     for change in changes:
+        if change.module_type in local_actions.CONFIG_KINDS:
+            result.update(local_actions.config_paths(change.module_type))
+            continue
         if change.module_type == OptimizationModuleType.PERSONAL_SUMMARY:
             result["personalSummary"] = ("personalSummary",)
         elif change.module_type == OptimizationModuleType.SKILLS_ORDER:
             result["selection"] = ("selection",)
             result["selection.skillIds"] = ("selection", "skillIds")
+        elif change.module_type == OptimizationModuleType.SKILL_TEXT:
+            result['skillOverrides']=('skillOverrides',)
+            result['skillOverrides.'+change.module_id]=('skillOverrides',change.module_id)
         elif change.module_type == OptimizationModuleType.SECTION_ORDER:
             result["layout.sectionOrder"] = ("layout", "sectionOrder")
     return result
@@ -1532,7 +1586,7 @@ async def _apply_resume_optimization_compatible(
 
     try:
         run = await _lock_run(session, user_id=user_id, run_id=run_id)
-        if _require_current_policy and run.policy_version != "json_structure_v1":
+        if _require_current_policy and run.policy_version not in SIMPLE_POLICIES:
             raise OptimizationApplyStaleError()
         resume = await _lock_resume(session, user_id=user_id, run=run)
 
@@ -1547,7 +1601,7 @@ async def _apply_resume_optimization_compatible(
             snapshot = _validated_snapshot(run)
             if (
                 snapshot.get("evaluation", {}).get("scoringVersion")
-                not in {"single_pass_v1", _GUIDANCE_SCORING_VERSION}
+                not in {"single_pass_v1", "evidence_rubric_v1", "evidence_rubric_v2", _GUIDANCE_SCORING_VERSION}
             ):
                 raise OptimizationApplyStaleError()
         except OptimizationApplyStaleError:
@@ -1574,7 +1628,7 @@ async def _apply_resume_optimization_compatible(
             raise OptimizationApplyStaleError()
         try:
             _validate_current_report(run, resume, snapshot)
-            if run.policy_version != "json_structure_v1":
+            if run.policy_version not in SIMPLE_POLICIES:
                 await _validate_current_guidance_receipt(user_id=user_id, resume=resume, snapshot=snapshot)
         except OptimizationApplyStaleError:
             await persist_stale()
@@ -1611,6 +1665,25 @@ async def _apply_resume_optimization_compatible(
         current_overrides = {
             str(link.id): deepcopy(link.overrides_json) for link in links
         }
+        if any(c.module_type in local_actions.CONFIG_KINDS for c in changes):
+            try:await local_actions.check_current_sources(session,user_id,resume.config,changes,snapshot['current_resume'])
+            except ValueError as exc:raise OptimizationApplyStaleError() from exc
+        if any(c.module_type==OptimizationModuleType.SKILL_TEXT for c in changes):
+            from ...models import UserSkill, Skill
+            from .skill_text import effective
+            for change in changes:
+                if change.module_type!=OptimizationModuleType.SKILL_TEXT:continue
+                if change.module_id.startswith(local_actions.LOCAL_PREFIX):
+                    item=next((s for s in local_actions.local_skills(resume.config) if s['id']==change.module_id),None)
+                    if item is None:raise OptimizationApplyStaleError()
+                    actual=effective(item,resume.config)
+                    if {k:actual[k] for k in ('name','category')}!=change.before_value:raise OptimizationApplyStaleError()
+                    continue
+                rows=await session.execute(select(UserSkill,Skill).join(Skill,UserSkill.skill_id==Skill.id).where(UserSkill.user_id==user_id,UserSkill.id==uuid.UUID(change.module_id)).with_for_update())
+                pair=rows.first()
+                if pair is None:raise OptimizationApplyStaleError()
+                actual=effective(dict(id=str(pair[0].id),name=pair[1].name,category=pair[1].category or '未分类'),resume.config)
+                if {k:actual[k] for k in ('name','category')}!=change.before_value:raise OptimizationApplyStaleError()
         patch = build_apply_patch(
             run=run,
             accepted_change_ids=set(payload.accepted_change_ids),
@@ -2510,6 +2583,7 @@ def _rebuild_frontend_fact_metadata(
             "end_date",
             "gpa",
             "courses",
+            "notes",
         ):
             add(f"{base}.{field}", item.get(field), already_plain=True)
     for index, raw_item in enumerate(certifications):
@@ -2530,6 +2604,10 @@ def _validate_exact_frontend_evaluation_snapshot(
     *,
     normalized_profile_summary_facts: bool = True,
 ) -> dict[str, Any]:
+    # Old signatures omit the optional stage; preserve their exact shape.
+    stage_keys = {'career_stage'} if isinstance(value, dict) and 'career_stage' in value else set()
+    if stage_keys and value['career_stage'] not in ('unspecified', 'graduate', 'junior'):
+        raise OptimizationRunDataInvalidError('invalid career stage')
     snapshot = _require_exact_keys(
         value,
         {
@@ -2539,7 +2617,7 @@ def _validate_exact_frontend_evaluation_snapshot(
             "experience_atoms",
             "match_candidates",
             "fact_metadata",
-        },
+        } | stage_keys,
         field_name="frontend evaluation snapshot",
     )
     if snapshot.get("evaluation_scope") != "full_resume" or not isinstance(
@@ -2620,7 +2698,7 @@ def _validate_exact_frontend_evaluation_snapshot(
         item = _exact_frontend_item(
             value_item,
             required={"id", "school", "major", "degree"},
-            optional={"start_date", "end_date", "gpa", "courses"},
+            optional={"start_date", "end_date", "gpa", "courses", "notes"},
             field_name=f"frontend resume.educations[{index}]",
         )
         if any(
@@ -3730,7 +3808,7 @@ def _validated_apply_journal(
             raise OptimizationRunDataInvalidError(
                 "touched config after value disagrees with protected content"
             )
-    if "selection" in normalized_config:
+    if "selection.skillIds" in normalized_config:
         parent_before = normalized_config["selection"]["before"]
         parent_after = normalized_config["selection"]["after"]
         expected_before_leaf = (
@@ -3828,7 +3906,43 @@ def _validated_apply_journal(
         field_name="frozen current resume",
     )
     star_changes_by_link: dict[str, dict[str, OptimizationChange]] = {}
+    if run.policy_version=='json_structure_v3':
+        # Reconstruct only touched config parents from the signed before journal.
+        expected=deepcopy(protected_config)
+        for name,path in expected_config_paths.items():_restore_presence(expected,path,normalized_config[name]['before'])
+        for change in changes:
+            if change.module_type in local_actions.CONFIG_KINDS:
+                try:local_actions.update_config(expected,change,frozen_resume,str(run.id))
+                except ValueError as exc:raise OptimizationRunDataInvalidError('Invalid local action journal') from exc
+            elif change.module_type==OptimizationModuleType.SKILLS_ORDER:
+                expected.setdefault('selection',{})['skillIds']=deepcopy(change.targeted_value)
+        for name,path in expected_config_paths.items():
+            if any(name in local_actions.config_paths(c.module_type) for c in changes if c.module_type in local_actions.CONFIG_KINDS):
+                if _value_presence(expected,path)!=normalized_config[name]['after']:raise OptimizationRunDataInvalidError('Local action touched unrelated content')
     for change in changes:
+        if change.module_type in local_actions.CONFIG_KINDS:continue
+        if change.module_type==OptimizationModuleType.EXPERIENCE_RESTRUCTURE:
+            record=frozen_links[change.module_id];frozen_star=_frozen_effective_star(frozen_snapshot,change.module_id)
+            if change.before_value!=frozen_star:raise OptimizationRunDataInvalidError('Body before snapshot mismatch')
+            values = local_actions.restructured_star({}, _frontend_sanitized_html(change.targeted_value))
+            star_changes_by_link[str(record.link_id)]={k:change.model_copy(update={'field_path':'star.'+k,'targeted_value':v}) for k,v in values.items()}
+            prior=normalized_links[str(record.link_id)]['before_star']
+            if prior['present']:
+                if not isinstance(prior['value'], Mapping):
+                    raise OptimizationRunDataInvalidError('Invalid body rollback value')
+                # The signed journal preserves original rich text for exact
+                # restoration; current score snapshots contain its visible text.
+                # Keep exact matching for historical rich-text snapshots, too.
+                for key in ('s', 't', 'a', 'r'):
+                    if key not in prior['value']:
+                        continue
+                    original = prior['value'][key]
+                    if not isinstance(original, str) or (
+                        original != frozen_star[key]
+                        and _frontend_plain_text(original) != frozen_star[key]
+                    ):
+                        raise OptimizationRunDataInvalidError('Body rollback mismatch')
+            continue
         if change.module_type == OptimizationModuleType.PERSONAL_SUMMARY:
             raw_before = normalized_config["personalSummary"]["before"]
             frozen_summary = frozen_resume.get("personal_summary")
@@ -3849,6 +3963,20 @@ def _validated_apply_journal(
                 raise OptimizationRunDataInvalidError(
                     "summary applied value disagrees with the persisted plan"
                 )
+        elif change.module_type == OptimizationModuleType.SKILL_TEXT:
+            entry=normalized_config['skillOverrides.'+change.module_id]
+            parent=normalized_config['skillOverrides']
+            prior=parent['before']['value'] if parent['before']['present'] else {}
+            if not isinstance(prior,dict):raise OptimizationRunDataInvalidError('Invalid prior skill map')
+            expected_map=deepcopy(prior)
+            for accepted in changes:
+                if accepted.module_type==OptimizationModuleType.SKILL_TEXT:expected_map[accepted.module_id]=accepted.targeted_value
+            if parent['after']!={'present':True,'value':expected_map}:raise OptimizationRunDataInvalidError('Unselected skill override changed')
+            if entry['before']!=_value_presence(prior,(change.module_id,)):raise OptimizationRunDataInvalidError('Skill rollback parent mismatch')
+            frozen=next((s for s in frozen_resume.get('skills',[]) if s['id']==change.module_id),None)
+            if frozen is None or change.before_value!={k:frozen[k] for k in ('name','category')} or entry['after']!={'present':True,'value':change.targeted_value}:
+                raise OptimizationRunDataInvalidError('Skill rollback not backed by stored plan')
+            if entry['before']['present'] and entry['before']['value']!=change.before_value:raise OptimizationRunDataInvalidError('Invalid prior skill override')
         elif change.module_type == OptimizationModuleType.SECTION_ORDER:
             raw_before = normalized_config["layout.sectionOrder"]["before"]
             raw_after = normalized_config["layout.sectionOrder"]["after"]
@@ -3883,6 +4011,11 @@ def _validated_apply_journal(
             parent_after = normalized_config["selection"]["after"]
             leaf_before = normalized_config["selection.skillIds"]["before"]
             leaf_after = normalized_config["selection.skillIds"]["after"]
+            if run.policy_version=='json_structure_v3':
+                frozen_order=[s['id'] for s in frozen_resume.get('skills',[])]
+                if change.before_value!=frozen_order or (leaf_before['present'] and leaf_before['value']!=frozen_order) or leaf_after!={'present':True,'value':change.targeted_value}:
+                    raise OptimizationRunDataInvalidError('Skill order journal mismatch')
+                continue
             if parent_before["present"] and isinstance(
                 parent_before["value"],
                 Mapping,
@@ -4122,6 +4255,7 @@ async def _require_applied_content_current_locked(
         resume=resume,
         frozen_records=frozen_links,
         applied_config=journal["protected_content"]["resume_config"],
+            allow_hidden=run.policy_version=="json_structure_v3",
     )
     current_projection = build_applied_content_projection(
         resume=resume,
@@ -4483,6 +4617,7 @@ async def revert_resume_optimization(
             resume=resume,
             frozen_records=frozen_links,
             applied_config=journal["protected_content"]["resume_config"],
+            allow_hidden=run.policy_version=="json_structure_v3",
         )
         current_projection = build_applied_content_projection(
             resume=resume,
@@ -4517,6 +4652,10 @@ async def revert_resume_optimization(
             )
         for name, path in {
             "personalSummary": ("personalSummary",),
+            "skillOverrides": ("skillOverrides",),
+            "educationOverrides": ("educationOverrides",),
+            "localSkills": ("localSkills",),
+            "layout.orders": ("layout", "orders"),
             "layout.sectionOrder": ("layout", "sectionOrder"),
         }.items():
             if name in touched_config:
