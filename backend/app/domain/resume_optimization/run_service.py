@@ -539,6 +539,44 @@ async def get_latest_run_for_resume(
     return _copy_run(run) if run is not None else None
 
 
+async def recover_expired_planning_run(
+    session: AsyncSession,
+    user_id: str,
+    observed: ResumeOptimizationRun,
+) -> tuple[ResumeOptimizationRun, bool]:
+    """Terminalize an abandoned planning lease while serving status reads.
+
+    The caller commits only when changed. Recheck under the same owner-scoped
+    row lock used by worker completion, so a fresh lease or result always wins.
+    """
+    def expired(run: ResumeOptimizationRun) -> bool:
+        return (
+            run.status == ResumeOptimizationStatus.PLANNING.value
+            and not _planning_claim_is_active(
+                run, now=utc_now_aware(),
+                ttl_seconds=_DEFAULT_PLANNING_CLAIM_TTL_SECONDS,
+            )
+        )
+
+    if not expired(observed):
+        return observed, False
+    run = await _require_run_by_id(
+        session, user_id=user_id, run_id=observed.id, for_update=True,
+    )
+    if not expired(run):
+        return _copy_run(run), False
+    run.status = ResumeOptimizationStatus.FAILED.value
+    run.error_json = {
+        "code": "resume_optimization_planning_expired",
+        "message": "优化方案生成已超时，请重新发起优化。",
+        "retryable": True,
+    }
+    run.updated_at = utc_now_aware()
+    session.add(run)
+    await session.flush()
+    return _copy_run(run), True
+
+
 async def lock_run_source_resume(
     session: AsyncSession,
     user_id: str,

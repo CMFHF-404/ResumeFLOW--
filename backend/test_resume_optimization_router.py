@@ -812,10 +812,15 @@ class ResumeOptimizationRouterTests(unittest.IsolatedAsyncioTestCase):
                 run.before_snapshot.pop("evaluation_signature_schema")
                 run.source_snapshot_hash = hash_canonical_json(run.before_snapshot)
                 persisted_before = run.model_dump(mode="python")
-                with patch.object(
-                    router_module,
-                    "get_latest_run_for_resume",
-                    AsyncMock(return_value=run),
+                with (
+                    patch.object(
+                        router_module,
+                        "get_latest_run_for_resume",
+                        AsyncMock(return_value=run),
+                    ),
+                    # This case exercises historical plan projection, not an
+                    # expired worker lease (covered by expired-planning tests).
+                    patch("app.domain.resume_optimization.run_service.utc_now_aware", return_value=BASE_TIME),
                 ):
                     public = await router_module.get_latest_resume_optimization_run(
                         resume_id=str(RESUME_ID),
