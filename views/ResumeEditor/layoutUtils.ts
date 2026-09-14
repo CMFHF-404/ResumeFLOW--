@@ -28,22 +28,26 @@ import {
     SMART_PAGE_TOP_PADDING_STEP_PX,
 } from './constants';
 
-export const buildLineHeightSteps = (start: number, min: number, step: number) => {
+const buildNumericSteps = (start: number, end: number, step: number, decimals: number) => {
     const steps: number[] = [];
-    const direction = start <= min ? 1 : -1;
+    const direction = start <= end ? 1 : -1;
     for (
         let value = start;
-        direction > 0 ? value <= min : value >= min;
+        direction > 0 ? value <= end : value >= end;
         value += step * direction
     ) {
-        steps.push(Number(value.toFixed(2)));
+        steps.push(Number(value.toFixed(decimals)));
     }
-    const normalizedEnd = Number(min.toFixed(2));
+    const normalizedEnd = Number(end.toFixed(decimals));
     if (steps[steps.length - 1] !== normalizedEnd) {
         steps.push(normalizedEnd);
     }
     return steps;
 };
+
+export const buildLineHeightSteps = (start: number, min: number, step: number) => (
+    buildNumericSteps(start, min, step, 2)
+);
 
 export const LINE_HEIGHT_SHRINK_STEPS = buildLineHeightSteps(
     LINE_HEIGHT_DEFAULT,
@@ -57,22 +61,9 @@ const LINE_HEIGHT_OPTION_VALUES = buildLineHeightSteps(
 );
 
 // 字号调整步骤（用于智能一页算法）
-export const buildFontSizeSteps = (start: number, min: number, step: number) => {
-    const steps: number[] = [];
-    const direction = start <= min ? 1 : -1;
-    for (
-        let value = start;
-        direction > 0 ? value <= min : value >= min;
-        value += step * direction
-    ) {
-        steps.push(Number(value.toFixed(1)));
-    }
-    const normalizedEnd = Number(min.toFixed(1));
-    if (steps[steps.length - 1] !== normalizedEnd) {
-        steps.push(normalizedEnd);
-    }
-    return steps;
-};
+export const buildFontSizeSteps = (start: number, min: number, step: number) => (
+    buildNumericSteps(start, min, step, 1)
+);
 
 export const buildDiscreteStepsFromCurrent = <T extends number>(
     steps: readonly T[],
@@ -114,39 +105,13 @@ export type LayoutSnapshot = SmartPageLayout & {
     isSmartPageApplied: boolean;
 };
 
-export const buildTopPaddingSteps = (start: number, min: number, step: number) => {
-    const steps: number[] = [];
-    const direction = start <= min ? 1 : -1;
-    for (
-        let value = start;
-        direction > 0 ? value <= min : value >= min;
-        value += step * direction
-    ) {
-        steps.push(Number(value.toFixed(2)));
-    }
-    const normalizedEnd = Number(min.toFixed(2));
-    if (steps[steps.length - 1] !== normalizedEnd) {
-        steps.push(normalizedEnd);
-    }
-    return steps;
-};
+export const buildTopPaddingSteps = (start: number, min: number, step: number) => (
+    buildNumericSteps(start, min, step, 2)
+);
 
-export const buildItemSpacingSteps = (start: number, min: number, step: number) => {
-    const steps: number[] = [];
-    const direction = start <= min ? 1 : -1;
-    for (
-        let value = start;
-        direction > 0 ? value <= min : value >= min;
-        value += step * direction
-    ) {
-        steps.push(Number(value.toFixed(2)));
-    }
-    const normalizedEnd = Number(min.toFixed(2));
-    if (steps[steps.length - 1] !== normalizedEnd) {
-        steps.push(normalizedEnd);
-    }
-    return steps;
-};
+export const buildItemSpacingSteps = (start: number, min: number, step: number) => (
+    buildNumericSteps(start, min, step, 2)
+);
 
 export const buildReductionStepsFromCurrent = (start: number, min: number, step: number) => {
     if (start <= min) {

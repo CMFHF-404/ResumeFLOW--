@@ -3,7 +3,7 @@ import { RefreshCw, Square } from 'lucide-react';
 import { trackResumeOptimizationCtaView, trackResumeOptimizationCtaClick } from '../../../../utils/analyticsTracker';
 import type { ResumeScoreEvaluation } from '../../../../types/ai';
 import { groupScoreSuggestions, isCurrentScoreVersion } from '../../../../utils/resumeScore.mjs';
-import { EvidenceContext, EvidenceStrengths, EvidenceMethod, CriterionExplanation } from './EvidenceScoreDetails';
+import { EvidenceStrengths } from './EvidenceScoreDetails';
 import { useScoreAnnotations } from './ScoreAnnotations';
 import { ScoreActionList } from './ScoreActionList';
 
@@ -40,6 +40,7 @@ export function ResumeScoreReport({ report, outdated, enabled, busy, canStart, d
   }, [enabled, canStart, outdated, busy]);
   const groups = groupScoreSuggestions(report.suggestions) as [string, ResumeScoreEvaluation['suggestions']][];
   const evidence = report.evaluationVersion === 'resume_score_v3' || report.evaluationVersion === 'resume_score_v4' ? report : null;
+  const unavailableCount = evidence ? evidence.suggestions.filter(s => s.executionBlockReason).length + (evidence.unavailableSuggestionCount ?? 0) : 0;
   const historical = !isCurrentScoreVersion(report);
   const selectionDisabled=historical || outdated || busy || generating;
   const selected=report.suggestions.filter(s=>s.editable&&!s.executionBlockReason&&annotations.selected.includes(s.suggestionId)).map(s=>s.suggestionId);
@@ -56,15 +57,6 @@ export function ResumeScoreReport({ report, outdated, enabled, busy, canStart, d
         <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{row.comment}</p>
       </div>)}
     </div>
-    {evidence&&<>
-      {evidence.dimensions.map(d=><details key={d.dimensionId} className="border-t border-slate-100 text-xs dark:border-slate-800">
-        <summary className="cursor-pointer py-3 font-medium">{d.dimension} · 评分说明</summary>
-        <ul className="space-y-3 pb-3">{d.criteria.map(c=><li key={c.criterionId}>
-          <p className="font-medium">{c.label}：{c.level}/4 档</p><CriterionExplanation criterion={c}/>
-        </li>)}</ul>
-      </details>)}
-      <EvidenceMethod report={evidence}/>
-    </>}
   </>;
   return <section aria-label="六维简历评分" className="space-y-4">
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
@@ -83,21 +75,19 @@ export function ResumeScoreReport({ report, outdated, enabled, busy, canStart, d
       </div>
       {generating && <p role="status" className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">正在生成六维评分…</p>}
       <p className="mt-4 border-l-2 border-emerald-400 pl-3 text-[13px] leading-6 text-slate-600 dark:text-slate-300">{report.summary}</p>
+      {evidence?.reportStatus === 'partial' && <p role="status" className="mt-2 rounded-lg bg-amber-50 p-2 text-xs leading-5 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+        {unavailableCount > 0 ? `${unavailableCount}条修改方案` : '部分修改方案'}未能完整生成，已禁止自动执行；有效评分与方案已保留。
+      </p>}
       {historical&&<p className="mt-2 text-xs text-amber-700">历史评分，请重新评分后再优化；不同版本分数不直接比较。</p>}
-      {evidence&&<EvidenceContext report={evidence}/>}
+      {scoring}
       {error ? <p role="alert" className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>
         : outdated ? <p role="status" className="mt-2 text-xs text-amber-700">简历内容已变化，请重新评分后再选择优化。</p> : null}
-      {!evidence&&scoring}
     </div>
     {evidence?<>
       <ScoreActionList suggestions={report.suggestions} disabled={selectionDisabled}>
         {launch}{disabledReason&&<p className="text-xs text-slate-500">{disabledReason}</p>}
       </ScoreActionList>
       <EvidenceStrengths report={evidence}/>
-      <details className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-700 dark:text-slate-200">六维评分与说明</summary>
-        {scoring}
-      </details>
     </>:<>
       <h5 className="text-sm font-bold text-slate-900 dark:text-white">选择需要优化的模块</h5>
       {!groups.length&&<p className="text-xs text-slate-500">本次未发现需要优化的模块。</p>}
