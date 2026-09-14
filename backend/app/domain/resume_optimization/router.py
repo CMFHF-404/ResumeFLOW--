@@ -63,6 +63,7 @@ from .run_service import (
     OptimizationPlanningClaimLostError,
     OptimizationRunNotFoundError,
     get_latest_run_for_resume,
+    recover_expired_planning_run,
     get_run_for_user,
     transition_run,
 )
@@ -613,6 +614,9 @@ async def get_latest_resume_optimization_run(
         )
         if run is None:
             raise OptimizationRunNotFoundError(resume_id)
+        run, recovered = await recover_expired_planning_run(session, current_user.id, run)
+        if recovered:
+            await session.commit()
         if run.status == ResumeOptimizationStatus.APPLIED.value:
             recheck: AppliedRunResumabilityCheck = await is_applied_run_resumable(
                 session=session,
@@ -798,6 +802,9 @@ async def get_resume_optimization_run(
 ) -> ResumeOptimizationRunRead:
     try:
         run = await get_run_for_user(session, current_user.id, run_id)
+        run, recovered = await recover_expired_planning_run(session, current_user.id, run)
+        if recovered:
+            await session.commit()
         return _run_to_read(run)
     except _DOMAIN_ERROR_TYPES as exc:
         _raise_domain_http_error(exc)
