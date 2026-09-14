@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from app import database
 from app import main
@@ -127,7 +127,10 @@ class RuntimeSchemaTests(unittest.IsolatedAsyncioTestCase):
             side_effect=lambda: calls.append("ensure_runtime_schema")
         )
         close_browser = AsyncMock(side_effect=lambda: calls.append("close_browser"))
-        jwks_cache = SimpleNamespace(start=AsyncMock(), warmup=AsyncMock(), close=AsyncMock())
+        jwks_cache = SimpleNamespace(
+            start=AsyncMock(), warmup=AsyncMock(), close=AsyncMock(),
+            start_refresh_worker=Mock(),
+        )
         payment_worker = type(
             "PaymentWorker",
             (),
@@ -171,6 +174,7 @@ class RuntimeSchemaTests(unittest.IsolatedAsyncioTestCase):
 
         jwks_cache.start.assert_awaited_once()
         jwks_cache.warmup.assert_awaited_once()
+        jwks_cache.start_refresh_worker.assert_called_once()
         jwks_cache.close.assert_awaited_once()
         self.assertEqual(
             calls,
