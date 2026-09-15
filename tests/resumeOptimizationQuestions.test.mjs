@@ -52,7 +52,7 @@ const loadWorkspaceStepResolver = async () => {
     });
     const module = await import(`${pathToFileURL(outputPath).href}?${Math.random()}`);
     return {
-      resolveResumeOptimizationOverviewContinueStep: module.resolveResumeOptimizationOverviewContinueStep,
+      resolveResumeOptimizationActiveStep: module.resolveResumeOptimizationActiveStep,
       cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
     };
   } catch (error) {
@@ -341,14 +341,14 @@ test('zero and oversized question sets fail closed without an empty submission',
   }
 });
 
-test('workspace wires overview, questions, retry, no-question skip, and reached-step navigation', () => {
+test('workspace skips overview and wires questions, retries and reached-step navigation', () => {
   const workspace = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx');
   const rail = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationStepRail.tsx');
 
-  assert.match(workspace, /ResumeOptimizationOverview/);
+  assert.doesNotMatch(workspace, /<ResumeOptimizationOverview|import \{ ResumeOptimizationOverview \}/);
   assert.match(workspace, /ResumeOptimizationQuestions/);
-  assert.match(workspace, /displayStep === 'overview'/);
-  assert.match(workspace, /setDisplayStep\(overviewContinueStep\)/);
+  assert.doesNotMatch(workspace, /displayStep === 'overview'/);
+  assert.match(workspace, /setDisplayStep\(resolvedActiveStep\)/);
   assert.match(workspace, /uiState === 'error'[\s\S]*run\?\.status === 'awaiting_answers'/);
   assert.match(workspace, /uiState !== 'stale'/);
   assert.match(workspace, /canRenderQuestions/);
@@ -368,32 +368,15 @@ test('workspace wires overview, questions, retry, no-question skip, and reached-
   assert.match(rail, /availableSteps/);
 });
 
-test('answered preview-ready runs continue from overview to the plan instead of a read-only question dead end', async () => {
-  const workspace = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx');
-
-  assert.match(workspace, /export const resolveResumeOptimizationOverviewContinueStep/);
-  assert.match(workspace, /runStatus === 'preview_ready'[\s\S]*return 'preview'/);
-  assert.match(workspace, /runStatus === 'awaiting_answers'[\s\S]*hasQuestions \? 'questions' : 'preview'/);
-  assert.match(workspace, /areResumeOptimizationAnswersComplete\(plan\.questions, answerDrafts\)/);
-  assert.match(workspace, /setDisplayStep\(overviewContinueStep\)/);
-  assert.match(workspace, /canRenderQuestions[\s\S]*!canEditQuestions[\s\S]*run\?\.status === 'preview_ready'/);
-  assert.match(workspace, />\s*查看优化方案\s*<\/button>/);
-
-  const { resolveResumeOptimizationOverviewContinueStep, cleanup } = await loadWorkspaceStepResolver();
+test('entry and resumed runs route straight to unanswered questions or preview', async () => {
+  const {resolveResumeOptimizationActiveStep: resolve, cleanup}=await loadWorkspaceStepResolver();
   try {
-    assert.equal(
-      resolveResumeOptimizationOverviewContinueStep('preview_ready', true, true),
-      'preview',
-    );
-    assert.equal(
-      resolveResumeOptimizationOverviewContinueStep('awaiting_answers', true, true),
-      'questions',
-    );
-    assert.equal(
-      resolveResumeOptimizationOverviewContinueStep('planning', true, false),
-      'questions',
-    );
-  } finally {
-    cleanup();
-  }
+    assert.equal(resolve('awaiting_answers','awaiting_answers',true),'questions');
+    assert.equal(resolve('awaiting_answers','awaiting_answers',false),'preview');
+    assert.equal(resolve('preview','preview_ready',false),'preview');
+    assert.equal(resolve('preview','preview_ready',true),'preview');
+    assert.equal(resolve('error','awaiting_answers',true),'questions');
+    assert.equal(resolve('error','preview_ready',true),'preview');
+    assert.equal(resolve('completed','completed',true),'result');
+  } finally {cleanup();}
 });

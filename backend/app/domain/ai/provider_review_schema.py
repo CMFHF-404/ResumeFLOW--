@@ -90,12 +90,14 @@ def openai_review(schema, payload):
     props['operationId']=dict(type='string',enum=list(dict.fromkeys(a['operationId'] for a in actions)),description='必须属于所选objectId的actions；manual仅人工核查，编辑和补充事实选择该对象的编辑操作。')
     props['selectedItems']=choices([x['id'] for a in actions for x in a.get('options',[])])
     props['selectedItems']['description']='只允许所选操作options中的ID。没有options必须[]；课程为保留子集，排序为完整排列。不是正文引用或字段路径。'
-    props['relatedObjectIds']={'anyOf':[choices(experiences),{'type':'null'}], 'description':'仅skill_text关联实际经历，其他操作为null或[]。'}
+    if 'relatedObjectIds' in props:
+        props['relatedObjectIds']={'anyOf':[choices(experiences),{'type':'null'}], 'description':'仅skill_text关联实际经历，其他操作为null或[]。'}
     refs=[ref for o in objects if o['kind']=='experience' for ref in [o.get('labelRef'),*[b['ref'] for b in o.get('body',[])]] if ref]
     props['candidateSourceRef']={'anyOf':[dict(type='string',enum=refs),{'type':'null'}]} if refs else {'type':'null'}
     props['candidateSourceRef']['description']='仅skill_create引用工具名称所在的经历原文；其他操作必须null。'
     props['candidateText']={'anyOf':[dict(type='string',minLength=1,maxLength=120),{'type':'null'}], 'description':'仅skill_create复制原文连续的工具或方法名称；其他操作必须null。严禁参考改写、句子模板或数字占位。'} if refs else {'type':'null'}
-    props['direction']['description']='具体修改策略及理由；只描述如何组织或确认，不写参考改写，不列未知工具或理想答案。'
+    props['direction']['description']=('总体改进建议，简短说明改善方向；不列具体步骤，不判断是否需要补充信息，不提问，不写参考改写。'
+        if 'handling' not in props else '具体修改策略及理由；只描述如何组织或确认，不写参考改写，不列未知工具或理想答案。')
     item['properties']={k:props[k] for k in ['objectId','operationId',*props]}
     result['properties']['suggestions']['description']='主要交付：将点评中需要修改或确认的问题落实为可独立选择的具体方案；只有无须修改且已说明保留理由时才返回空数组。'
     properties=result['properties']

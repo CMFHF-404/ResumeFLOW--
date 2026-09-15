@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { RefreshCw, Square } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown, RefreshCw, Square } from 'lucide-react';
 import { trackResumeOptimizationCtaView, trackResumeOptimizationCtaClick } from '../../../../utils/analyticsTracker';
 import type { ResumeScoreEvaluation } from '../../../../types/ai';
 import { groupScoreSuggestions, isCurrentScoreVersion } from '../../../../utils/resumeScore.mjs';
@@ -26,6 +26,7 @@ export function ResumeScoreReport({ report, outdated, enabled, busy, canStart, d
   disabledReason?: string | null; onStart?: (ids: string[]) => void; onGenerate?: () => void; generating: boolean; onStop?: () => void; error?: string | null;
 }) {
   const annotations = useScoreAnnotations();
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const ctaViewTrackedRef = useRef(false);
   useEffect(() => {
@@ -51,12 +52,18 @@ export function ResumeScoreReport({ report, outdated, enabled, busy, canStart, d
   </button>;
   const scoring=<>
     <ScoreRadar dimensions={report.dimensions}/>
-    <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+    <details className="group border-t border-slate-100 dark:border-slate-800" onToggle={event=>setDetailsExpanded(event.currentTarget.open)}>
+      <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 rounded-md py-2.5 text-xs font-medium text-slate-500 hover:text-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 [&::-webkit-details-marker]:hidden">
+        <ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"/>
+        评分明细
+      </summary>
+    <div className={`divide-y divide-slate-100 dark:divide-slate-800 ${detailsExpanded?'rf-report-panel-enter':''}`}>
       {report.dimensions.map(row=><div key={row.dimension} className="py-3">
         <div className="mb-1 flex items-center justify-between"><h5 className="text-xs font-semibold text-slate-900 dark:text-slate-100">{row.dimension}</h5><span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{row.score} 分</span></div>
         <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{row.comment}</p>
       </div>)}
     </div>
+    </details>
   </>;
   return <section aria-label="六维简历评分" className="space-y-4">
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">

@@ -59,6 +59,55 @@ class JDAnalysisRouterErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(event["retryable"])
         self.assertRegex(event["requestId"], r"^[0-9a-f]{32}$")
 
+    def test_stream_runtime_errors_keep_codes_and_safe_diagnostics(self):
+        from app.domain.ai.runtime_budget import TERMINAL_AI_RUNTIME_ERRORS
+
+        for error_type in TERMINAL_AI_RUNTIME_ERRORS:
+            with self.subTest(error_type=error_type.__name__):
+                with self.assertLogs(ai_router.logger.name, level="WARNING") as logs:
+                    event = ai_router._stream_error_event(
+                        error_type("PRIVATE_PROVIDER_BODY"), request_id="runtime-code-test"
+                    )
+                self.assertEqual(event["code"], error_type.code)
+                self.assertEqual(event["statusCode"], error_type.status_code)
+                self.assertEqual(event["retryable"], error_type.retryable)
+                self.assertEqual(event["message"], error_type.public_message)
+                self.assertEqual(event["requestId"], "runtime-code-test")
+                self.assertIn(error_type.code, "\n".join(logs.output))
+                self.assertNotIn("PRIVATE_PROVIDER_BODY", json.dumps(event) + "\n".join(logs.output))
+
+    async def test_score_deadline_stream_preserves_timeout_and_releases_lease(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        from app.domain.ai import resume_score
+        from app.domain.ai.runtime_budget import AiRuntimeBudget, run_with_total_timeout
+
+        async def stalled_score(*args, **kwargs):
+            await run_with_total_timeout(
+                asyncio.Event().wait(),
+                budget=AiRuntimeBudget(stream_total_timeout_seconds=0.01),
+            )
+
+        lease = SimpleNamespace(release=AsyncMock())
+        with (
+            patch.object(ai_router.billing_service, "begin_ai_request", AsyncMock(return_value=lease)),
+            patch.object(ai_router.billing_service, "ai_billing_context", return_value=nullcontext()),
+            patch.object(resume_score, "generate_score", side_effect=stalled_score) as generate,
+        ):
+            response = await ai_router.resume_evaluation_stream_endpoint(
+                ai_router.ResumeEvaluationRequest(text="Test JD", resume_text="{}"),
+                session=object(), current_user=SimpleNamespace(id="test-user"),
+            )
+            events = [json.loads(chunk) async for chunk in response.body_iterator]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(events[-1]["code"], "ai_runtime_timeout")
+        self.assertEqual(events[-1]["statusCode"], 504)
+        self.assertTrue(events[-1]["retryable"])
+        self.assertFalse(any(event["type"] == "final" for event in events))
+        generate.assert_awaited_once()
+        lease.release.assert_awaited_once()
+
     def test_stream_upstream_gateway_error_is_safe_and_retryable(self):
         response = httpx.Response(
             504,

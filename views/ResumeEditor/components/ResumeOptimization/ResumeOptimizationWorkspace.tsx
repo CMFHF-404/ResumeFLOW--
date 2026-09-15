@@ -8,7 +8,6 @@ import {
     trackResumeOptimizationPreviewView,
     trackResumeOptimizationQuestionsView,
 } from '../../../../utils/analyticsTracker';
-import { ResumeOptimizationOverview } from './ResumeOptimizationOverview';
 import { ResumeOptimizationPreview } from './ResumeOptimizationPreview';
 import { ResumeOptimizationProgress } from './ResumeOptimizationProgress';
 import { ResumeOptimizationQuestions } from './ResumeOptimizationQuestions';
@@ -79,7 +78,7 @@ const resolveStepFromRunStatus = (
     if (['applying', 'applied', 'rescoring', 'completed', 'reverted', 'cancelled'].includes(status ?? '')) {
         return 'result';
     }
-    return 'overview';
+    return hasQuestions ? 'questions' : 'preview';
 };
 
 export const resolveResumeOptimizationActiveStep = (
@@ -95,17 +94,7 @@ export const resolveResumeOptimizationActiveStep = (
     }
     if (uiState === 'preview' || uiState === 'applying') return 'preview';
     if (uiState === 'rescoring' || uiState === 'completed') return 'result';
-    return 'overview';
-};
-
-export const resolveResumeOptimizationOverviewContinueStep = (
-    runStatus: ResumeOptimizationStatus | undefined,
-    hasQuestions: boolean,
-    answersComplete: boolean,
-): ResumeOptimizationStepId => {
-    if (runStatus === 'preview_ready') return 'preview';
-    if (runStatus === 'awaiting_answers') return hasQuestions ? 'questions' : 'preview';
-    return hasQuestions && !answersComplete ? 'questions' : 'preview';
+    return hasQuestions ? 'questions' : 'preview';
 };
 
 const isVisibleFocusable = (element: HTMLElement) => (
@@ -183,15 +172,8 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         && hasQuestions
         && areResumeOptimizationAnswersComplete(plan.questions, answerDrafts)
     );
-    const overviewContinueStep = resolveResumeOptimizationOverviewContinueStep(
-        run?.status,
-        hasQuestions,
-        answersComplete,
-    );
-    const canContinueFromOverview = hasQuestions || hasReviewableChanges;
     const resolvedActiveStep = resolveResumeOptimizationActiveStep(uiState, run?.status, hasQuestions);
     const [displayStep, setDisplayStep] = useState<ResumeOptimizationStepId>(() => resolvedActiveStep);
-    const previousUiStateRef = useRef(uiState);
     const isCloseBlocked = uiState === 'applying' || uiState === 'rescoring';
     const isProgressVisible = ['starting', 'answering', 'applying', 'rescoring'].includes(uiState);
     const canReplaceUnreviewablePlan = run?.status === 'preview_ready'
@@ -201,6 +183,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     const isQuestionRetry = uiState === 'error' && run?.status === 'awaiting_answers';
     const canRenderQuestions = Boolean(
         plan
+        && hasRenderablePlan
         && displayStep === 'questions'
         && uiState !== 'stale',
     );
@@ -220,7 +203,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
         && run?.status === 'preview_ready',
     );
     const visibleSteps = useMemo(() => (
-        (['overview', 'questions', 'preview', 'result'] as ResumeOptimizationStepId[])
+        (['questions', 'preview', 'result'] as ResumeOptimizationStepId[])
             .filter((step) => hasQuestions || step !== 'questions')
     ), [hasQuestions]);
     const availableSteps = useMemo(() => {
@@ -279,11 +262,6 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     const handleStepSelect = useCallback((step: ResumeOptimizationStepId) => {
         if (availableSteps.includes(step)) setDisplayStep(step);
     }, [availableSteps]);
-
-    const handleContinueFromOverview = useCallback(() => {
-        if (!canContinueFromOverview) return;
-        setDisplayStep(overviewContinueStep);
-    }, [canContinueFromOverview, overviewContinueStep]);
 
     const handlePreviousStep = useCallback(() => {
         if (previousStep) setDisplayStep(previousStep);
@@ -348,21 +326,8 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
     }, [getFocusableElements, isCloseBlocked, isSidebarSurface, requestClose]);
 
     useEffect(() => {
-        if (uiState === 'error' || uiState === 'stale') {
-            previousUiStateRef.current = uiState;
-            return;
-        }
-        if (
-            previousUiStateRef.current === 'starting'
-            && (uiState === 'awaiting_answers' || uiState === 'preview')
-        ) {
-            previousUiStateRef.current = uiState;
-            setDisplayStep('overview');
-            return;
-        }
-        previousUiStateRef.current = uiState;
         setDisplayStep(resolvedActiveStep);
-    }, [resolvedActiveStep, uiState]);
+    }, [resolvedActiveStep, uiState, run?.id]);
 
     useEffect(() => {
         if (isSidebarSurface) return;
@@ -516,8 +481,6 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                         <div className={['min-h-0 flex-1 overflow-y-auto p-4', isSidebarSurface ? '' : 'md:p-6'].join(' ')}>
                             {isProgressVisible ? (
                                 <ResumeOptimizationProgress progressText={progressText} />
-                            ) : displayStep === 'overview' && hasRenderablePlan && plan ? (
-                                <ResumeOptimizationOverview plan={plan} moduleOrder={moduleOrder} />
                             ) : canRenderQuestions && plan ? (
                                 <ResumeOptimizationQuestions
                                     questions={plan.questions}
@@ -529,7 +492,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                     onSetAnswer={setAnswer}
                                     onSubmit={submitAnswers}
                                 />
-                            ) : displayStep === 'preview' && plan && uiState !== 'stale' ? (
+                            ) : displayStep === 'preview' && hasRenderablePlan && plan && uiState !== 'stale' ? (
                                 <ResumeOptimizationPreview
                                     resumeId={run.resumeId}
                                     runId={run.id}
@@ -598,19 +561,6 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                             >
                                 {canReplaceUnreviewablePlan ? '重新生成优化方案' : '重试生成方案'}
                             </button>
-                        ) : displayStep === 'overview' && hasRenderablePlan && plan && uiState !== 'stale' ? (
-                            <button
-                                type="button"
-                                disabled={!canContinueFromOverview}
-                                onClick={handleContinueFromOverview}
-                                className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
-                            >
-                                {hasQuestions
-                                    ? '继续补充信息'
-                                    : hasReviewableChanges
-                                        ? '查看优化方案'
-                                        : '请重新生成优化方案'}
-                            </button>
                         ) : canRenderQuestions && canEditQuestions ? (
                             <button
                                 type="submit"
@@ -626,7 +576,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                 onClick={() => setDisplayStep('preview')}
                                 className="min-h-[44px] rounded-xl bg-emerald-600 px-4 text-[12px] font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 motion-reduce:transition-none dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400"
                             >
-                                查看优化方案
+                                查看修改预览
                             </button>
                         ) : displayStep === 'preview' && run?.status === 'preview_ready' && uiState !== 'stale' ? (
                             <button

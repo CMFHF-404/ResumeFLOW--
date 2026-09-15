@@ -198,9 +198,11 @@ async def _generate_evidence_score(text, resume_text, jd_match_percentage=None, 
                             if k in ('reasoning_effort', 'temperature')})
         stage = 'model_response'
         payload = rubric.model_payload(data,text,sources,modules,context) if v4 else dict(resume=resume, assessmentContext=context, sources=sources, modules=modules, jd=text)
-        response_schema = rubric.response_schema(sources,payload.get('reviewInventory', []),modules) if v4 else None
+        response_schema = rubric.generation_response_schema(sources,payload.get('reviewInventory', []),modules) if v4 else None
         server_schema = response_schema
         if v4:
+            metadata['evidenceOutputVersion']=rubric.EVIDENCE_OUTPUT_VERSION
+            metadata['suggestionDetailVersion']=rubric.SUGGESTION_DETAIL_VERSION
             metadata['responseSchemaVersion']=rubric.RESPONSE_SCHEMA_VERSION
             from .provider_review_schema import compact, VERSION as provider_shape_version
             metadata['serverSchemaHash']=hashlib.sha256(json.dumps(response_schema,sort_keys=True,ensure_ascii=False).encode()).hexdigest()

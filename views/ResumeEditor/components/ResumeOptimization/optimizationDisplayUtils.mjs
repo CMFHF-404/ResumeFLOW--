@@ -1560,7 +1560,7 @@ export const resolveResumeOptimizationChoiceDraft = (choice) => {
     : { state: 'answered', value: label };
 };
 
-export const buildResumeOptimizationQuestionChoices = (choices) => {
+export const buildResumeOptimizationQuestionChoices = (choices, questionText = '') => {
   const seenLabels = new Set();
   const resolved = [];
   for (const choice of list(choices)) {
@@ -1574,6 +1574,14 @@ export const buildResumeOptimizationQuestionChoices = (choices) => {
     ) continue;
     seenLabels.add(label);
     resolved.push({ label, draft });
+  }
+  // Existing tasks may predate generated choices. Offer method-level answers
+  // only for research-method questions; never guess counts or outcomes.
+  if (!resolved.length && typeof questionText === 'string'
+    && /调研|问卷|访谈|用户研究/u.test(questionText)
+    && /是否.{0,30}(?:用户|调研|问卷|访谈)|(?:用户调研|问卷|访谈).{0,20}(?:方式|方法|渠道)/u.test(questionText)) {
+    return ['通过问卷收集用户反馈', '通过访谈了解用户需求', '问卷和访谈都做过', '尚未做过这类用户调研']
+      .map(label => ({label, draft: {state: 'answered', value: label}}));
   }
   return resolved;
 };

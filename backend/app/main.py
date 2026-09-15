@@ -70,6 +70,7 @@ async def lifespan(app: FastAPI):
             # Keep the process alive for recovery, but /ready remains 503 so a
             # deployment platform does not route protected traffic to it.
             pass
+        auth_middleware.jwks_cache.start_refresh_worker()
 
     try:
         await payment_expiry_worker.start()
@@ -179,13 +180,8 @@ async def readiness_check():
         )
     if settings.enable_dev_auth_bypass:
         return {"status": "ready"}
-    if not auth_middleware.jwks_cache.is_ready:
-        try:
-            # A failed cold start can recover through readiness probes even
-            # before protected traffic is admitted by the platform.
-            await auth_middleware.jwks_cache.warmup()
-        except auth_middleware.AuthDependencyUnavailable:
-            pass
+    # Key maintenance runs independently. A probe must not wait behind a slow
+    # upstream fetch and exceed the deployment health-check timeout.
     if auth_middleware.jwks_cache.is_ready:
         return {"status": "ready"}
     return JSONResponse(

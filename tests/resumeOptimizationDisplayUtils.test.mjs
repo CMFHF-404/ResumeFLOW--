@@ -1208,6 +1208,16 @@ test('answer completeness accepts four terminal states and fails closed for malf
   ), false);
 });
 
+test('research method questions have neutral fallback answers without inventing outcomes', () => {
+  const choices=buildResumeOptimizationQuestionChoices([], '是否有进行针对目标用户的调研或行为分析？具体收集到了哪些用户反馈？');
+  assert.deepEqual(choices.map(c=>c.label),['通过问卷收集用户反馈','通过访谈了解用户需求','问卷和访谈都做过','尚未做过这类用户调研']);
+  assert.ok(choices.every(c=>c.draft.state==='answered'&&c.draft.value===c.label));
+  assert.deepEqual(buildResumeOptimizationQuestionChoices([], '访谈了多少名用户？'),[]);
+  assert.deepEqual(buildResumeOptimizationQuestionChoices([], '性能提升了多少？'),[]);
+  assert.deepEqual(buildResumeOptimizationQuestionChoices([], '是否实现用户登录？'),[]);
+  assert.equal(buildResumeOptimizationQuestionChoices([{label:'站内反馈',value:'feedback'}], '是否有用户调研？').length,1);
+});
+
 test('question choices submit human labels, map terminal choices, and deduplicate safely', () => {
   assert.deepEqual(
     resolveResumeOptimizationChoiceDraft({ value: 'partial', label: '  负责部分页面  ' }),

@@ -33,7 +33,7 @@ test('workspace shell keeps the existing emerald slate language across desktop a
   assert.match(progress, /aria-live="polite"/);
   assert.match(progress, /motion-reduce:animate-none/);
 
-  for (const label of ['优化方案', '补充信息', '对照确认', '优化结果']) {
+  for (const label of ['补充信息', '对照确认', '优化结果']) {
     assert.match(rail, new RegExp(label));
   }
   assert.match(rail, /hasQuestions[\s\S]*filter/);
@@ -75,7 +75,9 @@ test('workspace keeps stable steps and does not expose low-level source pointers
   assert.match(workspace, /resolveResumeOptimizationActiveStep/);
   assert.match(workspace, /type ResumeOptimizationFlowSlice = ReturnType<typeof useResumeOptimizationFlow>/);
   assert.match(workspace, /const \[displayStep, setDisplayStep\] = useState/);
-  assert.match(workspace, /previousUiStateRef\.current === 'starting'/);
+  assert.match(workspace, /setDisplayStep\(resolvedActiveStep\)/);
+  assert.doesNotMatch(rail, /id: 'overview'/);
+  assert.match(rail, /number: index \+ 1/);
   assert.match(workspace, /activeStep=\{displayStep\}/);
   assert.match(workspace, /uiState === 'error' \|\| uiState === 'stale'/);
   assert.match(workspace, /run\?\.status/);
@@ -106,11 +108,11 @@ test('failed planning runs render the error placeholder instead of an empty plan
   );
   assert.match(
     workspace,
-    /displayStep === 'overview' && hasRenderablePlan && plan/,
+    /displayStep === 'preview' && hasRenderablePlan && plan/,
   );
   assert.match(
     workspace,
-    /displayStep === 'overview' && hasRenderablePlan && plan && uiState !== 'stale'/,
+    /displayStep === 'preview' && hasRenderablePlan && plan && uiState !== 'stale'/,
   );
 });
 
@@ -240,16 +242,12 @@ test('successful revert exits both desktop and mobile optimization surfaces with
   assert.equal((editor.match(/revertRun=\{handleRevertResumeOptimization\}/g) ?? []).length, 2);
 });
 
-test('overview cannot continue when the shared reviewability gate rejects every change', () => {
-  const workspace = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx');
-
-  assert.match(workspace, /plan\?\.changes\.some\(isResumeOptimizationChangeReviewable\)/);
-  assert.match(workspace, /const canContinueFromOverview = hasQuestions \|\| hasReviewableChanges/);
-  assert.match(workspace, /if \(!canContinueFromOverview\) return/);
-  assert.match(workspace, /disabled=\{!canContinueFromOverview\}/);
-  assert.match(workspace, /请重新生成优化方案/);
+test('empty preview retains regeneration instead of an overview step',()=>{
+ const workspace=read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx');
+ assert.match(workspace,/plan\?\.changes\.some\(isResumeOptimizationChangeReviewable\)/);
+ assert.match(workspace,/canReplaceUnreviewablePlan/);
+ assert.doesNotMatch(workspace, /displayStep === 'overview'/);
 });
-
 
 test('finish returns to the resume report and rescore waits for successful close', async () => {
   const editor = read('views/ResumeEditor/index.tsx');

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type ResumeOptimizationStepId = 'overview' | 'questions' | 'preview' | 'result';
+export type ResumeOptimizationStepId = 'questions' | 'preview' | 'result';
 
 type ResumeOptimizationStep = {
     id: ResumeOptimizationStepId;
@@ -9,7 +9,6 @@ type ResumeOptimizationStep = {
 };
 
 const RESUME_OPTIMIZATION_STEPS: ResumeOptimizationStep[] = [
-    { id: 'overview', number: 1, label: '优化方案' },
     { id: 'questions', number: 2, label: '补充信息' },
     { id: 'preview', number: 3, label: '对照确认' },
     { id: 'result', number: 4, label: '优化结果' },
@@ -17,6 +16,7 @@ const RESUME_OPTIMIZATION_STEPS: ResumeOptimizationStep[] = [
 
 export const buildResumeOptimizationSteps = (hasQuestions: boolean) => (
     RESUME_OPTIMIZATION_STEPS.filter((step) => hasQuestions || step.id !== 'questions')
+        .map((step, index) => ({ ...step, number: index + 1 }))
 );
 
 type ResumeOptimizationStepRailProps = {

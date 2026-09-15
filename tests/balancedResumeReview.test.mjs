@@ -1,9 +1,62 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {normalizeResumeScore,scoreModuleKey} from '../utils/resumeScore.mjs';
+import {normalizeResumeScore,scoreModuleKey,sortScoreSuggestionsByPreview} from '../utils/resumeScore.mjs';
+
+test('suggestions follow live preview order, group STAR fields and keep unmatched rows stable',()=>{
+  const rows=[
+    {suggestionId:'result',moduleType:'experience_star',moduleId:'p',fieldPath:'star.r',severity:'high'},
+    {suggestionId:'skill',moduleType:'skill_create',moduleId:'new',fieldPath:'skill_create'},
+    {suggestionId:'summary',moduleType:'personal_summary',moduleId:'current_resume',fieldPath:'personal_summary'},
+    {suggestionId:'action',moduleType:'experience_star',moduleId:'p',fieldPath:'star.a'},
+    {suggestionId:'education',moduleType:'education_notes',moduleId:'e',fieldPath:'education_notes'},
+    {suggestionId:'unknown1',moduleType:'read_only',moduleId:'unknown1'},
+    {suggestionId:'unknown2',moduleType:'read_only',moduleId:'unknown2'},
+  ];
+  const before=structuredClone(rows);
+  const order=['personal_summary:current_resume','education:e','experience_star:p','skills_order:skills'];
+  assert.deepEqual(sortScoreSuggestionsByPreview(rows,order).map(s=>s.suggestionId),['summary','education','action','result','skill','unknown1','unknown2']);
+  assert.equal(sortScoreSuggestionsByPreview(rows,['experience_star:p',...order.slice(0,2),'skills_order:skills'])[0].suggestionId,'action');
+  assert.deepEqual(rows,before);
+});
 
 const fixture=(partial=false)=>JSON.parse(readFileSync(`tests/fixtures/resume-evidence-v4-balanced${partial?'-partial':''}.json`,'utf8'));
+
+test('backend deferred sorting reports are accepted without reclassifying ordering as rewrite',()=>{
+  const reports=JSON.parse(readFileSync('tests/fixtures/resume-diagnostic-only-sorting.json','utf8'));
+  for(const report of reports){
+    assert.deepEqual(normalizeResumeScore(report),report);
+    assert.equal(report.suggestions[0].action,'move_forward');
+    const broken=structuredClone(report);broken.suggestions[0].action='rewrite';
+    assert.equal(normalizeResumeScore(broken),undefined);
+  }
+});
+
+test('diagnostic-only reports defer planning and facts without losing skill scope',()=>{
+  const r=JSON.parse(readFileSync('tests/fixtures/resume-evidence-v4-diagnostic-only.json','utf8'));
+  assert.deepEqual(normalizeResumeScore(r),r);
+  assert.equal(r.suggestions[0].planningDeferred,true);
+  assert.equal(r.suggestions[0].needsFacts,false);
+  assert.deepEqual(r.suggestions[0].strategySteps,[]);
+  assert.deepEqual(r.suggestions[0].factGaps,[]);
+  for(const mutate of [x=>delete x.metadata.suggestionDetailVersion,
+    x=>x.metadata.suggestionDetailVersion='unknown',x=>x.suggestions[0].planningDeferred=false,
+    x=>x.suggestions[0].sourceRefs=['UNKNOWN'],x=>x.suggestions[0].strategySteps=['premature step']]){
+    const bad=structuredClone(r);mutate(bad);assert.equal(normalizeResumeScore(bad),undefined);
+  }
+});
+
+test('new reports omit dimension citations but retain validated operation scopes',()=>{
+  const r=fixture();r.metadata.evidenceOutputVersion='object_binding_only_v1';
+  for(const d of r.dimensions){d.sourceRefs=[];d.jdSourceRefs=[];}
+  assert.deepEqual(normalizeResumeScore(r),r);
+  const bad=structuredClone(r);bad.suggestions[0].sourceRefs=['UNKNOWN'];
+  assert.equal(normalizeResumeScore(bad),undefined);
+  const old=structuredClone(r);delete old.metadata.evidenceOutputVersion;
+  assert.equal(normalizeResumeScore(old),undefined);
+  r.metadata.evidenceOutputVersion='unknown';
+  assert.equal(normalizeResumeScore(r),undefined);
+});
 
 test('balanced report retains 18 grades and six explanations without invented criterion evidence',()=>{
   const r=fixture();assert.deepEqual(normalizeResumeScore(r),r);

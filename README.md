@@ -169,6 +169,7 @@ python -m unittest test_experience_drafts
 - 根目录 `Dockerfile` 构建前端静态产物，并用 Nginx 提供服务。
 - `backend/Dockerfile` 构建 FastAPI 服务，并安装 Playwright Chromium 以支持导出能力；容器在数据库初始化前校验公开前端 Logto 镜像配置，镜像健康检查使用 `http://127.0.0.1:8000/ready`，只有 JWKS 就绪才健康。
 - 在 Zeabur 服务控制台将后端健康检查路径配置为 `/ready`，不要使用仅表示进程存活的 `/health`。此仓库不能代替控制台完成该项配置。
+- 后端启动后独立维护 Logto 公钥缓存：默认提前 60 秒刷新，失败后按冷却时间自动重试，无访问流量时也会恢复。`/ready` 只检查数据库和公钥可用状态，不等待远端公钥拉取；`/health` 仍仅表示进程存活。已有公钥的过期容错期限不变，长期无法连接 Logto 时仍会拒绝认证。
 - 生产部署需要分别配置前端构建参数、后端环境变量、PostgreSQL、Logto 回调地址、Account Center 地址和 CORS 允许来源。
 - `backend/migrate_postgres_best_effort.py` 是手动高影响数据库迁移工具，只有在明确设置 `SOURCE_DATABASE_URL` 和 `TARGET_DATABASE_URL` 后才应运行。
 
