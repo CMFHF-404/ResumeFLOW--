@@ -216,7 +216,9 @@ def _normalize(raw, *, sources=None, modules=None, context=None, metadata=None, 
         weighted += level_sum * weight
         dimensions.append(dict(dimensionId=identity, dimension=name, weight=weight,
                                score=math.floor(raw_score + .5), comment=text(dim.get('comment')), criteria=normalized,
-                               **(evidence_refs(dim) if dimension_evidence else {})))
+                               **(dict(sourceRefs=[],jdSourceRefs=[])
+                                  if dimension_evidence and (metadata or raw.get('metadata',{})).get('evidenceOutputVersion')=='object_binding_only_v1'
+                                  else evidence_refs(dim) if dimension_evidence else {})))
         calculation.append(dict(dimensionId=identity, levelSum=level_sum, weight=weight, rawScore=raw_score))
     coverage = rows(raw.get('reviewCoverage'))
     if coverage_required and (len(coverage) != 8 or {r['area'] for r in coverage} != set(REVIEW_AREAS)):

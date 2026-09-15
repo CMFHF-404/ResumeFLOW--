@@ -1,0 +1,29 @@
+{
+  "status": "success",
+  "score": 63,
+  "dimensions": 6,
+  "suggestions": 6,
+  "blockedSuggestions": 0,
+  "reportStatus": "complete",
+  "elapsedSeconds": 113.702,
+  "calls": 1,
+  "timing": {
+    "providerStartSeconds": 0.055,
+    "providerEndSeconds": 113.673
+  },
+  "usage": [
+    {
+      "prompt_tokens": 5643,
+      "completion_tokens": 3482,
+      "total_tokens": 9125,
+      "provider": "openai_compatible",
+      "model": "gpt-5.6-luna",
+      "request_label": "resume_score_review_single_pass",
+      "status": "success",
+      "metadata": {
+        "transport": "chat_completion"
+      }
+    }
+  ],
+  "codeUnchanged": true
+}

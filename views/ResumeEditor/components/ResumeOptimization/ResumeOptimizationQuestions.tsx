@@ -86,14 +86,14 @@ export const ResumeOptimizationQuestions: React.FC<ResumeOptimizationQuestionsPr
             className="space-y-4"
             noValidate
         >
-            <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
-                <div>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+                <div className="contents">
                     <p className="text-sm font-bold text-slate-950 dark:text-white">补充相关信息</p>
-                    <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                    <p className="col-span-2 row-start-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
                         不确定时可选择“无法回答”；系统不会自动替你提交空缺。
                     </p>
                 </div>
-                <p aria-live="polite" className="rounded-full bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-800 dark:bg-amber-950/35 dark:text-amber-200">
+                <p aria-live="polite" className="col-start-2 row-start-1 justify-self-end whitespace-nowrap rounded-full bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-800 dark:bg-amber-950/35 dark:text-amber-200">
                     {isComplete ? '全部问题已完成' : `还需完成 ${remainingCount} 题`}
                 </p>
             </div>

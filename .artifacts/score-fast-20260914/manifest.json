@@ -1,0 +1,18 @@
+{
+  "startedAt": "2026-09-14T07:53:07.542656+00:00",
+  "model": "gpt-5.6-luna",
+  "thinking": "low",
+  "promptVersion": "resume_review_prompt_v14",
+  "evidenceOutputVersion": "object_binding_only_v1",
+  "timeoutSeconds": null,
+  "requestedServiceTier": "fast",
+  "inputSha256": "b430c6fbe9834f68c00badbea139b43770d3d081a49b3a70da2090b1904f2ce5",
+  "codeHashes": {
+    "backend/app/domain/ai/resume_score.py": "7ee634c5edb35941b767168f398396656086b453b4fc4f481bdebe88c6cb708c",
+    "backend/app/domain/ai/object_review.py": "8f9e54130483abe0b0c5a375682fa136e0dc6f086a760801784bb249169b431f",
+    "backend/app/domain/ai/provider_review_schema.py": "568ec2ebb8ec580cf8ce4d48f2a9236e27896fe090e39634dd57b64050ca10e7",
+    "backend/app/domain/ai/llm_transport.py": "b4b923204eb9f63c88c2bb9c14c5fb016ad2d49076711b5ab543434020a51c99",
+    "backend/app/domain/ai/evidence_rubric.py": "e6bca1336f28cd5b2670613e126086c2d96d9d164cf4c2198ffb7a2e1e2db4a2",
+    "backend/app/domain/ai/lean_review.py": "2b4ef24ceaf98f3b8dcf7a06b75ca5f0802b25373e525d685d78be1e0c6ad5bc"
+  }
+}

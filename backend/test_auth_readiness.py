@@ -76,6 +76,8 @@ class AuthReadinessTests(unittest.IsolatedAsyncioTestCase):
             refresh_attempts=1,
             client=client,
         )
+        with self.assertRaises(main.auth_middleware.AuthDependencyUnavailable):
+            await cache.warmup()
 
         with (
             patch.object(
@@ -134,12 +136,8 @@ class AuthReadinessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, {"status": "ready"})
         self.database_probe.assert_awaited_once_with(log_result=False)
 
-    async def test_readiness_probe_recovers_a_failed_cold_start(self) -> None:
+    async def test_readiness_does_not_wait_for_upstream_recovery(self) -> None:
         cache = main.auth_middleware.jwks_cache
-
-        async def recover() -> None:
-            cache._jwks = {"keys": [{"kid": "known", "kty": "RSA"}]}
-            cache._stale_until = float("inf")
 
         with (
             patch.object(
@@ -149,12 +147,12 @@ class AuthReadinessTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(cache, "_jwks", {}),
             patch.object(cache, "_stale_until", 0),
-            patch.object(cache, "warmup", new=AsyncMock(side_effect=recover)) as warmup,
+            patch.object(cache, "warmup", new=AsyncMock()) as warmup,
         ):
             response = await main.readiness_check()
 
-        self.assertEqual(response, {"status": "ready"})
-        warmup.assert_awaited_once()
+        self.assertEqual(response.status_code, 503)
+        warmup.assert_not_awaited()
 
 
 if __name__ == "__main__":

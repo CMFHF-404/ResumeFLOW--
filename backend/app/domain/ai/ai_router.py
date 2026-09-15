@@ -38,6 +38,7 @@ from . import jd_attachment_service
 from .public_errors import resolve_ai_public_response, translate_ai_public_exception
 from .runtime_budget import (
     BoundedAiRequestBodyRoute,
+    TERMINAL_AI_RUNTIME_ERRORS,
     build_public_stream_error_event,
     create_bounded_event_queue,
     finish_event_queue,
@@ -65,19 +66,33 @@ def _stream_error_event(
     preserve_value_error: bool = False,
 ) -> Dict[str, Any]:
     resolved_request_id = request_id or new_ai_request_id()
-    public_exception = translate_ai_public_exception(exc) or exc
+    # Stream events preserve runtime codes; HTTP translation flattens them
+    # into string details and would hide timeouts behind `http_error`.
+    public_exception = (
+        exc if isinstance(exc, TERMINAL_AI_RUNTIME_ERRORS)
+        else translate_ai_public_exception(exc) or exc
+    )
     known_exceptions = (
         HTTPException,
         NotFoundError,
         ConcurrencyConflictError,
+        *TERMINAL_AI_RUNTIME_ERRORS,
     )
     if preserve_value_error:
         known_exceptions = (*known_exceptions, ValueError)
+    event = build_public_stream_error_event(
+        public_exception,
+        request_id=resolved_request_id,
+        preserve_value_error=preserve_value_error,
+        preserve_exceptions=known_exceptions,
+    )
     if isinstance(public_exception, known_exceptions):
         logger.warning(
-            "AI stream request failed request_id=%s error_type=%s",
+            "AI stream request failed request_id=%s error_type=%s code=%s status_code=%s",
             resolved_request_id,
             type(public_exception).__name__,
+            event["code"],
+            event.get("statusCode"),
         )
     else:
         logger.error(
@@ -85,12 +100,7 @@ def _stream_error_event(
             resolved_request_id,
             type(public_exception).__name__,
         )
-    return build_public_stream_error_event(
-        public_exception,
-        request_id=resolved_request_id,
-        preserve_value_error=preserve_value_error,
-        preserve_exceptions=known_exceptions,
-    )
+    return event
 
 
 class _AiTextBudgetRequest(BaseModel):

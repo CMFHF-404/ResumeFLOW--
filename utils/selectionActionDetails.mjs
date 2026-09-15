@@ -1,5 +1,6 @@
 const kinds=new Set(['education_courses','education_notes','certification_order','certification_hide','experience_order','experience_hide','experience_restructure','skill_create']);
 export function validSelectionActions(report){
+  const deferred=report.metadata?.suggestionDetailVersion==='diagnostic_only_v1';
   const sources=new Map(report.sources.map(s=>[s.sourceId,s]));
   for(const s of report.suggestions){
     if(!['information_selection','evidence_enrichment','technical_restructure','skill_creation','existing_edit'].includes(s.strategyType))return false;
@@ -14,7 +15,7 @@ export function validSelectionActions(report){
     }else if(s.selectedItems.length)return false;
     if(s.moduleType==='skill_create'){
       const source=sources.get(s.candidateSourceRef);
-      if(!source||!source.path.startsWith('resume.experiences[')||typeof s.candidateText!=='string'||!s.candidateText.trim()||!source.text.includes(s.candidateText)||!s.needsFacts||s.handling!=='ask_user')return false;
+      if(!source||!source.path.startsWith('resume.experiences[')||typeof s.candidateText!=='string'||!s.candidateText.trim()||!source.text.includes(s.candidateText)||(!deferred&&(!s.needsFacts||s.handling!=='ask_user')))return false;
     }else if(s.candidateText!==null||s.candidateSourceRef!==null)return false;
   }
   return true;

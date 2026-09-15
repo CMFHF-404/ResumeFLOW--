@@ -28,6 +28,7 @@ export function normalizeEvidenceResumeScore(v) {
   if (v.jdMatch !== null && !score(v.jdMatch)) return undefined;
   const c=v.assessmentContext, m=v.metadata, calc=v.scoreCalculation;
   const objectReview=m?.responseSchemaVersion==='review_json_schema_v6';
+  if(m?.evidenceOutputVersion!==undefined&&(!objectReview||m.evidenceOutputVersion!=='object_binding_only_v1'))return undefined;
   if (!obj(c) || !str(c.targetRole) || !str(c.assessmentAsOf) || !Object.hasOwn(CAREER_STAGES,c.careerStage)
     || !['general','role_reference','jd'].includes(c.mode) || c.inputCapabilities?.structuredText !== true
     || c.inputCapabilities?.pageImages !== false || c.inputCapabilities?.layoutMeasurements !== false
@@ -45,7 +46,9 @@ export function normalizeEvidenceResumeScore(v) {
     const d=v.dimensions.find(d=>d.dimensionId===id);
     if (!d||d.dimension!==name||d.weight!==weight||!score(d.score)||!str(d.comment)||!Array.isArray(d.criteria)||d.criteria.length!==3
       ||!unique(d.criteria.map(x=>x?.criterionId))) return undefined;
-    if(objectReview&&(!refs(d.sourceRefs)||!jdRefs(d.jdSourceRefs)))return undefined;
+    if(objectReview&&(m.evidenceOutputVersion==='object_binding_only_v1'
+      ? !unique(d.sourceRefs)||d.sourceRefs.length!==0||!unique(d.jdSourceRefs)||d.jdSourceRefs.length!==0
+      : !refs(d.sourceRefs)||!jdRefs(d.jdSourceRefs)))return undefined;
     for(let i=1;i<=3;i++) {
       const x=d.criteria.find(x=>x.criterionId===`${id}_${i}`);
       if(!x||!str(x.label)||!Number.isInteger(x.level)||x.level<0||x.level>4||(!objectReview&&(!str(x.reason)||!refs(x.sourceRefs)||!jdRefs(x.jdSourceRefs)))||(objectReview&&('reason' in x||'sourceRefs' in x)))return undefined;
@@ -78,6 +81,8 @@ function normalizeReviewScore(v) {
     ||v.metadata?.readingVersion!==(v.metadata?.responseSchemaVersion===REVIEW_RESPONSE_SCHEMA_VERSION?'object_reading_v1':'visible_reading_v1'))return undefined;
   if(v.metadata.responseSchemaVersion!==undefined&&!['review_json_schema_v1','review_json_schema_v2','review_json_schema_v3','review_json_schema_v4','review_json_schema_v5',REVIEW_RESPONSE_SCHEMA_VERSION].includes(v.metadata.responseSchemaVersion))return undefined;
   const balanced=v.metadata.responseSchemaVersion===REVIEW_RESPONSE_SCHEMA_VERSION;
+  const deferred=v.metadata.suggestionDetailVersion==='diagnostic_only_v1';
+  if(v.metadata.suggestionDetailVersion!==undefined&&(!balanced||!deferred))return undefined;
   const lean=['review_json_schema_v5',REVIEW_RESPONSE_SCHEMA_VERSION].includes(v.metadata.responseSchemaVersion);
   if(balanced&&(!Array.isArray(v.suggestions)||!unique(v.suggestions.map(s=>s?.suggestionId))))return undefined;
   const active=balanced?v.suggestions.filter(s=>s.executionBlockReason===undefined):v.suggestions;
@@ -90,6 +95,8 @@ function normalizeReviewScore(v) {
   const criteria=new Map(v.dimensions.flatMap(d=>d.criteria.map(c=>[c.criterionId,c])));
   const diagnoses=new Map();
   for(const s of active) {
+    if(deferred&&(s.planningDeferred!==true||s.needsFacts!==false||s.factGaps?.length||s.strategySteps?.length||s.impact!==''||s.executionRequirements?.length))return undefined;
+    if(!deferred&&s.planningDeferred!==undefined)return undefined;
     if(['review_json_schema_v4','review_json_schema_v5',REVIEW_RESPONSE_SCHEMA_VERSION].includes(v.metadata.responseSchemaVersion)&&(!['fix','enhance'].includes(s.recommendationKind)||(!lean&&s.recommendationKind==='enhance'&&s.severity!=='low')))return undefined;
     if(v.metadata.responseSchemaVersion||s.strategySteps!==undefined){
       if((balanced&&!s.strategySteps?.length&&(!str(s.direction)||!s.direction.trim()))||!Array.isArray(s.strategySteps)||(!balanced&&s.strategySteps.length<1)||(!lean&&s.strategySteps.length>4)||!s.strategySteps.every(step=>str(step)&&step.trim()))return undefined;
@@ -107,8 +114,8 @@ function normalizeReviewScore(v) {
     if(v.assessmentContext.mode==='general'&&v.contextNotice!=='尚未提供求职方向，本次为通用内容评估')return undefined;
     if(!validSelectionActions({...v,suggestions:active}))return undefined;
     for(const s of active){
-      if(s.moduleType==='skill_text'&&(!['regroup','clarify_existing','add_tool','change_proficiency'].includes(s.skillAction)||s.handling!=='ask_user'||!s.needsFacts||s.fieldPath!=='skill.text'||!s.factGaps.some(g=>g.kind==='skill_confirmation')))return undefined;
-      if(s.moduleType==='skill_create'&&!s.factGaps.some(g=>g.kind==='skill_confirmation'))return undefined;
+      if(s.moduleType==='skill_text'&&(!['regroup','clarify_existing','add_tool','change_proficiency'].includes(s.skillAction)||s.fieldPath!=='skill.text'||(!deferred&&(s.handling!=='ask_user'||!s.needsFacts||!s.factGaps.some(g=>g.kind==='skill_confirmation')))))return undefined;
+      if(!deferred&&s.moduleType==='skill_create'&&!s.factGaps.some(g=>g.kind==='skill_confirmation'))return undefined;
     }
     return {...v,dimensions:base.dimensions};
   }

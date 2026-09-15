@@ -76,3 +76,7 @@ venv.bak/
 
 # Local resume evidence QA captures and author-provided calibration data.
 /.artifacts/evidence-*/
+
+# Temporary bundled UI previews.
+/.artifacts/diagnostic-preview/
+/.artifacts/optimization-entry-preview/

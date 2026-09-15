@@ -167,6 +167,7 @@ export type ResumeScoreSuggestion = {
   diagnosticId?: string; primaryCriterionId?: string; handling?: 'organize' | 'ask_user' | 'manual_review';
   factGaps?: {gapId: string; kind?: string; question: string; reason: string; sourceRefs: string[]}[];
   strategySteps?: string[];
+  planningDeferred?: boolean;
   recommendationKind?: 'fix' | 'enhance';
   skillAction?: 'reorder'|'regroup'|'clarify_existing'|'add_tool'|'change_proficiency'|null;
   evidenceSpanIds?: string[];

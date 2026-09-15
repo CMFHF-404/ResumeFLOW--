@@ -1,0 +1,60 @@
+[
+  {
+    "type": "ResumeEvaluationIntegrityError",
+    "reason": "resume_evaluation_integrity_failed: 评分 JSON、来源引用或必要字段无效，请重试。",
+    "frames": [
+      {
+        "file": "<stdin>",
+        "line": 9
+      },
+      {
+        "file": "resume_score.py",
+        "line": 137
+      },
+      {
+        "file": "runtime_budget.py",
+        "line": 259
+      },
+      {
+        "file": "resume_score.py",
+        "line": 239
+      }
+    ]
+  },
+  {
+    "type": "ValueError",
+    "reason": "invalid evidence report structure",
+    "frames": [
+      {
+        "file": "resume_score.py",
+        "line": 227
+      },
+      {
+        "file": "object_review.py",
+        "line": 168
+      },
+      {
+        "file": "lean_review.py",
+        "line": 152
+      },
+      {
+        "file": "evidence_rubric.py",
+        "line": 148
+      }
+    ]
+  },
+  {
+    "type": "KeyError",
+    "reason": "'logic'",
+    "frames": [
+      {
+        "file": "evidence_rubric.py",
+        "line": 146
+      },
+      {
+        "file": "evidence_rubric.py",
+        "line": 199
+      }
+    ]
+  }
+]

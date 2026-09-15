@@ -56,3 +56,46 @@ export function groupScoreSuggestions(suggestions) {
   }
   return [...groups.entries()];
 }
+
+export function sortScoreSuggestionsByPreview(suggestions, moduleOrder = []) {
+  const rank = new Map(moduleOrder.map((key, index) => [key, index]));
+  const keyFor = row => ['education_courses','education_notes'].includes(row.moduleType)
+    ? `education:${row.moduleId}` : row.moduleType === 'certification_hide'
+      ? `certification:${row.moduleId}` : row.moduleType === 'certification_order'
+        ? 'read_only:certifications' : row.moduleType === 'experience_order'
+          ? `experience_order:${row.moduleId}` : scoreModuleKey(row);
+  const fieldRank = row => ({'star.s':1,'star.t':2,'star.a':3,'star.r':4}[row.fieldPath] ?? 0);
+  return suggestions.map((row,index)=>({row,index})).sort((a,b)=>
+    (rank.get(keyFor(a.row)) ?? Number.MAX_SAFE_INTEGER) - (rank.get(keyFor(b.row)) ?? Number.MAX_SAFE_INTEGER)
+    || (keyFor(a.row)===keyFor(b.row) ? fieldRank(a.row)-fieldRank(b.row) : 0)
+    || a.index-b.index).map(({row})=>row);
+}
+
+// Keep these relationships aligned with simple_planner.targets on the server.
+export function scoreSuggestionsConflict(a, b) {
+  const sameTarget = a.moduleType === b.moduleType && a.moduleId === b.moduleId && a.fieldPath === b.fieldPath;
+  const localKinds = ['education_courses', 'education_notes', 'certification_order', 'certification_hide',
+    'experience_order', 'experience_hide', 'experience_restructure', 'skill_create'];
+  if (sameTarget) {
+    return localKinds.includes(a.moduleType)
+      && JSON.stringify(a.selectedItems ?? []) !== JSON.stringify(b.selectedItems ?? []);
+  }
+  const experienceKinds = ['experience_star', 'experience_restructure', 'experience_hide'];
+  if (a.moduleId === b.moduleId && experienceKinds.includes(a.moduleType) && experienceKinds.includes(b.moduleType)) {
+    return a.moduleType !== 'experience_star' || b.moduleType !== 'experience_star';
+  }
+  return (a.moduleType === 'skill_create' && b.moduleType === 'skills_order')
+    || (b.moduleType === 'skill_create' && a.moduleType === 'skills_order');
+}
+
+export function getCompatibleScoreSuggestionAdditions(suggestions, selectedIds) {
+  const executable = suggestions.filter(row => row.editable && !row.executionBlockReason);
+  const chosen = executable.filter(row => selectedIds.includes(row.suggestionId));
+  const additions = [];
+  for (const row of executable) {
+    if (selectedIds.includes(row.suggestionId) || chosen.some(other => scoreSuggestionsConflict(row, other))) continue;
+    chosen.push(row);
+    additions.push(row.suggestionId);
+  }
+  return additions;
+}

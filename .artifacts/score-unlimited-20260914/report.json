@@ -1,0 +1,1452 @@
+{
+  "resumeEvaluation": {
+    "evaluationVersion": "resume_score_v4",
+    "scoringVersion": "evidence_rubric_v2",
+    "evaluationScope": "full_resume",
+    "summary": "候选人是本科在读，具备产品助理实习和多个AI产品/独立开发项目经验，优势集中在复杂业务建模、PRD与原型、AIGC工作流和独立落地。与目标AI陪伴产品岗位的主要匹配点是AI产品实践、互动叙事和产品交付；主要短板是AI角色/对话/记忆测试、用户研究、数据分析验证及具体原型工具未充分证明。优先核实独⽴开发转化率指标来源、独⽴开发的AI互动体验细节，以及每周5天实习安排。",
+    "focusRationale": "重点审查独⽴开发和独⽴开发，是因为目标岗位直接要求AI产品设计、互动体验和AI能力探索；同时审查产品助理，是因为其最能证明PRD、跨团队推进、验收和上线能力。",
+    "contextNotice": "本次评估基于结构化文本，未提供页面图片或版式测量信息，因此不评价视觉排版、间距和实际分页效果。",
+    "assessmentContext": {
+      "targetRole": "",
+      "careerStage": "unspecified",
+      "mode": "jd",
+      "assessmentAsOf": "2026-09-14",
+      "inputCapabilities": {
+        "structuredText": true,
+        "pageImages": false,
+        "layoutMeasurements": false
+      }
+    },
+    "dimensions": [
+      {
+        "dimensionId": "logic",
+        "dimension": "逻辑清晰",
+        "weight": 15,
+        "score": 67,
+        "comment": "具备复杂业务拆解和产品架构设计能力，但部分方法与验证过程未展开。",
+        "criteria": [
+          {
+            "criterionId": "logic_1",
+            "label": "主线可辨",
+            "level": 3
+          },
+          {
+            "criterionId": "logic_2",
+            "label": "重点顺序合理",
+            "level": 3
+          },
+          {
+            "criterionId": "logic_3",
+            "label": "内容取舍有效",
+            "level": 2
+          }
+        ],
+        "sourceRefs": [],
+        "jdSourceRefs": []
+      },
+      {
+        "dimensionId": "contribution",
+        "dimension": "个人贡献",
+        "weight": 25,
+        "score": 67,
+        "comment": "产品助理、独⽴开发、独⽴开发均有较明确的个人负责事项；产品助理的跨团队协作边界和独⽴开发的实际用户影响仍需确认。",
+        "criteria": [
+          {
+            "criterionId": "contribution_1",
+            "label": "承担任务清楚",
+            "level": 3
+          },
+          {
+            "criterionId": "contribution_2",
+            "label": "具体行动明确",
+            "level": 3
+          },
+          {
+            "criterionId": "contribution_3",
+            "label": "个人与团队边界清楚",
+            "level": 2
+          }
+        ],
+        "sourceRefs": [],
+        "jdSourceRefs": []
+      },
+      {
+        "dimensionId": "readability",
+        "dimension": "内容可读",
+        "weight": 10,
+        "score": 67,
+        "comment": "STAR结构清晰，结果较突出；技能区和关键指标口径仍需进一步整理。",
+        "criteria": [
+          {
+            "criterionId": "readability_1",
+            "label": "句意易懂",
+            "level": 3
+          },
+          {
+            "criterionId": "readability_2",
+            "label": "信息紧凑",
+            "level": 3
+          },
+          {
+            "criterionId": "readability_3",
+            "label": "指代与文本组织清楚",
+            "level": 2
+          }
+        ],
+        "sourceRefs": [],
+        "jdSourceRefs": []
+      },
+      {
+        "dimensionId": "completeness",
+        "dimension": "内容完整",
+        "weight": 15,
+        "score": 58,
+        "comment": "AI产品、PRD和项目交付证据较完整，但用户研究、数据分析、AI体验测试和工具熟练度存在缺口。",
+        "criteria": [
+          {
+            "criterionId": "completeness_1",
+            "label": "经历背景可识别",
+            "level": 3
+          },
+          {
+            "criterionId": "completeness_2",
+            "label": "必要时间信息清楚",
+            "level": 2
+          },
+          {
+            "criterionId": "completeness_3",
+            "label": "具备理解所需上下文",
+            "level": 2
+          }
+        ],
+        "sourceRefs": [],
+        "jdSourceRefs": []
+      },
+      {
+        "dimensionId": "professionalism",
+        "dimension": "专业表达",
+        "weight": 10,
+        "score": 67,
+        "comment": "整体呈现偏产品与AI实践，建议统一中英文术语、确认项目链接和指标来源。",
+        "criteria": [
+          {
+            "criterionId": "professionalism_1",
+            "label": "用词准确",
+            "level": 3
+          },
+          {
+            "criterionId": "professionalism_2",
+            "label": "陈述具体",
+            "level": 3
+          },
+          {
+            "criterionId": "professionalism_3",
+            "label": "术语与实际工作对应",
+            "level": 2
+          }
+        ],
+        "sourceRefs": [],
+        "jdSourceRefs": []
+      },
+      {
+        "dimensionId": "outcomes",
+        "dimension": "成果证据",
+        "weight": 25,
+        "score": 58,
+        "comment": "独⽴开发、独⽴开发有曝光、收益和效率结果；产品助理结果偏定性，独⽴开发总结中的转化率需要与正文核验。",
+        "criteria": [
+          {
+            "criterionId": "outcomes_1",
+            "label": "交付或结果明确",
+            "level": 3
+          },
+          {
+            "criterionId": "outcomes_2",
+            "label": "应用或效果可辨",
+            "level": 2
+          },
+          {
+            "criterionId": "outcomes_3",
+            "label": "结果与行动及必要口径对应",
+            "level": 2
+          }
+        ],
+        "sourceRefs": [],
+        "jdSourceRefs": []
+      }
+    ],
+    "overallScore": 63,
+    "overallLevel": "基本可用",
+    "reviewCoverage": [],
+    "strengths": [
+      {
+        "text": "具备从复杂业务问题到产品方案落地的完整实践。",
+        "reason": "产品助理覆盖业务痛点、模块设计、原型PRD、技术评审、走查和生产交付。",
+        "sourceRefs": [
+          "src_ea93afdc6d1d2d3ea64f",
+          "src_d915c293df61cf1968f3",
+          "src_278635794b7f7451669f",
+          "src_7fa639f99b3e93336968"
+        ],
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ]
+      },
+      {
+        "text": "有较强的AI产品和AIGC实践意识。",
+        "reason": "独⽴开发涉及AI原生互动叙事工作流，独⽴开发涉及Prompt、模型分析、Agent和自动化简历生成。",
+        "sourceRefs": [
+          "src_368ef93bf9569311bdfb",
+          "src_8f91f5335bcd9244698f"
+        ],
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ]
+      },
+      {
+        "text": "能够用结果指标表达部分项目价值。",
+        "reason": "独⽴开发提供10W+曝光和1W+人民币毛利，独⽴开发提供95%以上效率提升及流程耗时缩短。",
+        "sourceRefs": [
+          "src_6d599530e99e846f3f03",
+          "src_cd47daf5346e25ecc412"
+        ],
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ]
+      }
+    ],
+    "suggestions": [
+      {
+        "moduleType": "experience_star",
+        "moduleId": "2f260674-8382-4d4a-a06f-c87fecf2302c",
+        "fieldPath": "star.a",
+        "label": "第2段经历 · 独⽴开发 · 行动",
+        "suggestionId": "suggestion-1",
+        "targetId": "target_10",
+        "dimensionId": "contribution",
+        "dimension": "个人贡献",
+        "severity": "medium",
+        "evidenceState": "stated",
+        "sourceRefs": [
+          "src_368ef93bf9569311bdfb"
+        ],
+        "jdSourceRefs": [],
+        "problem": "项目体现了AIGC工作流、模型与Prompt实践，但与目标岗位的AI角色、记忆、情绪、剧情和互动体验优化之间的对应关系尚未被明确呈现。",
+        "impact": "招聘方难以快速判断该项目是否能迁移到AI陪伴类产品的核心体验设计。",
+        "action": "ask",
+        "direction": "先确认「独⽴开发」中尚未明确的事实，再依据确认内容修改本项；已提供的事实无需重填，不确定或跳过时保留原文。",
+        "needsFacts": true,
+        "editable": true,
+        "diagnosticId": "diag-1",
+        "primaryCriterionId": "contribution_2",
+        "handling": "ask_user",
+        "recommendationKind": "enhance",
+        "strategySteps": [
+          "「独⽴开发 · 独⽴互动叙事 RPG 游戏」：目前实际研究的问题是什么，与已有项目或方法有什么联系？",
+          "「独⽴开发 · 独⽴互动叙事 RPG 游戏」：交付后由谁使用或验收，是否有进一步反馈？请沿用简历已写明的使用事实，只补充尚未交代的反馈或范围。"
+        ],
+        "skillAction": null,
+        "factGaps": [
+          {
+            "gapId": "diag-1-gap-1",
+            "kind": "research_focus",
+            "question": "「独⽴开发 · 独⽴互动叙事 RPG 游戏」：目前实际研究的问题是什么，与已有项目或方法有什么联系？",
+            "reason": "缺少AI角色、对话、记忆、情绪或剧情体验的具体设计与测试事实。",
+            "sourceRefs": [
+              "src_368ef93bf9569311bdfb"
+            ]
+          },
+          {
+            "gapId": "diag-1-gap-2",
+            "kind": "delivery_feedback",
+            "question": "「独⽴开发 · 独⽴互动叙事 RPG 游戏」：交付后由谁使用或验收，是否有进一步反馈？请沿用简历已写明的使用事实，只补充尚未交代的反馈或范围。",
+            "reason": "仅提到社区数据和用户反馈，未说明反馈样本、问题类型及具体迭代结果。",
+            "sourceRefs": [
+              "src_368ef93bf9569311bdfb"
+            ]
+          }
+        ],
+        "strategyType": "evidence_enrichment",
+        "selectedItems": [],
+        "candidateText": null,
+        "candidateSourceRef": null,
+        "operations": [
+          {
+            "kind": "experience_star",
+            "moduleId": "2f260674-8382-4d4a-a06f-c87fecf2302c",
+            "fieldPath": "star.a",
+            "selectedItems": []
+          }
+        ],
+        "executionRequirements": [
+          "补充必要事实"
+        ],
+        "availableItems": [],
+        "objectId": "E2",
+        "operationId": "star.a",
+        "relatedObjectIds": [],
+        "skillFocus": "usage"
+      },
+      {
+        "moduleType": "experience_star",
+        "moduleId": "b8234e36-3ffa-40f8-9ce9-805eba899fc6",
+        "fieldPath": "star.a",
+        "label": "第3段经历 · 独⽴开发 · 行动",
+        "suggestionId": "suggestion-2",
+        "targetId": "target_14",
+        "dimensionId": "outcomes",
+        "dimension": "成果证据",
+        "severity": "medium",
+        "evidenceState": "stated",
+        "sourceRefs": [
+          "src_8f91f5335bcd9244698f"
+        ],
+        "jdSourceRefs": [],
+        "problem": "项目有简历组装效率和流程耗时结果，但缺少登录转化率从31%提升至50%的结果来源，且AI评价、Prompt和Agent功能的验证方式不够清晰。",
+        "impact": "总结中的核心业务成果无法与项目正文直接核验，也难以体现数据分析、用户反馈和持续验证能力。",
+        "action": "ask",
+        "direction": "先确认「独⽴开发」中尚未明确的事实，再依据确认内容修改本项；已提供的事实无需重填，不确定或跳过时保留原文。",
+        "needsFacts": true,
+        "editable": true,
+        "diagnosticId": "diag-2",
+        "primaryCriterionId": "outcomes_2",
+        "handling": "ask_user",
+        "recommendationKind": "fix",
+        "strategySteps": [
+          "「独⽴开发 · 原⼦简历」：请只补充尚未说明的指标含义、统计范围、计算口径和比较基准。已提供的口径无需重填。",
+          "「独⽴开发 · 原⼦简历」：这项工作或结果经过了什么复核、验收或验证？请补充尚未说明的流程、范围和比较条件；已明确未做的验证无需重复确认。"
+        ],
+        "skillAction": null,
+        "factGaps": [
+          {
+            "gapId": "diag-2-gap-1",
+            "kind": "metric_definition",
+            "question": "「独⽴开发 · 原⼦简历」：请只补充尚未说明的指标含义、统计范围、计算口径和比较基准。已提供的口径无需重填。",
+            "reason": "31%至50%的登录转化率未出现在当前项目正文，且缺少指标口径和对照范围。",
+            "sourceRefs": [
+              "src_8f91f5335bcd9244698f"
+            ]
+          },
+          {
+            "gapId": "diag-2-gap-2",
+            "kind": "validation_setup",
+            "question": "「独⽴开发 · 原⼦简历」：这项工作或结果经过了什么复核、验收或验证？请补充尚未说明的流程、范围和比较条件；已明确未做的验证无需重复确认。",
+            "reason": "未说明简历匹配度评分、润色建议和Agent输出质量的验证方式。",
+            "sourceRefs": [
+              "src_8f91f5335bcd9244698f"
+            ]
+          }
+        ],
+        "strategyType": "evidence_enrichment",
+        "selectedItems": [],
+        "candidateText": null,
+        "candidateSourceRef": null,
+        "operations": [
+          {
+            "kind": "experience_star",
+            "moduleId": "b8234e36-3ffa-40f8-9ce9-805eba899fc6",
+            "fieldPath": "star.a",
+            "selectedItems": []
+          }
+        ],
+        "executionRequirements": [
+          "补充必要事实"
+        ],
+        "availableItems": [],
+        "objectId": "E3",
+        "operationId": "star.a",
+        "relatedObjectIds": [],
+        "skillFocus": "usage"
+      },
+      {
+        "moduleType": "experience_restructure",
+        "moduleId": "61c8c5f1-5ac7-4cdf-abb0-8bd03ab96c8e",
+        "fieldPath": "experience_restructure",
+        "label": "产品助理 · 正文重排",
+        "suggestionId": "suggestion-3",
+        "targetId": "action_022c2fead2068e31",
+        "dimensionId": "logic",
+        "dimension": "逻辑清晰",
+        "severity": "low",
+        "evidenceState": "stated",
+        "sourceRefs": [
+          "src_fed70baccb992c6ad42c"
+        ],
+        "jdSourceRefs": [],
+        "problem": "经历具备需求分析、PRD、原型、研发跟进和上线验收证据，但行动段落较偏业务与技术架构，用户调研、竞品分析和数据验证的证据不足。",
+        "impact": "岗位强调从用户需求到上线后的体验优化，当前内容对完整产品闭环的呈现不够充分。",
+        "action": "ask",
+        "direction": "先确认「产品助理」中尚未明确的事实，再依据确认内容修改本项；已提供的事实无需重填，不确定或跳过时保留原文。",
+        "needsFacts": true,
+        "editable": true,
+        "diagnosticId": "diag-3",
+        "primaryCriterionId": "logic_2",
+        "handling": "ask_user",
+        "recommendationKind": "enhance",
+        "strategySteps": [
+          "「产品助理 · 小挣攻城狮（杭州）网络科技有限公司」：请沿用已写明的角色和分工，只补充尚不清楚的本人负责范围、交付及协作边界。",
+          "「产品助理 · 小挣攻城狮（杭州）网络科技有限公司」：目前实际研究的问题是什么，与已有项目或方法有什么联系？",
+          "「产品助理 · 小挣攻城狮（杭州）网络科技有限公司」：测量的是哪项工作或结果？请补充尚未说明的统计范围、比较基准和测量或复核方式；没有记录的部分可以保留未知。"
+        ],
+        "skillAction": null,
+        "factGaps": [
+          {
+            "gapId": "diag-3-gap-1",
+            "kind": "task_scope",
+            "question": "「产品助理 · 小挣攻城狮（杭州）网络科技有限公司」：请沿用已写明的角色和分工，只补充尚不清楚的本人负责范围、交付及协作边界。",
+            "reason": "虽称独立负责，但未明确研发、设计、测试协作范围及本人决策边界。",
+            "sourceRefs": [
+              "src_fed70baccb992c6ad42c"
+            ]
+          },
+          {
+            "gapId": "diag-3-gap-2",
+            "kind": "research_focus",
+            "question": "「产品助理 · 小挣攻城狮（杭州）网络科技有限公司」：目前实际研究的问题是什么，与已有项目或方法有什么联系？",
+            "reason": "未展示用户调研或竞品分析过程。",
+            "sourceRefs": [
+              "src_fed70baccb992c6ad42c"
+            ]
+          },
+          {
+            "gapId": "diag-3-gap-3",
+            "kind": "engineering_measurement",
+            "question": "「产品助理 · 小挣攻城狮（杭州）网络科技有限公司」：测量的是哪项工作或结果？请补充尚未说明的统计范围、比较基准和测量或复核方式；没有记录的部分可以保留未知。",
+            "reason": "上线结果缺少可量化的监管效率、异常处理或使用数据。",
+            "sourceRefs": [
+              "src_fed70baccb992c6ad42c"
+            ]
+          }
+        ],
+        "strategyType": "technical_restructure",
+        "selectedItems": [],
+        "candidateText": null,
+        "candidateSourceRef": null,
+        "operations": [
+          {
+            "kind": "experience_restructure",
+            "moduleId": "61c8c5f1-5ac7-4cdf-abb0-8bd03ab96c8e",
+            "fieldPath": "experience_restructure",
+            "selectedItems": []
+          }
+        ],
+        "executionRequirements": [
+          "补充必要事实"
+        ],
+        "availableItems": [],
+        "objectId": "E1",
+        "operationId": "experience_restructure",
+        "relatedObjectIds": [],
+        "skillFocus": "usage"
+      },
+      {
+        "moduleType": "skill_text",
+        "moduleId": "0ba840e1-cf8a-4015-995e-ebb4e2be0b0b",
+        "fieldPath": "skill.text",
+        "label": "技能 · AI 辅助编程(Codex/Vibe Coding)",
+        "suggestionId": "suggestion-4",
+        "targetId": "skill_0ba840e1-cf8a-4015-995e-ebb4e2be0b0b",
+        "dimensionId": "professionalism",
+        "dimension": "专业表达",
+        "severity": "medium",
+        "evidenceState": "stated",
+        "sourceRefs": [
+          "src_9e57b86c320f1cae0405"
+        ],
+        "jdSourceRefs": [],
+        "problem": "技能需要说明实际采用的方法与对应任务",
+        "impact": "让技能描述对应已有实践，同时保留本人确认的能力边界。",
+        "action": "ask",
+        "direction": "结合独⽴开发、独⽴开发，说明实际采用的方法与对应任务；只使用本轮确认的信息整理技能文字与分类。",
+        "needsFacts": true,
+        "editable": true,
+        "diagnosticId": "diag-4",
+        "primaryCriterionId": "professionalism_2",
+        "handling": "ask_user",
+        "recommendationKind": "enhance",
+        "strategySteps": [
+          "结合独⽴开发、独⽴开发，确认说明实际采用的方法与对应任务所需的真实信息，不确定的部分保持原样。",
+          "将确认的信息写入当前技能项，保留原有基础或了解等程度边界，除非本人明确确认调整。"
+        ],
+        "skillAction": "clarify_existing",
+        "factGaps": [
+          {
+            "gapId": "diag-4-gap-1",
+            "kind": "skill_confirmation",
+            "question": "「AI 辅助编程(Codex/Vibe Coding)」：请核对当前技能原文，确认实际使用的技能片段、用途、掌握程度及分类；不确定的内容保持原样。",
+            "reason": "只使用本人确认的技能文字与分类。",
+            "sourceRefs": [
+              "src_9e57b86c320f1cae0405"
+            ]
+          }
+        ],
+        "strategyType": "evidence_enrichment",
+        "selectedItems": [],
+        "candidateText": null,
+        "candidateSourceRef": null,
+        "operations": [
+          {
+            "kind": "skill_text",
+            "moduleId": "0ba840e1-cf8a-4015-995e-ebb4e2be0b0b",
+            "fieldPath": "skill.text",
+            "selectedItems": []
+          }
+        ],
+        "executionRequirements": [
+          "确认技能信息"
+        ],
+        "availableItems": [],
+        "objectId": "K5",
+        "operationId": "skill_text",
+        "relatedObjectIds": [
+          "E2",
+          "E3"
+        ],
+        "skillFocus": "methods"
+      },
+      {
+        "moduleType": "skill_text",
+        "moduleId": "9fb470e1-041d-4a54-955e-48425eb51d79",
+        "fieldPath": "skill.text",
+        "label": "技能 · 业务逻辑建模",
+        "suggestionId": "suggestion-5",
+        "targetId": "skill_9fb470e1-041d-4a54-955e-48425eb51d79",
+        "dimensionId": "professionalism",
+        "dimension": "专业表达",
+        "severity": "low",
+        "evidenceState": "stated",
+        "sourceRefs": [
+          "src_8becf34c35d5d39467d6"
+        ],
+        "jdSourceRefs": [],
+        "problem": "技能需要说明实际采用的方法与对应任务",
+        "impact": "让技能描述对应已有实践，同时保留本人确认的能力边界。",
+        "action": "ask",
+        "direction": "结合产品助理、独⽴开发，说明实际采用的方法与对应任务；只使用本轮确认的信息整理技能文字与分类。",
+        "needsFacts": true,
+        "editable": true,
+        "diagnosticId": "diag-5",
+        "primaryCriterionId": "professionalism_1",
+        "handling": "ask_user",
+        "recommendationKind": "enhance",
+        "strategySteps": [
+          "结合产品助理、独⽴开发，确认说明实际采用的方法与对应任务所需的真实信息，不确定的部分保持原样。",
+          "将确认的信息写入当前技能项，保留原有基础或了解等程度边界，除非本人明确确认调整。"
+        ],
+        "skillAction": "clarify_existing",
+        "factGaps": [
+          {
+            "gapId": "diag-5-gap-1",
+            "kind": "skill_confirmation",
+            "question": "「业务逻辑建模」：请核对当前技能原文，确认实际使用的技能片段、用途、掌握程度及分类；不确定的内容保持原样。",
+            "reason": "只使用本人确认的技能文字与分类。",
+            "sourceRefs": [
+              "src_8becf34c35d5d39467d6"
+            ]
+          }
+        ],
+        "strategyType": "existing_edit",
+        "selectedItems": [],
+        "candidateText": null,
+        "candidateSourceRef": null,
+        "operations": [
+          {
+            "kind": "skill_text",
+            "moduleId": "9fb470e1-041d-4a54-955e-48425eb51d79",
+            "fieldPath": "skill.text",
+            "selectedItems": []
+          }
+        ],
+        "executionRequirements": [
+          "确认技能信息"
+        ],
+        "availableItems": [],
+        "objectId": "K1",
+        "operationId": "skill_text",
+        "relatedObjectIds": [
+          "E1",
+          "E3"
+        ],
+        "skillFocus": "methods"
+      },
+      {
+        "moduleType": "skills_order",
+        "moduleId": "skills",
+        "fieldPath": "skills.order",
+        "label": "技能排序",
+        "suggestionId": "suggestion-6",
+        "targetId": "target_2",
+        "dimensionId": "readability",
+        "dimension": "内容可读",
+        "severity": "low",
+        "evidenceState": "stated",
+        "sourceRefs": [
+          "src_bbf4f4b41b5d2675ed50"
+        ],
+        "jdSourceRefs": [],
+        "problem": "调整技能顺序",
+        "impact": "让技能内容及能力边界与本人确认的信息一致。",
+        "action": "move_forward",
+        "direction": "只调整已选技能的展示顺序。",
+        "needsFacts": false,
+        "editable": true,
+        "diagnosticId": "diag-6",
+        "primaryCriterionId": "readability_1",
+        "handling": "organize",
+        "recommendationKind": "enhance",
+        "strategySteps": [
+          "选择已存在的技能顺序，不新增或改写技能事实。"
+        ],
+        "skillAction": "reorder",
+        "factGaps": [],
+        "strategyType": "evidence_enrichment",
+        "selectedItems": [],
+        "candidateText": null,
+        "candidateSourceRef": null,
+        "operations": [
+          {
+            "kind": "skills_order",
+            "moduleId": "skills",
+            "fieldPath": "skills.order",
+            "selectedItems": []
+          }
+        ],
+        "executionRequirements": [],
+        "availableItems": [],
+        "objectId": "SKILLS",
+        "operationId": "skills_order",
+        "relatedObjectIds": [],
+        "skillFocus": "category"
+      }
+    ],
+    "requirements": [
+      {
+        "requirement": "本科在读及以上学历",
+        "reason": "教育经历显示本科在读，预计2027年毕业。",
+        "status": "demonstrated",
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ],
+        "sourceRefs": [
+          "src_c232a666b1e8ce83c582",
+          "src_0c4964b2f021582368b9"
+        ]
+      },
+      {
+        "requirement": "参与AI产品设计与迭代",
+        "reason": "E2和E3体现AIGC互动叙事、AI简历系统、Prompt和Agent实践。",
+        "status": "demonstrated",
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ],
+        "sourceRefs": [
+          "src_368ef93bf9569311bdfb",
+          "src_8f91f5335bcd9244698f"
+        ]
+      },
+      {
+        "requirement": "需求分析、用户调研、竞品分析及产品方案设计",
+        "reason": "E1和E3有业务痛点、产品架构、PRD和方案设计，但用户调研与竞品分析未被明确证明。",
+        "status": "weak",
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ],
+        "sourceRefs": [
+          "src_ea93afdc6d1d2d3ea64f",
+          "src_278635794b7f7451669f",
+          "src_c782d9108aae771e08e3",
+          "src_a75b0aecb2c797591241"
+        ]
+      },
+      {
+        "requirement": "PRD、流程图、原型及功能说明",
+        "reason": "E1明确提到中保真原型和PRD，并参与流程重构。",
+        "status": "demonstrated",
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ],
+        "sourceRefs": [
+          "src_d915c293df61cf1968f3",
+          "src_278635794b7f7451669f"
+        ]
+      },
+      {
+        "requirement": "跟进研发、设计、测试并推动上线",
+        "reason": "E1有技术评审、业务对接、功能走查和生产交付证据，但设计与测试协作范围不完整。",
+        "status": "weak",
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ],
+        "sourceRefs": [
+          "src_278635794b7f7451669f",
+          "src_7fa639f99b3e93336968"
+        ]
+      },
+      {
+        "requirement": "通过用户反馈和数据分析持续验证优化",
+        "reason": "E2提到用户反馈和社区数据，E3有部分效率结果，但缺少系统的指标口径、分析过程和验证设计。",
+        "status": "weak",
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ],
+        "sourceRefs": [
+          "src_11cf7037257eeaca8053",
+          "src_6d599530e99e846f3f03",
+          "src_cd47daf5346e25ecc412"
+        ]
+      },
+      {
+        "requirement": "AI角色对话测试、记忆准确性及体验标准",
+        "reason": "当前经历有互动叙事和AI工作流，但未明确AI角色、对话质量、记忆机制或测试用例经验。",
+        "status": "not_demonstrated",
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ],
+        "sourceRefs": [
+          "src_368ef93bf9569311bdfb"
+        ]
+      },
+      {
+        "requirement": "实习周期3个月以上、每周5天",
+        "reason": "E1时间跨度约6个月，但每周出勤安排未提供。",
+        "status": "unknown",
+        "jdSourceRefs": [
+          "src_ad3e69e9aa860657cc64"
+        ],
+        "sourceRefs": [
+          "src_93c96a86885eeddd7274",
+          "src_7a274b8242980db7363f"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "sourceId": "src_a83a31320d921b888a48",
+        "path": "resume",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_f2b4e343a305a985f861",
+        "path": "resume.certifications",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_f26c6e271f2b94a66fc4",
+        "path": "resume.certifications[0]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_9091ea2522184f2502fa",
+        "path": "resume.certifications[0].id",
+        "text": "2f4aab36-0702-40ef-98c0-6485fdd7a593",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_c361cb7625084d940acd",
+        "path": "resume.certifications[0].issue_date",
+        "text": "2024.08",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_cb9f645572d539e4ddb9",
+        "path": "resume.certifications[0].issuer",
+        "text": "腾讯公司",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_e7d381ca4c80dc6f3743",
+        "path": "resume.certifications[0].name",
+        "text": "产品经理创造营结业证书",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_5f288cb95d016f0917c5",
+        "path": "resume.educations",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_1aab8860d143abd5e7d7",
+        "path": "resume.educations[0]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_c232a666b1e8ce83c582",
+        "path": "resume.educations[0].degree",
+        "text": "本科",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_0c4964b2f021582368b9",
+        "path": "resume.educations[0].end_date",
+        "text": "2027.06",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_50136955e9c300caf874",
+        "path": "resume.educations[0].id",
+        "text": "21c5a8ef-11f0-42b8-acd0-07992b324f3f",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_10aee88a3efd905953d3",
+        "path": "resume.educations[0].major",
+        "text": "地理信息科学专业",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_bf4cbeac54b63364a293",
+        "path": "resume.educations[0].school",
+        "text": "浙江农林大学",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_f508f412edc9da370301",
+        "path": "resume.educations[0].start_date",
+        "text": "2023.09",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_ea1366c593be41788f0e",
+        "path": "resume.experiences",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_fed70baccb992c6ad42c",
+        "path": "resume.experiences[0]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_e233fb748668ad13fae5",
+        "path": "resume.experiences[0].category",
+        "text": "work",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_7a274b8242980db7363f",
+        "path": "resume.experiences[0].end_date",
+        "text": "2025-10-01",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_f5b815ef60b32694f3b5",
+        "path": "resume.experiences[0].id",
+        "text": "61c8c5f1-5ac7-4cdf-abb0-8bd03ab96c8e",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_7ba59df0022b0e73bcb1",
+        "path": "resume.experiences[0].org",
+        "text": "小挣攻城狮（杭州）网络科技有限公司",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_8ccce78605e53f0fc62d",
+        "path": "resume.experiences[0].star",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_278635794b7f7451669f",
+        "path": "resume.experiences[0].star.a",
+        "text": "参与技术评审并作为主要业务对接人，通过执行监测与功能走查解决研发过程中的逻辑冲突与卡点。\n深度梳理 “ 单品 - 中包 - 外箱 ” 多级码关联架构，构建完整的数字化解决方案与溯源逻辑闭环。\n输出逻辑严密的中保真原型与 PRD 文档，确保方案设计的结构化表达与交互逻辑可落地。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_7fa639f99b3e93336968",
+        "path": "resume.experiences[0].star.r",
+        "text": "该模块最终按时交付并投入生产，成功实现商品流向的数字化溯源，为渠道监管提供了核心数据支撑。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_ea93afdc6d1d2d3ea64f",
+        "path": "resume.experiences[0].star.s",
+        "text": "针对跨国销售场景下门店库存管理混乱及跨区窜货的业务痛点，亟需建立数字化溯源体系以强化监管效能。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_d915c293df61cf1968f3",
+        "path": "resume.experiences[0].star.t",
+        "text": "独立负责 “ 防窜货风控模块 ” 的从 0 到 1 设计与落地，通过重构销售后台核心流程实现项目的全周期管理。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_93c96a86885eeddd7274",
+        "path": "resume.experiences[0].start_date",
+        "text": "2025-04-01",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_30825399e4f85804c168",
+        "path": "resume.experiences[0].title",
+        "text": "产品助理",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_368ef93bf9569311bdfb",
+        "path": "resume.experiences[1]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_d377598466fad4cf513c",
+        "path": "resume.experiences[1].category",
+        "text": "project",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_e9d71a31302d31c10b74",
+        "path": "resume.experiences[1].end_date",
+        "text": "2026-04-01",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_206efb516ee04b71f04b",
+        "path": "resume.experiences[1].id",
+        "text": "2f260674-8382-4d4a-a06f-c87fecf2302c",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_4ad1fb90a051a218c2cc",
+        "path": "resume.experiences[1].org",
+        "text": "独⽴互动叙事 RPG 游戏",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_aa5ce7016240ac8dbc64",
+        "path": "resume.experiences[1].star",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_11cf7037257eeaca8053",
+        "path": "resume.experiences[1].star.a",
+        "text": "实践 Vibe Coding 开发范式，利⽤⾃然语⾔驱动 AI 构建 H5 交互游戏引擎，实现底层功能的⾼频迭代与灵活扩展\n针对⼩众题材微调⼤模型并优化⾼精度 Prompt 策略，创新性采⽤多图像模型融合⽅案，攻克 AIGC 创作中的美术⻛格⼀致性难题\n基于⽤⼾反馈与社区数据持续调优模型参数，设计多层级赞助⽅案，打通从垂直社区引流到付费转化的商业闭环",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_6d599530e99e846f3f03",
+        "path": "resume.experiences[1].star.r",
+        "text": "项⽬在海外垂直论坛获 10W+ 曝光，累计实现 1W+ ⼈⺠币⽑利，成功跑通 0 成本盈利闭环并获得赞助者⾼度评价。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_5b92f4bc91db8f1ec29f",
+        "path": "resume.experiences[1].star.s",
+        "text": "针对垂直⼩众题材内容⽣产成本⾼、供给稀缺的痛点，探索利⽤ AIGC 技术重构互动叙事产品的⽣产管线与商业化路径。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_21e10f81d6b70e71a9a5",
+        "path": "resume.experiences[1].star.t",
+        "text": "作为独⽴制作⼈，需⾃研 H5 交互引擎并构建⼀套兼顾叙事深度与美术⼀致性的 AI 原⽣⼯作流，在零成本投⼊下实现产品的⻓线运营。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_bab9dc76398cda5d27ec",
+        "path": "resume.experiences[1].start_date",
+        "text": "2025-08-01",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_65bb95aa99b2bd68c0fe",
+        "path": "resume.experiences[1].title",
+        "text": "独⽴开发",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_8f91f5335bcd9244698f",
+        "path": "resume.experiences[2]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_3271b856f2034999397e",
+        "path": "resume.experiences[2].category",
+        "text": "project",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_22c5705ebdaa5a58e1ea",
+        "path": "resume.experiences[2].end_date",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_15c8e3063e6b9fbb5cae",
+        "path": "resume.experiences[2].id",
+        "text": "b8234e36-3ffa-40f8-9ce9-805eba899fc6",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_89491dc0f7cf488d09a7",
+        "path": "resume.experiences[2].org",
+        "text": "原⼦简历",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_77a6e1a79f4720853aa6",
+        "path": "resume.experiences[2].star",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_a75b0aecb2c797591241",
+        "path": "resume.experiences[2].star.a",
+        "text": "产品架构与逻辑设计：提出 “ 原⼦化简历 ” 概念并设计动态组装逻辑，⽀持根据 JD 需求实现简历模块的毫秒级⽣成与⼀站式导出\nAI 策略与 Prompt 优化：设计 “ 岗位 - 简历 ” 双向评价体系，通过特调 Prompt 引导 AI 深度分析 JD 并提供匹配度打分与润⾊建议\nAgent ⽣态与⾃动化流：开发标准 API 与接⼝联动 OpenClaw ，实现全⽹岗位⾃动抓取与云端 AI 统⼀输出⾼质量定制简历",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_cd47daf5346e25ecc412",
+        "path": "resume.experiences[2].star.r",
+        "text": "将单份简历的组装效率提升 95% 以上，并成功将传统 “ 搜索 - 改写 - 投递 ” 的耗时从⼩时级缩短⾄分钟级。（项目链接）",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_c782d9108aae771e08e3",
+        "path": "resume.experiences[2].star.s",
+        "text": "针对求职者在适配海量异构岗位时，⼿动调整简历效率低下且难以精准匹配 JD 关键词的痛点。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_baa7c5d9149ec45cbf79",
+        "path": "resume.experiences[2].star.t",
+        "text": "开发 AI 驱动的简历管理系统，通过重构⽤⼾⼯作流实现从原⼦化存储到 Agent ⾃动化定制的全链路闭环。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_b7d832a58d138adf8f7a",
+        "path": "resume.experiences[2].start_date",
+        "text": "2024-12-01",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_911d8ea08a8e0ffb941f",
+        "path": "resume.experiences[2].title",
+        "text": "独⽴开发",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_b6c852374b4ecf48e0ba",
+        "path": "resume.personal_summary",
+        "text": "2027届本科生，具备深厚的AI产品实战经验。曾独立负责防窜货风控模块从0到1的设计，擅长撰写高质量PRD并推动跨团队落地。在AI简历工具迭代中，通过优化内容生成引擎将登录转化率从31%提升至50%，验证了AI能力对业务的拉动作用。此外，曾利用AI技术重塑开发管线独立研发RPG游戏，实现10W+浏览量。具备敏锐的数据分析能力与系统化思维，致力于探索AIGC在办公与内容生成领域的前沿实践。",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_1a3d58b51155fe448868",
+        "path": "resume.profile",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_92a99a2b4f5507f6a18f",
+        "path": "resume.profile.email",
+        "text": "dingfan054@gmail.com",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_73b3645d0a288c2de6de",
+        "path": "resume.profile.linkedin",
+        "text": "",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_95cc2f892cb96c06b9ae",
+        "path": "resume.profile.location",
+        "text": "杭州",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_829addeb86136f4ed0f7",
+        "path": "resume.profile.name",
+        "text": "范鼎",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_666e2cc3353444eea42a",
+        "path": "resume.profile.phone",
+        "text": "13237737767",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_456a55b9ff89e0a8ffde",
+        "path": "resume.section_order",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_f803fdec78e810e94860",
+        "path": "resume.section_order[0]",
+        "text": "summary",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_d8b355b98b2b42e2c916",
+        "path": "resume.section_order[1]",
+        "text": "education",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_ed171cdfe9eceaa748f5",
+        "path": "resume.section_order[2]",
+        "text": "work",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_5820518846058a44cdd4",
+        "path": "resume.section_order[3]",
+        "text": "project",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_f50ab86faec9cf569159",
+        "path": "resume.section_order[4]",
+        "text": "certifications",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_3c4d88ba384d1a8517ed",
+        "path": "resume.section_order[5]",
+        "text": "skills",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_bbf4f4b41b5d2675ed50",
+        "path": "resume.skills",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_8becf34c35d5d39467d6",
+        "path": "resume.skills[0]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_f0ed5fdc1f304ce9e8a5",
+        "path": "resume.skills[0].category",
+        "text": "产品能力",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_3495f24d20e36f0c030f",
+        "path": "resume.skills[0].id",
+        "text": "9fb470e1-041d-4a54-955e-48425eb51d79",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_43b5aad9542a51540f45",
+        "path": "resume.skills[0].name",
+        "text": "业务逻辑建模",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_b9a4a6d8c6e825d8ad01",
+        "path": "resume.skills[1]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_9dce751496a63ead1b05",
+        "path": "resume.skills[1].category",
+        "text": "产品能力",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_676b31e685835affafbf",
+        "path": "resume.skills[1].id",
+        "text": "39a0ed26-fe21-409e-97cf-46df8933492e",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_a52d881265b57d0ee9a5",
+        "path": "resume.skills[1].name",
+        "text": "原型设计",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_d2b1a47bc610fd32a7ef",
+        "path": "resume.skills[2]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_2facf85948af6ec88d6b",
+        "path": "resume.skills[2].category",
+        "text": "产品能力",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_44343b76d0d1003e0417",
+        "path": "resume.skills[2].id",
+        "text": "61aff62e-3883-4bf8-823d-f6f5155c4858",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_58057b7ec65c7b81ec33",
+        "path": "resume.skills[2].name",
+        "text": "PRD ⽂档",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_078f5b3af87879ca8b38",
+        "path": "resume.skills[3]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_d6dfab009fc36aeeea89",
+        "path": "resume.skills[3].category",
+        "text": "产品能力",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_b851969bcb5062b876a0",
+        "path": "resume.skills[3].id",
+        "text": "3022dc70-2399-4cbe-8890-52ed6e66c0fd",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_15ada341c953aafb6670",
+        "path": "resume.skills[3].name",
+        "text": "⽤⼾调研",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_9e57b86c320f1cae0405",
+        "path": "resume.skills[4]",
+        "text": "",
+        "kind": "scope"
+      },
+      {
+        "sourceId": "src_ab899a92482bcf2f89e1",
+        "path": "resume.skills[4].category",
+        "text": "产品能力",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_8b95c17efd2059c37a5b",
+        "path": "resume.skills[4].id",
+        "text": "0ba840e1-cf8a-4015-995e-ebb4e2be0b0b",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_696c4952b88e7d2a5a5a",
+        "path": "resume.skills[4].name",
+        "text": "AI 辅助编程(Codex/Vibe Coding)",
+        "kind": "text"
+      },
+      {
+        "sourceId": "src_ad3e69e9aa860657cc64",
+        "path": "jd",
+        "text": "实习周期：3个月及以上，每周5天\n\n岗位职责\n1.参与AI产品设计\n参与AI陪伴类产品的功能设计与迭代；\n协助完成需求分析、用户调研、竞品分析及产品方案设计；\n参与AI角色、人设、记忆、情绪、剧情、互动等核心体验的优化。\n2.负责产品需求落地\n协助产品经理撰写PRD、流程图、原型及功能说明；\n跟进研发、设计、测试，推动需求按计划上线；\n对上线功能进行体验验收，发现并跟进产品问题。\n3.用户体验与数据分析\n通过用户反馈、用户行为数据、聊天数据等发现产品问题；\n分析用户留存、活跃、付费、对话等核心指标；\n根据数据和用户反馈提出产品优化方案，并持续验证效果。\n4.AI产品体验测试\n参与AI角色对话测试，发现回复质量、角色一致性、记忆准确性等问题；\n建立和维护AI角色测试用例及体验标准；\n持续探索AI能力与产品玩法结合的新方向。\n\n任职要求\n1.本科在读及以上学历；\n2.对互联网产品和AI产品有浓厚兴趣，愿意深入研究用户需求；\n3.具备较好的逻辑思维和产品思维，能够从用户视角发现问题；\n4.有较强的学习能力和执行力，能够快速理解复杂业务；\n5.熟悉Axure、墨刀、Figma等产品/原型工具者优先；\n6.有数据分析能力；\n7.有AI产品、互联网产品、校园产品项目经验者优先；\n8.对细节敏感，有较强的审美和用户体验意识。",
+        "kind": "text"
+      }
+    ],
+    "metadata": {
+      "promptVersion": "resume_review_prompt_v14",
+      "rubricVersion": "evidence_rubric_v2",
+      "guideVersion": "early_career_roles_v5",
+      "inputHash": "0284814599466bece796a67a575189851156ed6f8a5923cc15f42f39d3495fe0",
+      "model": "gpt-5.6-luna",
+      "provider": "openai_compatible",
+      "transport": "chat_completion",
+      "reasoning": {
+        "reasoning_effort": "low"
+      },
+      "evidenceOutputVersion": "object_binding_only_v1",
+      "responseSchemaVersion": "review_json_schema_v6",
+      "serverSchemaHash": "667e932c9a54f771fc35e659181d1cbebe6e4a0da0347d9148da656470511629",
+      "providerSchemaVersion": "resume_review_openai_shape_v7",
+      "responseSchemaHash": "a15354a070feba6e334f0a969dc2dd6c50b98ed7174da0b0a2b536f13a032dfd",
+      "factQuestionVersion": "contextual_fact_questions_v1",
+      "readingVersion": "object_reading_v1"
+    },
+    "jdMatch": 85,
+    "scoreCalculation": {
+      "dimensions": [
+        {
+          "dimensionId": "logic",
+          "levelSum": 8,
+          "weight": 15,
+          "rawScore": 66.66666666666667
+        },
+        {
+          "dimensionId": "contribution",
+          "levelSum": 8,
+          "weight": 25,
+          "rawScore": 66.66666666666667
+        },
+        {
+          "dimensionId": "readability",
+          "levelSum": 8,
+          "weight": 10,
+          "rawScore": 66.66666666666667
+        },
+        {
+          "dimensionId": "completeness",
+          "levelSum": 7,
+          "weight": 15,
+          "rawScore": 58.333333333333336
+        },
+        {
+          "dimensionId": "professionalism",
+          "levelSum": 8,
+          "weight": 10,
+          "rawScore": 66.66666666666667
+        },
+        {
+          "dimensionId": "outcomes",
+          "levelSum": 7,
+          "weight": 25,
+          "rawScore": 58.333333333333336
+        }
+      ],
+      "rawTotal": 63.333333333333336,
+      "roundingRule": "round_half_up",
+      "finalScore": 63,
+      "calibrationStatus": "pending_human_validation"
+    },
+    "focusObjectIds": [
+      "E2",
+      "E3",
+      "E1"
+    ],
+    "reportStatus": "complete",
+    "unavailableSuggestionCount": 0,
+    "objectCatalog": [
+      {
+        "objectId": "R",
+        "kind": "resume",
+        "moduleId": "resume",
+        "label": "整份简历",
+        "sourceRef": "src_a83a31320d921b888a48"
+      },
+      {
+        "objectId": "S",
+        "kind": "summary",
+        "moduleId": "current_resume",
+        "label": "个人总结",
+        "sourceRef": "src_b6c852374b4ecf48e0ba"
+      },
+      {
+        "objectId": "P",
+        "kind": "profile",
+        "moduleId": "profile",
+        "label": "基础信息",
+        "sourceRef": "src_1a3d58b51155fe448868"
+      },
+      {
+        "objectId": "ED1",
+        "kind": "education",
+        "moduleId": "21c5a8ef-11f0-42b8-acd0-07992b324f3f",
+        "label": "浙江农林大学",
+        "sourceRef": "src_1aab8860d143abd5e7d7"
+      },
+      {
+        "objectId": "E1",
+        "kind": "experience",
+        "moduleId": "61c8c5f1-5ac7-4cdf-abb0-8bd03ab96c8e",
+        "label": "产品助理",
+        "sourceRef": "src_fed70baccb992c6ad42c"
+      },
+      {
+        "objectId": "E2",
+        "kind": "experience",
+        "moduleId": "2f260674-8382-4d4a-a06f-c87fecf2302c",
+        "label": "独⽴开发",
+        "sourceRef": "src_368ef93bf9569311bdfb"
+      },
+      {
+        "objectId": "E3",
+        "kind": "experience",
+        "moduleId": "b8234e36-3ffa-40f8-9ce9-805eba899fc6",
+        "label": "独⽴开发",
+        "sourceRef": "src_8f91f5335bcd9244698f"
+      },
+      {
+        "objectId": "K1",
+        "kind": "skill",
+        "moduleId": "9fb470e1-041d-4a54-955e-48425eb51d79",
+        "label": "业务逻辑建模",
+        "sourceRef": "src_8becf34c35d5d39467d6"
+      },
+      {
+        "objectId": "K2",
+        "kind": "skill",
+        "moduleId": "39a0ed26-fe21-409e-97cf-46df8933492e",
+        "label": "原型设计",
+        "sourceRef": "src_b9a4a6d8c6e825d8ad01"
+      },
+      {
+        "objectId": "K3",
+        "kind": "skill",
+        "moduleId": "61aff62e-3883-4bf8-823d-f6f5155c4858",
+        "label": "PRD ⽂档",
+        "sourceRef": "src_d2b1a47bc610fd32a7ef"
+      },
+      {
+        "objectId": "K4",
+        "kind": "skill",
+        "moduleId": "3022dc70-2399-4cbe-8890-52ed6e66c0fd",
+        "label": "⽤⼾调研",
+        "sourceRef": "src_078f5b3af87879ca8b38"
+      },
+      {
+        "objectId": "K5",
+        "kind": "skill",
+        "moduleId": "0ba840e1-cf8a-4015-995e-ebb4e2be0b0b",
+        "label": "AI 辅助编程(Codex/Vibe Coding)",
+        "sourceRef": "src_9e57b86c320f1cae0405"
+      },
+      {
+        "objectId": "C1",
+        "kind": "certification",
+        "moduleId": "2f4aab36-0702-40ef-98c0-6485fdd7a593",
+        "label": "产品经理创造营结业证书",
+        "sourceRef": "src_f26c6e271f2b94a66fc4"
+      },
+      {
+        "objectId": "CERTS",
+        "kind": "certification_order",
+        "moduleId": "certifications",
+        "label": "证书与奖项排序",
+        "sourceRef": "src_f2b4e343a305a985f861"
+      },
+      {
+        "objectId": "SKILLS",
+        "kind": "skills_order",
+        "moduleId": "skills",
+        "label": "技能排序",
+        "sourceRef": "src_bbf4f4b41b5d2675ed50"
+      },
+      {
+        "objectId": "SECTIONS",
+        "kind": "section_order",
+        "moduleId": "sections",
+        "label": "章节排序",
+        "sourceRef": "src_456a55b9ff89e0a8ffde"
+      },
+      {
+        "objectId": "WORK",
+        "kind": "experience_order",
+        "moduleId": "work",
+        "label": "实习排序",
+        "sourceRef": "src_ea1366c593be41788f0e"
+      },
+      {
+        "objectId": "PROJECTS",
+        "kind": "experience_order",
+        "moduleId": "project",
+        "label": "项目排序",
+        "sourceRef": "src_ea1366c593be41788f0e"
+      }
+    ]
+  }
+}

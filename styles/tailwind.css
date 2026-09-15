@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Preview surfaces use transforms, so lift their stacking contexts as well
+   as the open annotation itself. Keep export/print layout untouched. */
+@media screen {
+  .a4-preview :is([data-rf-section-surface], [data-rf-item-surface]):has([data-score-module] > details[open]) {
+    position: relative;
+    z-index: 100;
+  }
+
+  .a4-preview :is([data-rf-section-surface], [data-rf-item-surface]):has([data-score-module]:is(:hover, :focus-within) > details[open]) {
+    z-index: 102;
+  }
+}
+
 /* Browser chrome may resize the visual viewport; it must not resize the
    mobile app's reading surface. Screen-only rules leave printing alone. */
 @media screen and (max-width: 767.98px) {

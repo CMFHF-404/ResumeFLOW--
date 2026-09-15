@@ -38,8 +38,8 @@ export const ResumeOptimizationQuestionCard: React.FC<ResumeOptimizationQuestion
     const textareaId = `${instanceId}-answer`;
     const groupName = `${instanceId}-answer-mode`;
     const quickChoices = useMemo(
-        () => buildResumeOptimizationQuestionChoices(question.choices),
-        [question.choices],
+        () => buildResumeOptimizationQuestionChoices(question.choices, question.text),
+        [question.choices, question.text],
     );
     const questionText = formatResumeOptimizationUserCopy(
         question.text,
@@ -86,7 +86,8 @@ export const ResumeOptimizationQuestionCard: React.FC<ResumeOptimizationQuestion
                 </p>
             ) : null}
 
-            <div className="mt-4 grid gap-2" aria-disabled={hasCustomAnswer || undefined}>
+            {quickChoices.length>0&&<p className="mt-4 text-[11px] text-slate-500 dark:text-slate-400">选择符合实际情况的一项，或在下方自行填写。</p>}
+            <div className="mt-3 grid gap-2" aria-disabled={hasCustomAnswer || undefined}>
                 {quickChoices.map((choice, index) => {
                     const quickChoiceId = `${instanceId}-quick-${index}`;
                     return (

@@ -102,6 +102,25 @@ class LogtoJWKSCache:
         self._refresh_lock = asyncio.Lock()
         self._client = client
         self._owns_client = client is None
+        self._refresh_task: Optional[asyncio.Task] = None
+
+    def start_refresh_worker(self) -> None:
+        if self._refresh_task is None or self._refresh_task.done():
+            self._refresh_task = asyncio.create_task(self._maintain_keys())
+
+    async def _maintain_keys(self) -> None:
+        # Refresh before expiry, including while no users are visiting. Failed
+        # cold starts recover independently of request/readiness probe timing.
+        interval = min(30.0, max(1.0, self._ttl_seconds / 10))
+        margin = min(60.0, max(0.0, self._ttl_seconds / 10))
+        while True:
+            try:
+                await self.warmup(refresh_before_seconds=margin)
+            except AuthDependencyUnavailable:
+                delay = max(1.0, self._refresh_retry_after - time.monotonic())
+            else:
+                delay = interval
+            await asyncio.sleep(delay)
 
     @property
     def is_ready(self) -> bool:
@@ -117,14 +136,24 @@ class LogtoJWKSCache:
             self._owns_client = True
 
     async def close(self) -> None:
+        if self._refresh_task is not None:
+            self._refresh_task.cancel()
+            try:
+                await self._refresh_task
+            except asyncio.CancelledError:
+                pass
+            self._refresh_task = None
         if self._owns_client and self._client is not None and not self._client.is_closed:
             await self._client.aclose()
         self._client = None
 
-    async def warmup(self) -> None:
+    async def warmup(self, *, refresh_before_seconds: Optional[float] = None) -> None:
         """Populate the cold cache without turning an upstream outage into startup death."""
         async with self._refresh_lock:
-            if self.is_ready:
+            ready = self.is_ready
+            if refresh_before_seconds is not None:
+                ready = self._is_cache_valid(time.monotonic() + refresh_before_seconds)
+            if ready:
                 return
             if time.monotonic() < self._refresh_retry_after:
                 raise self._dependency_error()
@@ -284,6 +313,7 @@ class LogtoJWKSCache:
                 payload = self._validated_jwks(response.json())
                 refreshed_at = time.monotonic()
                 self._jwks = payload
+                self._refresh_retry_after = 0.0
                 self._expires_at = refreshed_at + max(0, self._ttl_seconds)
                 self._stale_until = self._expires_at + self._stale_if_error_seconds
                 logger.info(

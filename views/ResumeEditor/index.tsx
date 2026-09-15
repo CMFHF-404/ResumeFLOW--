@@ -2549,6 +2549,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
             'sections',
         ];
     }, [sectionOrder, selectedProjectItems, selectedWorkItems]);
+    const scoreSuggestionModuleOrder = useMemo(() => {
+        const sections = new Map<string, string[]>([
+            ['summary', ['personal_summary:current_resume']],
+            ['education', ['read_only:educations', ...educations.filter(item => selectedEduIds.has(item.id)).map(item => `education:${item.id}`)]],
+            ['work', ['experience_order:work', ...selectedWorkItems.map(item => `experience_star:${item.id}`)]],
+            ['project', ['experience_order:project', ...selectedProjectItems.map(item => `experience_star:${item.id}`)]],
+            ['certifications', ['read_only:certifications', ...sortedCertifications.filter(item => selectedCertIds.has(item.id)).map(item => `certification:${item.id}`)]],
+            ['skills', ['skills_order:skills', ...selectedSkillGroups.flatMap(group => group.skills.map(item => `skill_text:${item.id}`))]],
+        ]);
+        return ['read_only:profile', 'section_order:sections', ...sectionOrder.flatMap(id => sections.get(id) ?? [])];
+    }, [sectionOrder, educations, selectedEduIds, selectedWorkItems, selectedProjectItems, sortedCertifications, selectedCertIds, selectedSkillGroups]);
     const optimizationReviewPlan = resumeOptimizationFlow.run
         ? resumeOptimizationFlow.run.result ?? resumeOptimizationFlow.run.plan
         : null;
@@ -2653,7 +2664,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         </div>
     ) : null;
     return (
-        <ScoreAnnotationProvider previewVisible={isMobileAnalysisViewport
+        <ScoreAnnotationProvider moduleOrder={scoreSuggestionModuleOrder} previewVisible={isMobileAnalysisViewport
             ? mobileEditorDrawer.hasOpened && mobileEditorDrawer.page === 'analysis'
                 && mobileEditorDrawer.reportTab === 'resume' && !mobileEditorDrawer.isOpen && !mobileEditorDrawer.isVisible
             : isRightSidebarOpen && isJDAnalysisDetailsSidebarOpen

@@ -36,6 +36,43 @@ def report_object(data=None, raw=None, jd=''):
 
 
 class ObjectReviewTests(unittest.IsolatedAsyncioTestCase):
+    async def test_generation_omits_diagnostic_citations_and_binds_edit_scope(self):
+        from app.domain.ai import provider_review_schema
+        from test_resume_review_luna_api import nullable_row
+
+        data=snapshot();raw=raw_object(data)
+        for item in [*raw['dimensions'],*raw['suggestions'],
+                     *[g for s in raw['suggestions'] for g in s['factGaps']]]:
+            item.pop('sourceRefs',None);item.pop('jdSourceRefs',None)
+        sources=rubric.source_catalog(data['resume']);modules=rubric.modules_for(data['resume'])
+        schema=rubric.generation_response_schema(sources,[],modules)
+        for row in raw['suggestions']:
+            for key in set(row)-set(schema['properties']['suggestions']['items']['properties']):row.pop(key)
+        validate(raw,schema)
+        payload=rubric.model_payload(data,'',sources,modules,rubric.assessment_context(data,''))
+        strict=provider_review_schema.openai_review(schema,payload)
+        validate(nullable_row(raw,strict),strict)
+        for node in [*schema['properties']['dimensions']['prefixItems'],
+                     schema['properties']['suggestions']['items'],schema['$defs']['fact_gap']]:
+            self.assertNotIn('sourceRefs',node['properties'])
+            self.assertNotIn('jdSourceRefs',node['properties'])
+        self.assertIn('candidateSourceRef',schema['properties']['suggestions']['items']['properties'])
+        for key in ('impact','strategySteps','handling','factGaps','needsFacts','severity','evidenceState'):
+            self.assertNotIn(key,schema['properties']['suggestions']['items']['properties'])
+        with patch.object(resume_score,'_call_llm',AsyncMock(return_value={'content':json.dumps(raw)})) as call:
+            result=await resume_score.generate_review_score('',json.dumps(data['resume']))
+        call.assert_awaited_once()
+        report=result['resumeEvaluation']
+        self.assertEqual(report['metadata']['evidenceOutputVersion'],rubric.EVIDENCE_OUTPUT_VERSION)
+        self.assertEqual(report['overallScore'],75)
+        self.assertTrue(all(d['sourceRefs']==[] and d['jdSourceRefs']==[] for d in report['dimensions']))
+        self.assertTrue(report['suggestions'][0]['editable'])
+        destination=next(o for o in report['objectCatalog'] if o['objectId']==report['suggestions'][0]['objectId'])
+        self.assertEqual(report['suggestions'][0]['sourceRefs'],[destination['sourceRef']])
+        self.assertEqual(rubric.normalize(report),report)
+        broken=deepcopy(report);broken['suggestions'][0]['sourceRefs']=['UNKNOWN']
+        self.assertFalse(rubric.normalize(broken)['suggestions'][0]['editable'])
+
     def test_raw_contract_and_roundtrip_do_not_invent_criterion_notes(self):
         data=snapshot();raw=raw_object(data)
         validate(raw,rubric.response_schema(rubric.source_catalog(data['resume']),[],rubric.modules_for(data['resume'])))
