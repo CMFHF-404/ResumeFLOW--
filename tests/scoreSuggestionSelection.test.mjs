@@ -31,11 +31,11 @@ test('bulk selection respects skill and deterministic selection conflicts and bl
   const candidates = [create, order, courseA, courseB, { ...rows[0], editable: false },
     { ...rows[1], executionBlockReason: { code: 'parameters_invalid' } }];
   const before = structuredClone(candidates);
-  assert.deepEqual(additions(candidates, []), ['create', 'courses-a']);
-  assert.deepEqual(additions(candidates, ['order', 'courses-b']), []);
+  assert.deepEqual(additions(candidates, []), ['create', 'order', 'courses-a']);
+  assert.deepEqual(additions(candidates, ['order', 'courses-b']), ['create']);
   assert.equal(conflict(courseA, { ...courseA, suggestionId: 'same-choice' }), false);
-  assert.equal(conflict(create, order), true);
-  assert.equal(conflict(order, create), true);
+  assert.equal(conflict(create, order), false);
+  assert.equal(conflict(order, create), false);
   assert.deepEqual(candidates, before);
 });
 
@@ -60,11 +60,15 @@ test('report bulk button selects a compatible batch, clears it, and lets the use
       import React from 'react';
       import {createRoot} from 'react-dom/client';
       import {ScoreActionList} from './views/ResumeEditor/components/ResumeEvaluationReport/ScoreActionList';
-      import {ScoreAnnotationProvider} from './views/ResumeEditor/components/ResumeEvaluationReport/ScoreAnnotations';
-      const rows = ${JSON.stringify(rows)};
+      import {ScoreAnnotationProvider,useScoreAnnotations} from './views/ResumeEditor/components/ResumeEvaluationReport/ScoreAnnotations';
+      const rows = ${JSON.stringify([...rows,
+        {...row('create','skill_create','new:1'),diagnosticId:'diag-create'},
+        {...row('order','skills_order','skills'),diagnosticId:'diag-order'}])};
+      function Selection(){const state=useScoreAnnotations();return <output>{JSON.stringify(state.selected)}</output>}
       createRoot(document.getElementById('root')).render(
         <ScoreAnnotationProvider suggestions={rows} reportKey="test">
           <ScoreActionList suggestions={rows} disabled={false}/>
+          <Selection/>
         </ScoreAnnotationProvider>);
     `, resolveDir: process.cwd(), loader: 'tsx' },
     bundle: true, format: 'iife', platform: 'browser', write: false, logLevel: 'silent',
@@ -84,5 +88,26 @@ test('report bulk button selects a compatible batch, clears it, and lets the use
   assert.equal(await checkbox('result').isChecked(), true);
   assert.equal(await checkbox('restructure').isDisabled(), true);
   assert.equal(await checkbox('hide').isDisabled(), true);
+  const create=checkbox('create'), order=checkbox('order');
+  const combined=page.getByRole('status',{name:'技能合并处理提示'});
+  assert.equal(await create.isChecked(),true);
+  assert.equal(await order.isChecked(),true);
+  assert.match(await combined.textContent(),/将合并处理/);
+  assert.equal(await page.locator('#review-diag-order').count(),1);
+  await create.uncheck();
+  assert.equal(await order.isChecked(),true);
+  assert.equal(await combined.count(),0);
+  let selection=JSON.parse(await page.locator('output').textContent());
+  assert.equal(selection.includes('create'),false);
+  assert.equal(selection.includes('order'),true);
+  await order.uncheck();
+  await create.check();
+  assert.equal(await order.isEnabled(),true);
+  assert.equal(await order.isChecked(),false);
+  assert.equal(await combined.count(),0);
+  await order.check();
+  selection=JSON.parse(await page.locator('output').textContent());
+  assert.ok(selection.includes('create')&&selection.includes('order'));
+  assert.match(await combined.textContent(),/将合并处理/);
   assert.deepEqual(errors, []);
 });

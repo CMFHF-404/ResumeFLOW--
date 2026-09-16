@@ -482,6 +482,13 @@ test('DeepHire preview preserves its measured top inset while applying page-marg
   assert.equal(defaultStyle['--rf-template-top-padding'], `${template.visualTokens.pageInsets.top}px`);
   assert.equal(compactStyle.paddingTop, `${template.visualTokens.pageInsets.top - 10}px`);
   assert.equal(spaciousStyle.paddingTop, `${template.visualTokens.pageInsets.top + 10}px`);
+  for (const id of ['deephire-standard', 'deephire-table', 'deephire-steady']) {
+    const insetTemplate = RESUME_TEMPLATE_DEFINITIONS.find(template => template.id === id);
+    const minimumStyle = buildDeepHirePreviewStyleOverrides(insetTemplate, 15);
+    assert.equal(minimumStyle.paddingTop, '15px', `${id} must retain space above the header when compressed`);
+    assert.equal(minimumStyle['--rf-template-top-padding'], '15px');
+    assert.equal(minimumStyle['--rf-template-inset-top'], '15px');
+  }
   assert.equal(
     buildDeepHirePreviewStyleOverrides(fullBleedTemplate, defaultTopPaddingPx).paddingTop,
     '0px',

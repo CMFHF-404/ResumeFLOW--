@@ -223,6 +223,8 @@ class OptimizationQuestion(BaseModel):
     reason: str
     answer_type: Literal["single_choice_with_text", "skill_confirmation"] = "single_choice_with_text"
     skill_original: dict[str, str] | None = None
+    skill_candidates: list[dict[str, str]] = Field(default_factory=list, max_length=5)
+    skill_categories: list[str] = Field(default_factory=list)
     choices: list[OptimizationQuestionChoice] = Field(default_factory=list)
     affects_change_ids: list[str] = Field(default_factory=list)
     priority: int = Field(default=0, ge=0)

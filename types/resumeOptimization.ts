@@ -103,6 +103,8 @@ export interface ResumeOptimizationQuestion {
   reason: string;
   answerType: 'single_choice_with_text' | 'skill_confirmation';
   skillOriginal?: {name: string; category: string} | null;
+  skillCandidates?: {name: string; category: string; sourceText: string}[];
+  skillCategories?: string[];
   choices: ResumeOptimizationQuestionChoice[];
   affectsChangeIds: string[];
   priority: number;

@@ -558,3 +558,19 @@ test('retains both historical and server-task planning protocol versions', async
     assert.equal(normalizeResumeOptimizationRun(run({ prompt_version })).promptVersion, prompt_version);
   }
 });
+
+
+test('skill drafts and existing categories survive public normalization without confirming them', async () => {
+  const {normalizeResumeOptimizationRun}=await importNormalizer();
+  const payload=run();
+  const question={question_id:'Q1',module_id:'new:skill',field_path:'skill.text',text:'确认技能',reason:'待本人确认',answer_type:'skill_confirmation',skill_original:{name:'Prompt',category:'未分类'},
+    skill_candidates:[{name:'Prompt：有项目实践',category:'产品能力',sourceText:'开发提示词工作流'}],skill_categories:['产品能力','开发工具'],choices:[],affects_change_ids:['CHG_1'],priority:0};
+  payload.plan.questions=[question];payload.result.questions=[structuredClone(question)];
+  const normalized=normalizeResumeOptimizationRun(payload);
+  assert.deepEqual(normalized.plan.questions[0].skillCandidates,question.skill_candidates);
+  assert.deepEqual(normalized.plan.questions[0].skillCategories,question.skill_categories);
+  assert.deepEqual(normalized.answers,[]);
+  payload.plan.questions[0].skill_candidates[0].sourceText='';
+  payload.result.questions[0].skill_candidates[0].sourceText='';
+  assert.throws(()=>normalizeResumeOptimizationRun(payload));
+});

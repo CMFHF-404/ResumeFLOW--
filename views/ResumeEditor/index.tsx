@@ -2655,6 +2655,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         returnFocusRef={resumeOptimizationReturnFocusRef}
                         suppressReturnFocusRef={resumeOptimizationSuppressReturnFocusRef}
                         skillNameById={resumeOptimizationSkillNameById}
+                        skillCategories={skillGroups.map(group=>group.name)}
                         moduleOrder={resumeOptimizationModuleOrder}
                         onViewExperience={handleResumeOptimizationViewExperience}
                         onOpenAutoAssembly={handleResumeOptimizationOpenAutoAssembly}
@@ -2914,6 +2915,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
                         returnFocusRef={resumeOptimizationReturnFocusRef}
                         suppressReturnFocusRef={resumeOptimizationSuppressReturnFocusRef}
                         skillNameById={resumeOptimizationSkillNameById}
+                        skillCategories={skillGroups.map(group=>group.name)}
                         moduleOrder={resumeOptimizationModuleOrder}
                         onViewExperience={handleResumeOptimizationViewExperience}
                         onOpenAutoAssembly={handleResumeOptimizationOpenAutoAssembly}

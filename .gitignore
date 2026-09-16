@@ -80,3 +80,6 @@ venv.bak/
 # Temporary bundled UI previews.
 /.artifacts/diagnostic-preview/
 /.artifacts/optimization-entry-preview/
+
+# Private job application artifacts.
+/.artifacts/job-applications-*/

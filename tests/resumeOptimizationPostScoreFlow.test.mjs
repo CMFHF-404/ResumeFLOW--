@@ -1372,7 +1372,7 @@ test('mounted observer never reopens a hydrated rescore after an explicit close'
 });
 
 
-test('single-pass result retries failed reload before scoring and keeps failures recoverable', async (t) => {
+test('single-pass result recovers failed reloads without reapplying or scoring', async (t) => {
   const browser = await launchMountedHookBrowser(t);
   if (!browser) return;
   t.after(() => browser.close());
@@ -1386,19 +1386,22 @@ test('single-pass result retries failed reload before scoring and keeps failures
   await page.evaluate(() => globalThis.__applyResumeOptimization());
   await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.uiState === 'error');
   await page.getByRole('button', { name: /优化结果/ }).first().click();
-  await page.getByRole('button', { name: '重新评分', exact: true }).click();
+  assert.match(await page.getByRole('alert').textContent(), /Temporary resume reload failure/);
+  assert.equal(await page.getByRole('heading', { name: '内容已更新！', exact: true }).count(), 0);
+  await page.getByRole('button', { name: '重试完成更新', exact: true }).click();
   await page.waitForFunction(() => (globalThis.__reloadCount ?? 0) >= 2 || globalThis.__reportRescoreCalls > 0);
   assert.equal(await page.evaluate(() => globalThis.__reportRescoreCalls ?? 0), 0);
   await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.uiState === 'error');
   assert.equal(await page.evaluate(() => globalThis.__resumeOptimizationHarnessCalls.generate), 0);
+  assert.match(await page.getByRole('alert').textContent(), /Temporary resume reload failure/);
   await page.evaluate(() => {
     globalThis.__failOptimizationReload = false;
     globalThis.__pauseOptimizationReload = true;
   });
-  await page.getByRole('button', { name: '重新评分', exact: true }).click();
+  await page.getByRole('button', { name: '重试完成更新', exact: true }).click();
   await page.waitForFunction(() => Boolean(globalThis.__releaseOptimizationReload));
   assert.equal(await page.evaluate(() => globalThis.__resumeOptimizationHarnessFlow.uiState), 'rescoring');
-  assert.equal(await page.getByRole('button', { name: '重新评分', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: '重试完成更新', exact: true }).count(), 0);
   assert.equal(await page.evaluate(() => globalThis.__resumeOptimizationHarnessCalls.generate), 0);
   await page.evaluate(() => globalThis.__releaseOptimizationReload());
   await page.waitForFunction(() => globalThis.__resumeOptimizationHarnessFlow.uiState === 'completed');
@@ -1408,9 +1411,10 @@ test('single-pass result retries failed reload before scoring and keeps failures
     applies: globalThis.__resumeOptimizationHarnessCalls.apply,
     scores: globalThis.__resumeOptimizationHarnessCalls.generate,
     reportCalls: globalThis.__reportRescoreCalls ?? 0,
-  })), { reloads: 3, signature: 'S2', applies: 1, scores: 1, reportCalls: 0 });
-  await page.getByRole('button', { name: '重新评分', exact: true }).click();
-  assert.equal(await page.evaluate(() => globalThis.__reportRescoreCalls), 1);
+  })), { reloads: 3, signature: undefined, applies: 1, scores: 0, reportCalls: 0 });
+  assert.equal(await page.getByRole('alert').count(), 0);
+  assert.equal(await page.getByRole('button', { name: '重试完成更新', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('heading', { name: '内容已更新！', exact: true }).count(), 1);
 });
 
 test('single-pass apply finishes with zero rescore calls until explicitly requested', async (t) => {

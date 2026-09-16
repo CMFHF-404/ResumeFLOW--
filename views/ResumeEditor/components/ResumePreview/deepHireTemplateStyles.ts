@@ -3,7 +3,7 @@ import type {
     ResumeTemplateDefinition,
     ResumeTemplateSectionVariant,
 } from '../../../../constants/resumeTemplates';
-import { PREVIEW_PADDING_MM } from '../../constants';
+import { PREVIEW_PADDING_MM, SMART_PAGE_TOP_PADDING_MIN_PX } from '../../constants';
 
 type DeepHirePreviewCssProperties = React.CSSProperties & {
     '--rf-template-top-padding'?: string;
@@ -943,8 +943,14 @@ export const buildDeepHirePreviewStyleOverrides = (
     const tokens = activeTemplate.visualTokens;
     const defaultInsetPx = DEFAULT_EDITOR_TOP_PADDING_PX;
     const configuredInsets = tokens?.pageInsets;
+    // Compressing an inset template must not erase its breathing room. Designs
+    // with an intentional full-bleed header retain their zero outer inset.
+    const minimumTopInsetPx = Math.min(
+        configuredInsets?.top ?? defaultInsetPx,
+        SMART_PAGE_TOP_PADDING_MIN_PX
+    );
     const adjustedTopInsetPx = Math.max(
-        0,
+        minimumTopInsetPx,
         (configuredInsets?.top ?? defaultInsetPx)
         + normalizeTopPaddingPx(topPaddingPx)
         - DEFAULT_EDITOR_TOP_PADDING_PX

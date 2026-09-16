@@ -33,6 +33,72 @@ def data_and_report(kind,selected=(),needs_facts=False):
 
 
 class SelectionActionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_skill_drafts_share_one_plan_call_and_require_confirmation(self):
+        _, report, ctx=data_and_report('skill_create')
+        report['metadata']['suggestionDetailVersion']='diagnostic_only_v1'
+        ctx.current_resume['skills']=[dict(id='existing',name='PRD',category='产品能力')]
+        source=next(iter(ctx.current_resume['experiences'].values()))['star']['a']
+        raw={'changes':[],'skillDrafts':{'target-1':[
+            dict(name='Python：有数据清洗实践',category='产品能力',sourceText=source),
+            dict(name='数据核查：有项目实践',category='产品能力',sourceText=source),
+            dict(name='不存在的技能',category='工具',sourceText='这不是经历原文')]}}
+        with patch.object(planner,'_call_llm',AsyncMock(return_value={'content':json.dumps(raw)})) as call:
+            plan=await planner.plan(ctx)
+            self.assertEqual(len(plan.questions),1)
+            self.assertEqual(len(plan.questions[0].skill_candidates),2)
+            self.assertEqual(plan.questions[0].skill_categories,['产品能力'])
+            self.assertEqual(plan.changes[0].action_kind,'ask_user')
+            self.assertIsNone(plan.changes[0].targeted_value)
+            self.assertEqual(await planner.rewrite(ctx,plan,[OptimizationAnswer(question_id=plan.questions[0].question_id,state='skipped')]),[])
+            answer=OptimizationAnswer(question_id=plan.questions[0].question_id,state='answered',value=json.dumps({'skills':[dict(candidateIndex=1,fragments=['数据核查：有项目实践'],category='产品能力',confirmed=True)]}))
+            rewritten=await planner.rewrite(ctx,plan,[answer])
+            self.assertEqual(rewritten[0].targeted_value,{'skills':[dict(name='数据核查：有项目实践',category='产品能力')]})
+            call.assert_awaited_once()
+
+    async def test_create_and_order_apply_and_revert_as_one_batch(self):
+        from test_resume_optimization_apply import _run, _resume, _link, _transaction_session, _request, USER_ID, RUN_ID
+        from test_resume_optimization_finalize import _finalize_session, _revert_request
+        from app.domain.resume_optimization.run_service import hash_canonical_json
+
+        for reverse in (False, True):
+            for accept in ('both', 'order', 'create'):
+                with self.subTest(reverse=reverse, accept=accept):
+                    _, report, ctx = data_and_report('skill_create')
+                    ctx.current_resume['skills'] = [dict(id=identity, name=identity, category='产品') for identity in ('skill-a', 'skill-b')]
+                    report['suggestions'].append(dict(report['suggestions'][0], suggestionId='suggestion-2',
+                        moduleType='skills_order', moduleId='skills', fieldPath='skills.order', needsFacts=False,
+                        factGaps=[], selectedItems=['skill-b','skill-a']))
+                    report['selectedSuggestionIds'].append('suggestion-2')
+                    response={'changes':[dict(targetId='target-2', actionKind='rewrite_now', generalValue=['skill-b','skill-a'], rationale='岗位优先', questions=[])]}
+                    with patch.object(planner, '_call_llm', AsyncMock(return_value={'content':json.dumps(response)})) as call:
+                        plan=await planner.plan(ctx)
+                        answer=OptimizationAnswer(question_id=plan.questions[0].question_id,state='answered',
+                            value=json.dumps({'skills':[dict(candidateIndex=0,fragments=['Python：有数据清洗实践'],category='工具',confirmed=True),dict(candidateIndex=2,fragments=['数据分析：有项目实践'],category='产品',confirmed=True)]} if reverse else dict(fragments=['Python数据清洗'],category='工具',confirmed=True)))
+                        rewritten=await planner.rewrite(ctx,plan,[answer])
+                        call.assert_awaited_once()
+                        self.assertEqual(await planner.rewrite(ctx,plan,[OptimizationAnswer(question_id=plan.questions[0].question_id,state='unknown')]),[])
+                    changes=[c for c in plan.changes if c.change_id!='target-1']+rewritten
+                    if reverse:changes.reverse()
+                    final=plan.model_copy(update={'changes':changes})
+                    run=_run([]);run.policy_version='json_structure_v3'
+                    run.before_snapshot['evaluation']=report;run.before_snapshot['current_resume']=ctx.current_resume
+                    run.source_snapshot_hash=hash_canonical_json(run.before_snapshot)
+                    run.plan_json=plan.storage_dump();run.result_json=final.storage_dump()
+                    run.answers_json={'answers':[answer.model_dump(mode='json')]}
+                    resume=_resume();resume.config['selection']['skillIds']=['skill-a','skill-b']
+                    resume.config['jdAnalysis']['result']['resumeEvaluation']=report
+                    original=deepcopy(resume.config);link=_link()
+                    ids=['target-1','target-2'] if accept=='both' else ['target-2'] if accept=='order' else ['target-1']
+                    with patch.object(local_actions,'check_current_sources',AsyncMock()), patch.object(planner,'_call_llm',side_effect=AssertionError('No apply/revert model calls')):
+                        await apply_service.apply_resume_optimization(session=_transaction_session(run,resume,link),user_id=USER_ID,run_id=str(RUN_ID),payload=_request(*ids))
+                        expected=['skill-b','skill-a'] if accept!='create' else ['skill-a','skill-b']
+                        if accept!='order':expected.extend(identity for identity,_ in local_actions.created_items(str(run.id),rewritten[0]))
+                        self.assertEqual(resume.config['selection']['skillIds'],expected)
+                        self.assertEqual(len(resume.config.get('localSkills',{})),(2 if reverse else 1) if accept!='order' else 0)
+                        await apply_service.revert_resume_optimization(session=_finalize_session(run,resume,link),user_id=USER_ID,run_id=str(RUN_ID),payload=_revert_request(resume.updated_at))
+                    for field in ('selection','localSkills'):
+                        self.assertEqual(resume.config.get(field),original.get(field))
+
     async def test_education_whitespace_applies_and_reverts_exact_config_without_accepting_real_changes(self):
         from test_object_review import raw_object, report_object
         from test_resume_optimization_apply import _run, _resume, _link, _transaction_session, _request, USER_ID, RUN_ID, MASTER_ID

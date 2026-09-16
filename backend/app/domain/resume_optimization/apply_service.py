@@ -827,7 +827,7 @@ def build_apply_patch(
     targets: set[tuple[str, str]] = set()
     has_effective_change = False
 
-    for change in changes:
+    for change in local_actions.application_order(changes):
         target = _canonical_target(change, frozen_links)
         if target in targets:
             raise OptimizationApplyValidationError(
@@ -3910,7 +3910,7 @@ def _validated_apply_journal(
         # Reconstruct only touched config parents from the signed before journal.
         expected=deepcopy(protected_config)
         for name,path in expected_config_paths.items():_restore_presence(expected,path,normalized_config[name]['before'])
-        for change in changes:
+        for change in local_actions.application_order(changes):
             if change.module_type in local_actions.CONFIG_KINDS:
                 try:local_actions.update_config(expected,change,frozen_resume,str(run.id))
                 except ValueError as exc:raise OptimizationRunDataInvalidError('Invalid local action journal') from exc
@@ -4013,7 +4013,10 @@ def _validated_apply_journal(
             leaf_after = normalized_config["selection.skillIds"]["after"]
             if run.policy_version=='json_structure_v3':
                 frozen_order=[s['id'] for s in frozen_resume.get('skills',[])]
-                if change.before_value!=frozen_order or (leaf_before['present'] and leaf_before['value']!=frozen_order) or leaf_after!={'present':True,'value':change.targeted_value}:
+                applied_order=change.targeted_value + [identity
+                    for c in changes if c.module_type=='skill_create'
+                    for identity,_ in local_actions.created_items(str(run.id),c)]
+                if change.before_value!=frozen_order or (leaf_before['present'] and leaf_before['value']!=frozen_order) or leaf_after!={'present':True,'value':applied_order}:
                     raise OptimizationRunDataInvalidError('Skill order journal mismatch')
                 continue
             if parent_before["present"] and isinstance(
