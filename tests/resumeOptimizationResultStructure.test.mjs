@@ -71,48 +71,26 @@ const postEvaluation = {
   bankSuggestionCount: 1,
 };
 
-test('completed result renders only audited guidance status changes and compact metrics', async () => {
-  const { ResumeOptimizationResult, cleanup } = await importResult();
-  try {
-    const html = renderToStaticMarkup(React.createElement(ResumeOptimizationResult, {
-      run: run('completed', postEvaluation),
-      busy: false,
-      error: null,
-      onRetry: () => undefined,
-      onRevert: () => undefined,
+test('applied and completed results show centered confirmation without metrics or actions', async () => {
+  const {ResumeOptimizationResult,cleanup}=await importResult();
+  try { for(const status of ['applied','completed']) for(const policyVersion of ['json_structure_v1','json_structure_v3']) {
+    const html=renderToStaticMarkup(React.createElement(ResumeOptimizationResult,{
+      run:{...run(status,status==='completed'?postEvaluation:null),policyVersion},busy:false,error:null,onRetry:()=>{throw Error('unexpected retry')},onRevert:()=>{throw Error('unexpected revert')}
     }));
-
-    for (const copy of [
-      '优化前状态', '有明显改进空间', '优化后状态', '基本到位',
-      '已接受修改', '2', '安全阻断', '1', '事实缺口', '经历库机会',
-      ...dimensions,
-    ]) assert.match(html, new RegExp(copy));
-    assert.match(html, /撤销本次应用/);
-    assert.doesNotMatch(html, /重试复评|总分|分数差|预测分|expectedScoreGain|expected_score_gain|61|76|\+15/);
-  } finally {
-    cleanup();
-  }
+    assert.match(html,/内容已更新！/);
+    assert.match(html,/text-center/);
+    assert.match(html,/justify-center/);
+    assert.doesNotMatch(html,/<button|已接受修改|已解决问题|事实缺口|安全阻断|经历库机会|审核|VERIFIED RESULT/);
+  }}finally{cleanup();}
 });
 
-test('applied result exposes retry without inventing a final score', async () => {
-  const { ResumeOptimizationResult, cleanup } = await importResult();
-  try {
-    const html = renderToStaticMarkup(React.createElement(ResumeOptimizationResult, {
-      run: run('applied', null),
-      busy: false,
-      error: '模型暂不可用',
-      onRetry: () => undefined,
-      onRevert: () => undefined,
-    }));
-
-    assert.match(html, /内容已应用，审核尚未完成/);
-    assert.match(html, /重试审核/);
-    assert.match(html, /撤销本次应用/);
-    assert.match(html, /后续手工编辑/);
-    assert.doesNotMatch(html, /优化后总分|评分|预测分|expectedScoreGain|expected_score_gain/);
-  } finally {
-    cleanup();
-  }
+test('unapplied and reverted states do not claim content was updated', async () => {
+  const {ResumeOptimizationResult,cleanup}=await importResult();
+  try{for(const status of ['failed','reverted']){
+    const html=renderToStaticMarkup(React.createElement(ResumeOptimizationResult,{run:run(status,null),busy:false,error:'应用失败',onRetry:()=>{},onRevert:()=>{}}));
+    assert.doesNotMatch(html,/内容已更新！/);
+    assert.match(html,status==='reverted'?/已撤销本次优化/:/应用失败/);
+  }}finally{cleanup();}
 });
 
 test('status comparison uses audited bands without numeric quality fields', () => {
@@ -133,32 +111,6 @@ test('workspace confirms accepted count, disables zero apply, and wires result a
   assert.match(workspace, /busy=\{uiState === 'applying' \|\| uiState === 'rescoring' \|\| uiState === 'stale'\}/);
   assert.match(workspace, /retryRescore/);
   assert.match(workspace, /revertRun/);
-});
-
-
-test('single-pass result presents centered success and rescore actions without scoring automatically', async () => {
-  const { ResumeOptimizationResult, cleanup } = await importResult();
-  try {
-    let scores = 0;
-    const props = {run:{...run('applied', null),policyVersion:'json_structure_v1'},busy:false,error:null,onRetry:()=>scores++,onRevert:()=>{}};
-    const html = renderToStaticMarkup(React.createElement(ResumeOptimizationResult, props));
-    assert.match(html, /简历优化完成/);
-    assert.match(html, /已将 2 项修改应用到简历/);
-    assert.match(html, /text-center/);
-    assert.match(html, /lucide-circle-check|lucide-check-circle/);
-    assert.match(html, /撤销结果/);
-    assert.doesNotMatch(html, /撤销本次应用|所选修改已应用/);
-    assert.equal(scores, 0);
-    const findRetry = node => {
-      if (!node || typeof node !== 'object') return undefined;
-      if (node.type === 'button' && node.props.onClick === props.onRetry) return node;
-      return React.Children.toArray(node.props?.children).map(findRetry).find(Boolean);
-    };
-    findRetry(ResumeOptimizationResult(props)).props.onClick();
-    assert.equal(scores, 1);
-    const busyHtml = renderToStaticMarkup(React.createElement(ResumeOptimizationResult, {...props,busy:true}));
-    assert.equal((busyHtml.match(/disabled=""/g) || []).length, 4);
-  } finally { cleanup(); }
 });
 
 

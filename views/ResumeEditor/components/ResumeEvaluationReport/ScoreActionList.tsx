@@ -11,6 +11,7 @@ export function ScoreActionList({suggestions, disabled, children}: {
   const executable=ordered.filter(s=>s.editable&&!s.executionBlockReason);
   const executableIds=executable.map(s=>s.suggestionId);
   const selectedRows=executable.filter(row=>annotations.selected.includes(row.suggestionId));
+  const combinedSkills=selectedRows.some(row=>row.moduleType==='skill_create')&&selectedRows.some(row=>row.moduleType==='skills_order');
   const additions=getCompatibleScoreSuggestionAdditions(ordered,annotations.selected);
   const allSelected=executableIds.length>0&&additions.length===0;
   const hasConflicts=executable.some((row,index)=>executable.slice(index+1).some(other=>scoreSuggestionsConflict(row,other)));
@@ -53,6 +54,7 @@ export function ScoreActionList({suggestions, disabled, children}: {
       <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">勾选要处理的方案，生成修改预览后再应用。</p>
       {hasConflicts&&<p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">批量选择保留已选项，按显示顺序补选可兼容方案；互斥方案需分次处理。</p>}</div>
     {executable.length?executable.map(card):<p className="text-xs text-slate-500">本次没有可自动执行的修改方案。</p>}
+    {combinedSkills&&<p role="status" aria-label="技能合并处理提示" className="text-xs leading-5 text-emerald-800 dark:text-emerald-300">已同时选择技能补充与排序，将合并处理：原有技能按建议排序，确认新增的技能放在末尾；跳过确认则不新增。</p>}
     {children}
   </section>;
 }

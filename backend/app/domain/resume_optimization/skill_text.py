@@ -13,8 +13,25 @@ def value(raw):
     return result
 
 
-def confirmed(answer):
+def creations(raw):
+    if isinstance(raw,dict) and set(raw)=={'skills'}:
+        items=raw['skills']
+        if not isinstance(items,list) or not 1<=len(items)<=5:raise ValueError('invalid skill batch')
+        result=[value(item) for item in items]
+        if len({item['name'].casefold() for item in result})!=len(result):raise ValueError('duplicate skills')
+        return result
+    return [value(raw)]
+
+
+def confirmed(answer, *, allow_batch=False):
     raw=json.loads(answer)
+    if allow_batch and isinstance(raw,dict) and set(raw)=={'skills'}:
+        if not isinstance(raw['skills'],list) or not 1<=len(raw['skills'])<=5:raise ValueError('invalid confirmed skill batch')
+        indexes=[item.get('candidateIndex') for item in raw['skills'] if isinstance(item,dict) and 'candidateIndex' in item]
+        if any(type(index) is not int or not 0<=index<5 for index in indexes) or len(set(indexes))!=len(indexes):raise ValueError('invalid candidate indexes')
+        result={'skills':[confirmed(json.dumps({k:v for k,v in item.items() if k!='candidateIndex'})) if isinstance(item,dict) else confirmed(json.dumps(item)) for item in raw['skills']]}
+        creations(result)
+        return result
     if not isinstance(raw,dict) or set(raw)!={'fragments','category','confirmed'} or raw['confirmed'] is not True:
         raise ValueError('explicit skill confirmation required')
     parts=raw['fragments']

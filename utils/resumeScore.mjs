@@ -84,8 +84,7 @@ export function scoreSuggestionsConflict(a, b) {
   if (a.moduleId === b.moduleId && experienceKinds.includes(a.moduleType) && experienceKinds.includes(b.moduleType)) {
     return a.moduleType !== 'experience_star' || b.moduleType !== 'experience_star';
   }
-  return (a.moduleType === 'skill_create' && b.moduleType === 'skills_order')
-    || (b.moduleType === 'skill_create' && a.moduleType === 'skills_order');
+  return false;
 }
 
 export function getCompatibleScoreSuggestionAdditions(suggestions, selectedIds) {

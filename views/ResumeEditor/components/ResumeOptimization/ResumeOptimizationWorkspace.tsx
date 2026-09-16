@@ -49,6 +49,7 @@ type ResumeOptimizationWorkspaceProps = ResumeOptimizationFlowSlice & ResumeOpti
     returnFocusRef: MutableRefObject<HTMLElement | null>;
     suppressReturnFocusRef: MutableRefObject<boolean>;
     skillNameById: Record<string, string>;
+    skillCategories?: string[];
     moduleOrder: string[];
     onViewExperience: (
         category: ExperienceCategory | undefined,
@@ -131,6 +132,7 @@ const ResumeOptimizationPlaceholder: React.FC<{
 
 export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspaceProps> = ({
     surface = 'modal',
+    skillCategories = [],
     uiState,
     run,
     progressText,
@@ -483,7 +485,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                 <ResumeOptimizationProgress progressText={progressText} />
                             ) : canRenderQuestions && plan ? (
                                 <ResumeOptimizationQuestions
-                                    questions={plan.questions}
+                                    questions={plan.questions.map(question=>({...question,skillCategories:[...new Set([...skillCategories,...(question.skillCategories??[])])]}))}
                                     drafts={answerDrafts}
                                     persistedAnswers={run?.answers ?? []}
                                     disabled={!canEditQuestions}
@@ -517,7 +519,7 @@ export const ResumeOptimizationWorkspace: React.FC<ResumeOptimizationWorkspacePr
                                         if (run.policyVersion === 'json_structure_v1' && uiState !== 'error' && onRescoreInReport) {
                                             void onRescoreInReport();
                                         } else {
-                                            void retryRescore();
+                                            void retryRescore(false);
                                         }
                                     }}
                                     onRevert={() => void revertRun()}

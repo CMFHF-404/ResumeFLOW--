@@ -58,7 +58,7 @@ export const ResumeOptimizationQuestionCard: React.FC<ResumeOptimizationQuestion
         && !isQuickChoiceSelected;
     const customAnswerValue = draft.state === 'answered' && !isQuickChoiceSelected ? draft.value : '';
     const optionsDisabled = controlsDisabled || hasCustomAnswer;
-    if(question.answerType==='skill_confirmation')return <SkillConfirmation question={question} value={draft.value} disabled={controlsDisabled} onChange={onChange}/>;
+    if(question.answerType==='skill_confirmation')return <SkillConfirmation question={question} answerState={draft.state} value={draft.value} disabled={controlsDisabled} onChange={onChange}/>;
 
     return (
         <fieldset

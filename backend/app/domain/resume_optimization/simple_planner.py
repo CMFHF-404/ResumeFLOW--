@@ -70,8 +70,6 @@ def targets(context):
             raise SelectionConflictError('Overlapping experience operations')
         if kind in local_actions.KINDS and len({json.dumps(s.get('selectedItems',[])) for s in row['suggestions']})>1:
             raise SelectionConflictError('Conflicting choices for one target')
-        if kind=='skill_create' and any(r['moduleType']=='skills_order' for r in rows.values()):
-            raise SelectionConflictError('Create local skills before reordering skills')
     return {row['targetId']: row for row in rows.values()}
 
 
@@ -191,14 +189,19 @@ async def plan(context):
     required_gaps={g['gapId'] for target in ordinary.values() for s in target['suggestions'] for g in s.get('factGaps',[])}
     if len(required_gaps)+len(skill_targets)>question_limit:raise ConfirmationLimitError('Too many required confirmations')
     model_targets=list(ordinary.values())
+    draft_targets=[dict(targetId=k, candidateText=v['suggestions'][0].get('candidateText',''))
+                   for k,v in skill_targets.items() if deferred and v['moduleType']=='skill_create']
+    categories=list(dict.fromkeys(s['category'] for s in context.current_resume.get('skills',[]) if s.get('category')))
+    if draft_targets:
+        prompt+='\n另返回skillDrafts对象，以skillDraftTargets的targetId为键，每项为1—5条{name,category,sourceText}。为每个选中的技能补充目标从当前经历中提取相关且尚未列出的技能，合并同义项，避免多个目标重复。name预写可直接用于简历的“技能＋掌握程度/实际用途”完整描述；依据实际动作判断程度，不默认熟练或精通，缺少明确程度时用“有项目实践”等保守表述。这些仅是待用户确认的草稿。category优先匹配skillCategories中已有分类，确实不适合时才建议新分类。sourceText必须逐字复制当前经历中支持该技能的一段连续原文。只有经历实际支持多项时才提取多项，不凑数。changes仍只返回targets中的普通模块，技能草稿不放入changes。'
     if deferred:
         model_targets=[{**{k:v for k,v in target.items() if k!='suggestions'},
             'suggestions':[{k:s[k] for k in ('suggestionId','problem','direction')} for s in target['suggestions']]}
             for target in model_targets]
     raw = await call_json([dict(role='system', content=prompt + f'全部问题合计最多 {question_limit-len(skill_targets)} 个。'),
-        dict(role='user', content=json.dumps(dict(targets=model_targets, resume=context.current_resume,
+        dict(role='user', content=json.dumps(dict(targets=model_targets, skillDraftTargets=draft_targets, skillCategories=categories, resume=context.current_resume,
             selectedSources={k:v for k,v in context.selected_source_experiences.items() if k in {t['moduleId'] for t in allowed.values()}},
-            targetRole=context.target_role), ensure_ascii=False))], 'resume_optimization_single_plan') if ordinary else {'changes':[]}
+            targetRole=context.target_role), ensure_ascii=False))], 'resume_optimization_single_plan') if ordinary or draft_targets else {'changes':[]}
     changes, questions, seen = [], [], set()
     if not isinstance(raw.get('changes'), list):
         raise OptimizationPlanNormalizationError('Changes must be an array')
@@ -231,10 +234,26 @@ async def plan(context):
             raise OptimizationPlanNormalizationError('All required fact gaps must be asked together')
         changes.append(change)
     for identity,target in skill_targets.items():
+        drafts=[]
+        if any(item['targetId']==identity for item in draft_targets):
+            draft_map=raw.get('skillDrafts',{})
+            proposed=draft_map.get(identity,[]) if isinstance(draft_map,dict) else []
+            evidence=[text for experience in local_actions.rows(context.current_resume,'experiences')
+                      for text in experience.get('star',{}).values() if isinstance(text,str)]
+            if isinstance(proposed,list):
+                for item in proposed[:5]:
+                    try:
+                        normalized=skill_text.value({k:item.get(k) for k in ('name','category')})
+                        source=item.get('sourceText','')
+                        if not isinstance(source,str) or not source.strip() or not any(source in text for text in evidence):continue
+                        if any(d['name'].casefold()==normalized['name'].casefold() for d in drafts):continue
+                        drafts.append(dict(**normalized,sourceText=source))
+                    except (ValueError,AttributeError):continue
         changes.append(candidate(dict(actionKind='ask_user',generalValue=None,rationale='按本人确认的片段整理当前简历技能'),target,change_id=identity))
         questions.append(OptimizationQuestion(question_id=f'question-{len(questions)+1}',module_id=target['moduleId'],field_path='skill.text',
             text='确认当前技能文字与分类',reason='只应用本人确认的片段，不推断工具或掌握程度。',answer_type='skill_confirmation',
-            skill_original=target['beforeValue'] if target['moduleType']=='skill_text' else dict(name=target['suggestions'][0]['candidateText'],category='未分类'),affects_change_ids=[identity]))
+            skill_original=target['beforeValue'] if target['moduleType']=='skill_text' else dict(name=target['suggestions'][0]['candidateText'],category='未分类'),
+            skill_candidates=drafts,skill_categories=categories,affects_change_ids=[identity]))
     for identity,target in direct.items():
         value=local_actions.deterministic(target)
         changes.append(candidate(dict(actionKind='rewrite_now' if value!=target['beforeValue'] else 'leave_unchanged',generalValue=value if value!=target['beforeValue'] else None,
@@ -261,7 +280,7 @@ async def rewrite(context, existing_plan, answers):
     for identity,c in list(existing.items()):
         if c.module_type in ('skill_text','skill_create'):
             q=next(q for q in existing_plan.questions if identity in q.affects_change_ids)
-            try: v=skill_text.confirmed(answered[q.question_id].value)
+            try: v=skill_text.confirmed(answered[q.question_id].value,allow_batch=c.module_type=='skill_create')
             except (ValueError,TypeError) as exc: raise OptimizationPlanNormalizationError('Invalid skill confirmation') from exc
             skill_results.append(candidate(dict(actionKind='rewrite_now',generalValue=v,rationale='仅使用本轮确认的技能片段'),allowed[identity],change_id=identity,answered=True))
             del existing[identity]
@@ -310,7 +329,7 @@ def validate_stored_plan(run, plan):
                     or questions[0].field_path!='skill.text' or questions[0].affects_change_ids!=[change.change_id]):
                 raise OptimizationPlanNormalizationError('Skill confirmation missing or outside its target')
             answer=answers.get(questions[0].question_id,{})
-            try: expected=skill_text.confirmed(answer.get('value','')) if answer.get('state')=='answered' else None
+            try: expected=skill_text.confirmed(answer.get('value',''),allow_batch=change.module_type=='skill_create') if answer.get('state')=='answered' else None
             except ValueError as exc:raise OptimizationPlanNormalizationError('Invalid stored confirmation') from exc
             if expected is None or change.general_value!=expected or change.targeted_value!=expected:raise OptimizationPlanNormalizationError('Skill candidate differs from confirmed fragments')
         checked=candidate(dict(actionKind=change.action_kind, generalValue=change.general_value,

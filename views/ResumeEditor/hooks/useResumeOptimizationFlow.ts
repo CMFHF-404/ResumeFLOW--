@@ -2500,7 +2500,7 @@ export const useResumeOptimizationFlow = ({
     settleCommittedSourceAfterReload, shouldHandleOperationError, waitForCommittedSource,
   ]);
 
-  const retryRescore = useCallback(async () => {
+  const retryRescore = useCallback(async (manualRescore = true) => {
     if (!enabled) return null;
     const currentRun = latestRunRef.current;
     if (!currentRun || currentRun.status !== 'applied' || controllerRef.current) return null;
@@ -2569,7 +2569,7 @@ export const useResumeOptimizationFlow = ({
         generation,
         controller,
         operation,
-        true,
+        manualRescore,
       );
     } catch (cause) {
       if (await shouldHandleOperationError(cause, generation, operation, currentRun.id)) {

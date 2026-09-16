@@ -63,7 +63,7 @@ def validate(kind,original,value,suggestion):
         if value is not False:raise ValueError('visibility action only hides')
     elif kind in ('education_notes','experience_restructure'):
         if not isinstance(value,str) or (kind=='experience_restructure' and not value.strip()):raise ValueError('nonempty restructured text required')
-    elif kind=='skill_create':skill_text.value(value)
+    elif kind=='skill_create':skill_text.creations(value)
 
 
 def deterministic(target):
@@ -79,6 +79,19 @@ def deterministic(target):
 def created_id(run_id,change_id):return LOCAL_PREFIX+str(uuid.uuid5(uuid.NAMESPACE_URL,f'{run_id}:{change_id}'))
 
 
+def created_items(run_id,change):
+    items=skill_text.creations(change.targeted_value)
+    batch='skills' in change.targeted_value
+    return [(created_id(run_id,f'{change.change_id}:{index}' if batch else change.change_id),item)
+            for index,item in enumerate(items)]
+
+
+def application_order(changes):
+    # Ordering uses frozen IDs. Apply it before selection mutations so confirmed
+    # additions and hides survive regardless of the model's change order.
+    return sorted(changes, key=lambda change: change.module_type != 'skills_order')
+
+
 def restructured_star(original,text):
     from .apply_service import _frontend_sanitized_html
     if not isinstance(text,str) or not text.strip():raise ValueError('body text required')
@@ -92,7 +105,7 @@ def display(target,value):
     if value is None:return ['尚未创建']
     if kind in ('certification_order','experience_order'):return [target.get('itemLabels',{}).get(x,'条目') for x in value]
     if kind in ('experience_hide','certification_hide'):return [('显示：' if value else '隐藏：')+target.get('itemLabels',{}).get(target['moduleId'],'条目')]
-    if kind=='skill_create':return [value['category'],value['name']]
+    if kind=='skill_create':return [f"{item['category']} · {item['name']}" for item in skill_text.creations(value)] if 'skills' in value else [value['category'],value['name']]
     if kind=='experience_restructure' and isinstance(value,dict):return [value[k] for k in 'star' if value[k]]
     return [value]
 
@@ -132,12 +145,12 @@ def update_config(config,change,resume,run_id):
         # Keep unselected/archived ordering entries outside the frozen visible set.
         config['layout']['orders'][field]=value+[x for x in old if x not in value]
     elif kind=='skill_create':
-        identity=created_id(run_id,change.change_id)
         store=config.setdefault('localSkills',{})
-        if identity in store:raise ValueError('local skill already exists')
-        store[identity]=skill_text.value(value)
         selected=config.setdefault('selection',{}).setdefault('skillIds',[s['id'] for s in resume.get('skills',[])])
-        selected.append(identity)
+        for identity,item in created_items(run_id,change):
+            if identity in store:raise ValueError('local skill already exists')
+            store[identity]=item
+            selected.append(identity)
     else:raise ValueError('not a config action')
 
 

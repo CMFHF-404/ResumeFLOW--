@@ -361,6 +361,13 @@ const normalizeQuestion = (value, index) => {
   if (affectsChangeIds.length === 0) {
     fail(`${fieldName}.affects_change_ids must not be empty`);
   }
+  const rawCandidates=record.skill_candidates??record.skillCandidates??[];
+  if(!Array.isArray(rawCandidates)||rawCandidates.length>5)fail(`${fieldName} invalid skill drafts`);
+  const skillCandidates=rawCandidates.map((item,index)=>{
+    const candidate=toRecord(item,`${fieldName}.skillCandidates[${index}]`);
+    return {name:requiredText(candidate.name,'skill draft name'),category:requiredText(candidate.category,'skill draft category'),sourceText:requiredText(candidate.sourceText,'skill draft source')};
+  });
+  const skillCategories=uniqueTextArray(record.skill_categories??record.skillCategories??[],`${fieldName}.skillCategories`);
   return {
     questionId: requiredText(
       aliased(record, 'questionId', 'question_id'),
@@ -378,6 +385,8 @@ const normalizeQuestion = (value, index) => {
     reason: requiredText(record.reason, `${fieldName}.reason`),
     answerType,
     skillOriginal: record.skill_original ?? record.skillOriginal ?? null,
+    skillCandidates,
+    skillCategories,
     choices,
     affectsChangeIds,
     priority: integer(record.priority ?? 0, `${fieldName}.priority`, { min: 0 }),
