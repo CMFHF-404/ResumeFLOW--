@@ -83,3 +83,11 @@ venv.bak/
 
 # Private job application artifacts.
 /.artifacts/job-applications-*/
+
+# Personal job-search materials belong outside this repository.
+/job-archives/
+/.artifacts/job-applications-*/
+/.artifacts/score-fast-20260914/
+/.artifacts/score-unlimited-20260914/
+/tmp/pdfs/
+/docs/*+求职+*
