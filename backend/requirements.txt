@@ -1,6 +1,7 @@
 fastapi>=0.110
 uvicorn[standard]>=0.27
-sqlmodel>=0.0.16
+# 0.0.45 changes implicit datetime columns to aware UTC; existing columns use naive UTC.
+sqlmodel==0.0.44
 sqlalchemy[asyncio]>=2.0
 asyncpg>=0.29
 httpx>=0.26
