@@ -118,6 +118,7 @@ test('failed planning runs render the error placeholder instead of an empty plan
 
 test('editor moves optimization into the AI layout and keeps mobile modal compatibility', () => {
   const editor = read('views/ResumeEditor/index.tsx');
+  const navigation = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
   assert.match(
     editor,
     /const ResumeOptimizationWorkspace = React\.lazy\(async \(\) => \{[\s\S]*import\('\.\/components\/ResumeOptimization\/ResumeOptimizationWorkspace'\)/,
@@ -126,9 +127,9 @@ test('editor moves optimization into the AI layout and keeps mobile modal compat
     editor,
     /import \{ ResumeOptimizationWorkspace \} from '\.\/components\/ResumeOptimization\/ResumeOptimizationWorkspace'/,
   );
-  const wrapper = editor.slice(
-    editor.indexOf('const handleStartResumeOptimization'),
-    editor.indexOf('const commitLayoutSnapshot', editor.indexOf('const handleStartResumeOptimization')),
+  const wrapper = navigation.slice(
+    navigation.indexOf('const handleStartResumeOptimization'),
+    navigation.indexOf('const focusRestoredAnalysisReport'),
   );
   const capture = wrapper.indexOf('document.activeElement');
   const openOptimization = wrapper.indexOf("setRightSidebarSurface('optimization')");
@@ -167,19 +168,20 @@ test('editor moves optimization into the AI layout and keeps mobile modal compat
 
 test('CTA-owned workspace close restores analysis in AI layout and never opens it for hydration', () => {
   const editor = read('views/ResumeEditor/index.tsx');
-  assert.match(editor, /const resumeOptimizationShouldRestoreReportRef = useRef\(false\)/);
+  const navigation = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
+  assert.match(navigation, /const resumeOptimizationShouldRestoreReportRef = useRef\(false\)/);
 
-  const startWrapper = editor.slice(
-    editor.indexOf('const handleStartResumeOptimization'),
-    editor.indexOf('const commitLayoutSnapshot', editor.indexOf('const handleStartResumeOptimization')),
+  const startWrapper = navigation.slice(
+    navigation.indexOf('const handleStartResumeOptimization'),
+    navigation.indexOf('const focusRestoredAnalysisReport'),
   );
   const markOrigin = startWrapper.indexOf('resumeOptimizationShouldRestoreReportRef.current = true');
   const openOptimization = startWrapper.indexOf("setRightSidebarSurface('optimization')");
   const startRequest = startWrapper.indexOf('startOptimization');
   assert.ok(markOrigin >= 0 && markOrigin < openOptimization && openOptimization < startRequest);
 
-  const closeWrapperStart = editor.indexOf('const handleCloseResumeOptimization');
-  const closeWrapper = editor.slice(closeWrapperStart, editor.indexOf('const commitLayoutSnapshot', closeWrapperStart));
+  const closeWrapperStart = navigation.indexOf('const handleCloseResumeOptimization');
+  const closeWrapper = navigation.slice(closeWrapperStart, navigation.indexOf('const handleFinishResumeOptimization', closeWrapperStart));
   const originGuard = closeWrapper.indexOf('resumeOptimizationShouldRestoreReportRef.current');
   const suppressCleanup = closeWrapper.indexOf(
     'resumeOptimizationSuppressReturnFocusRef.current = shouldRestoreAnalysis',
@@ -205,18 +207,18 @@ test('CTA-owned workspace close restores analysis in AI layout and never opens i
     /if \(!didClose\) \{[\s\S]*resumeOptimizationSuppressReturnFocusRef\.current = false;[\s\S]*return false;/,
   );
   assert.match(
-    editor,
+    navigation,
     /const focusRestoredAnalysisReport = useCallback\(\(\) => \{[\s\S]*?window\.requestAnimationFrame[\s\S]*?data-resume-optimization-focus-return="true"\]\[aria-label="返回 AI 助手"\][\s\S]*?!candidate\.closest\('\[inert\]'\)[\s\S]*?focusTarget\?\.focus\(\{ preventScroll: true \}\)/,
   );
   assert.match(editor, /onRequestClose=\{handleCloseResumeOptimization\}/);
   assert.match(
-    editor,
+    navigation,
     /resumeOptimizationFlow\.uiState === 'closed'[\s\S]*rightSidebarSurface !== 'optimization'[\s\S]*resumeOptimizationShouldRestoreReportRef\.current = false;/,
   );
   assert.doesNotMatch(closeWrapper, /setRightSidebarSurface\('analysis'\)[\s\S]*if \(resumeOptimizationShouldRestoreReportRef\.current\)/);
 
-  const returnWrapperStart = editor.indexOf('const handleResumeOptimizationReturnToPlan');
-  const returnWrapper = editor.slice(returnWrapperStart, editor.indexOf('useEffect', returnWrapperStart));
+  const returnWrapperStart = navigation.indexOf('const handleResumeOptimizationReturnToPlan');
+  const returnWrapper = navigation.slice(returnWrapperStart, navigation.indexOf('useEffect', returnWrapperStart));
   const markReportOrigin = returnWrapper.indexOf('resumeOptimizationShouldRestoreReportRef.current = true');
   const reopenOptimization = returnWrapper.indexOf("setRightSidebarSurface('optimization')");
   assert.ok(markReportOrigin >= 0 && markReportOrigin < reopenOptimization);
@@ -224,8 +226,9 @@ test('CTA-owned workspace close restores analysis in AI layout and never opens i
 
 test('successful revert exits both desktop and mobile optimization surfaces without closing an active run', () => {
   const editor = read('views/ResumeEditor/index.tsx');
-  const start = editor.indexOf('const handleRevertResumeOptimization');
-  const block = editor.slice(start, editor.indexOf('const handleResumeOptimizationReturnToPlan', start));
+  const navigation = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
+  const start = navigation.indexOf('const handleRevertResumeOptimization');
+  const block = navigation.slice(start, navigation.indexOf('const handleResumeOptimizationReturnToPlan', start));
 
   assert.ok(start >= 0);
   assert.match(
@@ -251,7 +254,9 @@ test('empty preview retains regeneration instead of an overview step',()=>{
 
 test('finish returns to the resume report and rescore waits for successful close', async () => {
   const editor = read('views/ResumeEditor/index.tsx');
-  const source = editor.slice(editor.indexOf('const handleFinishResumeOptimization ='), editor.indexOf('const handleRevertResumeOptimization ='));
+  const navigation = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
+  const source = navigation.slice(navigation.indexOf('const handleFinishResumeOptimization ='), navigation.indexOf('const handleRevertResumeOptimization ='))
+    + editor.slice(editor.indexOf('const handleRescoreInReport ='), editor.indexOf('const handleResumeOptimizationViewExperience ='));
   const {code} = await transform(source, {loader:'ts'});
   let closeAllowed = true;
   const events = [], frames = [];

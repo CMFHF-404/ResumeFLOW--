@@ -108,7 +108,8 @@ test('desktop workspace gives list, triple, and AI modes distinct left and right
   assert.match(workspace, /const AI_RIGHT_SIDEBAR_WIDTH = '460px'/);
   assert.match(workspace, /layoutMode === 'ai' \? AI_RIGHT_SIDEBAR_WIDTH : DEFAULT_RIGHT_SIDEBAR_WIDTH/);
 
-  assert.match(editor, /type RightSidebarSurface = 'assistant' \| 'analysis' \| 'optimization' \| null/);
+  const navigation = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
+  assert.match(navigation, /type RightSidebarSurface = 'assistant' \| 'analysis' \| 'optimization' \| null/);
   assert.match(editor, /useState<ResumeEditorWorkspaceLayout>\('list'\)/);
   assert.match(editor, /useState<RightSidebarSurface>\(null\)/);
   assert.match(editor, /handleWorkspaceLayoutChange/);
@@ -308,7 +309,7 @@ test('editor clears old comparison content outside review and passes document or
 });
 
 test('editor resumes only a run that still matches the current report snapshot', () => {
-  const editor = read('views/ResumeEditor/index.tsx');
-  assert.match(editor, /hasResumableResumeOptimizationRun = resumeOptimizationFlow\.canResumeLatestRun/);
-  assert.doesNotMatch(editor, /hasResumableResumeOptimizationRun = Boolean\([\s\S]{0,220}preview_ready/);
+  const navigation = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
+  assert.match(navigation, /hasResumableResumeOptimizationRun = resumeOptimizationFlow\.canResumeLatestRun/);
+  assert.doesNotMatch(navigation, /hasResumableResumeOptimizationRun = Boolean\([\s\S]{0,220}preview_ready/);
 });

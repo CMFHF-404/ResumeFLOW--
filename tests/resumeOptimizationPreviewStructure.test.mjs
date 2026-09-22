@@ -389,18 +389,19 @@ test('inline A4 comparisons expose only the yellow and green content cards', () 
 test('workspace and editor wire navigation through guarded close without invoking editor actions', () => {
   const app = read('App.tsx');
   const editor = read('views/ResumeEditor/index.tsx');
+  const navigationHook = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
   const workspace = read('views/ResumeEditor/components/ResumeOptimization/ResumeOptimizationWorkspace.tsx');
   const experienceTab = read('views/ResumeEditor/components/ExperienceTab.tsx');
   const mobileHeader = read('views/ResumeEditor/components/MobileEditorHeader.tsx');
 
   assert.match(app, /onJumpToExperienceBank=\{handleJumpToExperienceBank\}/);
   assert.match(editor, /onJumpToExperienceBank\?:/);
-  assert.match(editor, /resumeOptimizationNavigationInFlightRef/);
+  assert.match(navigationHook, /resumeOptimizationNavigationInFlightRef/);
   assert.match(editor, /resumeOptimizationSuppressReturnFocusRef/);
-  assert.match(editor, /await resumeOptimizationFlow\.closeWorkspace\(\)/);
-  assert.match(editor, /if \(!didClose\) \{/);
-  assert.match(editor, /resumeOptimizationShouldRestoreReportRef\.current = false/);
-  assert.match(editor, /resumeOptimizationReturnFocusRef\.current = null/);
+  assert.match(navigationHook, /await resumeOptimizationFlow\.closeWorkspace\(\)/);
+  assert.match(navigationHook, /if \(!didClose\) \{/);
+  assert.match(navigationHook, /resumeOptimizationShouldRestoreReportRef\.current = false/);
+  assert.match(navigationHook, /resumeOptimizationReturnFocusRef\.current = null/);
   assert.match(editor, /onJumpToExperienceBank\?\.\(category, masterExperienceId\)/);
   assert.match(editor, /setSidebarTab\('experience'\)/);
   assert.match(editor, /setFactorySidebarTab\('edit'\)/);
@@ -450,14 +451,14 @@ test('workspace and editor wire navigation through guarded close without invokin
   );
   assert.match(mobileFocusedButton, /onClick=\{onAutoAssemble\}/);
   assert.match(mobileHeader, /返回优化方案/);
-  assert.match(editor, /resumeOptimizationFlow\.reopenLatestRun/);
+  assert.match(navigationHook, /resumeOptimizationFlow\.reopenLatestRun/);
 });
 
 test('navigation suppresses workspace return focus before close can unmount it and restores on refusal', () => {
-  const editor = read('views/ResumeEditor/index.tsx');
-  const navigation = editor.slice(
-    editor.indexOf('const runResumeOptimizationNavigation'),
-    editor.indexOf('const handleResumeOptimizationViewExperience'),
+  const navigationHook = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
+  const navigation = navigationHook.slice(
+    navigationHook.indexOf('const runResumeOptimizationNavigation'),
+    navigationHook.indexOf('const handleResumeOptimizationReturnToPlan'),
   );
   const markIndex = navigation.indexOf('resumeOptimizationSuppressReturnFocusRef.current = true');
   const closeIndex = navigation.indexOf('await resumeOptimizationFlow.closeWorkspace()');

@@ -57,7 +57,8 @@ test('editor uses the exact Vite flag while always calling the gated flow hook',
   assert.ok((editor.match(/onStartOptimization: handleStartResumeOptimization/g) ?? []).length >= 2);
   assert.ok((editor.match(/canStartOptimization: resumeOptimizationFlow\.canStart/g) ?? []).length >= 2);
   assert.ok((editor.match(/optimizationDisabledReason: resumeOptimizationFlow\.disabledReason/g) ?? []).length >= 2);
-  assert.match(editor, /const isResumeOptimizationBusy =/);
+  const navigation = read('views/ResumeEditor/hooks/useResumeOptimizationWorkspaceNavigation.ts');
+  assert.match(navigation, /const isResumeOptimizationBusy =/);
   assert.ok((editor.match(/isOptimizationBusy: isResumeOptimizationBusy/g) ?? []).length >= 2);
 
   assert.match(envExample, /^VITE_ENABLE_RESUME_OPTIMIZATION=false$/m);
@@ -71,7 +72,7 @@ test('editor keeps the optimization toast port stable while the gated hook is di
   const editor = read('views/ResumeEditor/index.tsx');
   const toastMemoStart = editor.indexOf('const resumeOptimizationToast = useMemo');
   const flowStart = editor.indexOf('const resumeOptimizationFlow = useResumeOptimizationFlow');
-  const flowEnd = editor.indexOf('const isResumeOptimizationBusy', flowStart);
+  const flowEnd = editor.indexOf('    const {', flowStart);
 
   assert.ok(toastMemoStart >= 0 && toastMemoStart < flowStart);
   assert.match(

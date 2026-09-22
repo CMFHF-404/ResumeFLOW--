@@ -13,6 +13,7 @@ from ..ai.llm_transport import (
     _UsageAttempt,
     _build_gemini_generation_config,
     _build_usage_payload,
+    _gemini_payload_has_final_usage,
 )
 from ..ai.public_errors import AiProviderPayloadError, AiProviderUnavailableError
 from ..ai.response_diagnostics import response_body_log_metadata
@@ -146,18 +147,6 @@ async def _record_known_resume_parse_usage_best_effort(
     await record_usage_payload_best_effort(payload)
 
 
-def _gemini_payload_has_final_usage(payload: Dict[str, Any]) -> bool:
-    if not isinstance(payload.get("usageMetadata"), dict):
-        return False
-    candidates = payload.get("candidates")
-    if not isinstance(candidates, list) or not candidates:
-        return True
-    return any(
-        isinstance(candidate, dict) and bool(candidate.get("finishReason"))
-        for candidate in candidates
-    )
-
-
 @runtime_budget.ai_wall_clock_limited
 async def stream_resume_thinking_parse(
     *,
@@ -192,6 +181,18 @@ async def stream_resume_thinking_parse(
         request_label="resume_parse",
         transport="gemini_stream_generate_content",
     )
+
+    async def record_interrupted_usage(
+        error: BaseException,
+        *,
+        error_type: str | None = None,
+    ) -> None:
+        # Once final persistence starts, cleanup must not retry or emit a failure.
+        if final_usage is not None and not usage_persistence_started:
+            usage_attempt.begin_final_usage()
+            await _record_known_resume_parse_usage_best_effort(model, final_usage)
+        elif final_usage is None:
+            await usage_attempt.fail_once(error, error_type=error_type)
 
     try:
         async with httpx_module.AsyncClient(timeout=build_timeout()) as client:
@@ -288,43 +289,23 @@ async def stream_resume_thinking_parse(
         await usage_attempt.fail_once(translated_error)
         raise translated_error from exc
     except httpx_module.TimeoutException as exc:
-        if final_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_resume_parse_usage_best_effort(model, final_usage)
-        elif final_usage is None:
-            await usage_attempt.fail_once(exc, error_type="timeout")
+        await record_interrupted_usage(exc, error_type="timeout")
         raise runtime_budget.AiRuntimeTimeoutError(
             runtime_budget.AiRuntimeTimeoutError.public_message
         ) from exc
     except TimeoutError as exc:
-        if final_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_resume_parse_usage_best_effort(model, final_usage)
-        elif final_usage is None:
-            await usage_attempt.fail_once(exc, error_type="timeout")
+        await record_interrupted_usage(exc, error_type="timeout")
         raise runtime_budget.AiRuntimeTimeoutError(
             runtime_budget.AiRuntimeTimeoutError.public_message
         ) from exc
     except asyncio.CancelledError as exc:
-        if final_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_resume_parse_usage_best_effort(model, final_usage)
-        elif final_usage is None:
-            await usage_attempt.fail_once(exc, error_type="cancelled")
+        await record_interrupted_usage(exc, error_type="cancelled")
         raise
     except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
-        if final_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_resume_parse_usage_best_effort(model, final_usage)
-        elif final_usage is None:
-            await usage_attempt.fail_once(exc)
+        await record_interrupted_usage(exc)
         raise
     except Exception as exc:
-        if final_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_resume_parse_usage_best_effort(model, final_usage)
-        elif final_usage is None:
-            await usage_attempt.fail_once(exc)
+        await record_interrupted_usage(exc)
         raise
 
     call_ms = (perf_counter() - call_start) * 1000

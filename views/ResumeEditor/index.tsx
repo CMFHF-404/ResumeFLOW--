@@ -153,6 +153,7 @@ import {
 import { useResumeEditorExperiencePolishCoordinator } from './hooks/useResumeEditorExperiencePolishCoordinator';
 import { useResumeEditorExperienceFocusRequest } from './hooks/useResumeEditorExperienceFocusRequest';
 import { useResumeOptimizationFlow } from './hooks/useResumeOptimizationFlow';
+import { useResumeOptimizationWorkspaceNavigation, type RightSidebarSurface } from './hooks/useResumeOptimizationWorkspaceNavigation';
 import { useResumeEvaluationLinkPreflight } from './hooks/useResumeEvaluationLinkPreflight';
 import { runResumeEvaluationAfterLinkPreflight } from './hooks/resumeExperienceLinkPersistence';
 import { shouldRenderResumeOptimizationComparison } from './components/ResumeOptimization/optimizationDisplayUtils.mjs';
@@ -187,8 +188,6 @@ type ResumeEditorProps = {
     } | null;
     onFocusExperienceRequestHandled?: (requestId: number) => void;
 };
-
-type RightSidebarSurface = 'assistant' | 'analysis' | 'optimization' | null;
 
 const SMART_RESUME_POLISH_MODES: ResumePolishMode[] = [
     'default',
@@ -332,11 +331,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
     const [desktopAssistantContainer, setDesktopAssistantContainer] = useState<HTMLDivElement | null>(null);
     const [mobileAssistantContainer, setMobileAssistantContainer] = useState<HTMLDivElement | null>(null);
     const isJDAnalysisDetailsSidebarOpen = rightSidebarSurface === 'analysis';
-    const [isResumeOptimizationLayoutTransitioning, setIsResumeOptimizationLayoutTransitioning] = useState(false);
-    const resumeOptimizationReturnFocusRef = useRef<HTMLElement | null>(null);
-    const resumeOptimizationShouldRestoreReportRef = useRef(false);
-    const resumeOptimizationSuppressReturnFocusRef = useRef(false);
-    const resumeOptimizationNavigationInFlightRef = useRef(false);
     const [resumeOptimizationAutoAssemblyFocusRequest, setResumeOptimizationAutoAssemblyFocusRequest] = useState(0);
     const [assistantSidebarLaunchRequest, setAssistantSidebarLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
     const assistantSidebarLaunchRequestIdRef = useRef(0);
@@ -630,7 +624,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         setIsAssistantSidebarMounted(false);
         setRightSidebarSurface(null);
         setWorkspaceLayout('list');
-        setIsResumeOptimizationLayoutTransitioning(false);
     }, [authUserKey, resumeId]);
     const {
         jdText,
@@ -1094,162 +1087,39 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         commitLatestResumeConfigIfNeeded,
         toast: resumeOptimizationToast,
     });
-    const isResumeOptimizationBusy = (
-        isResumeOptimizationLayoutTransitioning
-        || resumeOptimizationFlow.uiState === 'starting'
-        || resumeOptimizationFlow.uiState === 'answering'
-        || resumeOptimizationFlow.uiState === 'applying'
-        || resumeOptimizationFlow.uiState === 'rescoring'
-    );
+    const {
+        isResumeOptimizationLayoutTransitioning,
+        isResumeOptimizationBusy,
+        hasResumableResumeOptimizationRun,
+        resumeOptimizationReturnFocusRef,
+        resumeOptimizationShouldRestoreReportRef,
+        resumeOptimizationSuppressReturnFocusRef,
+        handleStartResumeOptimization,
+        handleCloseResumeOptimization,
+        handleFinishResumeOptimization,
+        handleRevertResumeOptimization,
+        runResumeOptimizationNavigation,
+        handleResumeOptimizationReturnToPlan,
+    } = useResumeOptimizationWorkspaceNavigation({
+        authUserKey,
+        resumeId,
+        analysisResult,
+        resumeOptimizationFlow,
+        canPersistCurrentJDAnalysis,
+        rightSidebarSurface,
+        setWorkspaceLayout,
+        setRightSidebarSurface,
+        setIsAssistantSidebarMounted,
+        mobileEditorDrawer,
+        showToastError,
+    });
     const resumeOptimizationSkillNameById = useMemo(() => Object.fromEntries(
         skillGroups.flatMap((group) => group.skills.map((skillItem) => [skillItem.id, skillItem.name])),
     ), [skillGroups]);
-    const hasResumableResumeOptimizationRun = resumeOptimizationFlow.canResumeLatestRun;
-    const handleStartResumeOptimization = useCallback(async (selectedSuggestionIds: string[] = []) => {
-        if (!selectedSuggestionIds.length && !hasResumableResumeOptimizationRun) {
-            setWorkspaceLayout('ai'); setRightSidebarSurface('analysis');
-            return null;
-        }
-        if (!canPersistCurrentJDAnalysis()) {
-            showToastError('请先处理未同步的本地 JD 分析。');
-            return null;
-        }
-        resumeOptimizationReturnFocusRef.current = document.activeElement instanceof HTMLElement
-            ? document.activeElement
-            : null;
-        resumeOptimizationShouldRestoreReportRef.current = true;
-        setIsResumeOptimizationLayoutTransitioning(true);
-        setWorkspaceLayout('ai');
-        setRightSidebarSurface('optimization');
-        try {
-            await new Promise<void>((resolve) => {
-                window.requestAnimationFrame(() => resolve());
-            });
-            if (!canPersistCurrentJDAnalysis()) {
-                showToastError('请先处理未同步的本地 JD 分析。');
-                setRightSidebarSurface(analysisResult ? 'analysis' : null);
-                setWorkspaceLayout(analysisResult ? 'ai' : 'list');
-                return null;
-            }
-            if (
-                hasResumableResumeOptimizationRun
-                && selectedSuggestionIds.length === 0
-                && resumeOptimizationFlow.run?.status !== 'planning'
-            ) {
-                const reopenedRun = await resumeOptimizationFlow.reopenLatestRun();
-                if (!reopenedRun && resumeOptimizationFlow.getLatestUiState() === 'closed') {
-                    setRightSidebarSurface(analysisResult ? 'analysis' : null);
-                    setWorkspaceLayout(analysisResult ? 'ai' : 'list');
-                }
-                return reopenedRun;
-            }
-            const startedRun = await resumeOptimizationFlow.startOptimization({ selectedSuggestionIds });
-            if (!startedRun && resumeOptimizationFlow.getLatestUiState() === 'closed') {
-                setRightSidebarSurface(analysisResult ? 'analysis' : null);
-                setWorkspaceLayout(analysisResult ? 'ai' : 'list');
-            }
-            return startedRun;
-        } finally {
-            setIsResumeOptimizationLayoutTransitioning(false);
-        }
-    }, [
-        analysisResult,
-        canPersistCurrentJDAnalysis,
-        hasResumableResumeOptimizationRun,
-        resumeOptimizationFlow.run?.status,
-        resumeOptimizationFlow.reopenLatestRun,
-        resumeOptimizationFlow.getLatestUiState,
-        resumeOptimizationFlow.startOptimization,
-        showToastError,
-    ]);
-    const focusRestoredAnalysisReport = useCallback(() => {
-        window.requestAnimationFrame(() => {
-            const focusTarget = Array.from(document.querySelectorAll<HTMLButtonElement>(
-                '[data-resume-optimization-focus-return="true"][aria-label="返回 AI 助手"]:not([disabled])'
-            )).find((candidate) => (
-                candidate.isConnected
-                && candidate.getClientRects().length > 0
-                && !candidate.closest('[inert]')
-            ));
-            focusTarget?.focus({ preventScroll: true });
-        });
-    }, []);
-    const handleCloseResumeOptimization = useCallback(async () => {
-        const shouldRestoreAnalysis = resumeOptimizationShouldRestoreReportRef.current && Boolean(analysisResult);
-        resumeOptimizationSuppressReturnFocusRef.current = shouldRestoreAnalysis;
-        const didClose = await resumeOptimizationFlow.closeWorkspace();
-        if (!didClose) {
-            resumeOptimizationSuppressReturnFocusRef.current = false;
-            return false;
-        }
-        if (!shouldRestoreAnalysis) {
-            setIsAssistantSidebarMounted(false);
-        }
-        setRightSidebarSurface(shouldRestoreAnalysis ? 'analysis' : null);
-        setWorkspaceLayout(shouldRestoreAnalysis ? 'ai' : 'list');
-        if (shouldRestoreAnalysis && window.matchMedia('(max-width: 767px)').matches) {
-            mobileEditorDrawer.setReportTab('resume');
-            mobileEditorDrawer.open('analysis');
-        } else if (shouldRestoreAnalysis) focusRestoredAnalysisReport();
-        resumeOptimizationShouldRestoreReportRef.current = false;
-        return true;
-    }, [analysisResult, focusRestoredAnalysisReport, resumeOptimizationFlow.closeWorkspace, mobileEditorDrawer.open]);
-
-    const handleFinishResumeOptimization = useCallback(async () => {
-        resumeOptimizationShouldRestoreReportRef.current = Boolean(analysisResult);
-        const didClose = await handleCloseResumeOptimization();
-        if (!didClose) return false;
-        window.requestAnimationFrame(() => {
-            const reportTab = Array.from(document.querySelectorAll<HTMLButtonElement>('[id="resume-report-tab"]')).find(
-                candidate => candidate.getClientRects().length > 0 && !candidate.closest('[inert]'),
-            );
-            reportTab?.click();
-            reportTab?.focus({ preventScroll: true });
-        });
-        return true;
-    }, [analysisResult, handleCloseResumeOptimization]);
     const handleRescoreInReport = useCallback(async () => {
         if (!await handleFinishResumeOptimization()) return;
         return handleGenerateEvaluation();
     }, [handleFinishResumeOptimization, handleGenerateEvaluation]);
-
-    const handleRevertResumeOptimization = useCallback(async () => {
-        const shouldRestoreAnalysis = resumeOptimizationShouldRestoreReportRef.current && Boolean(analysisResult);
-        resumeOptimizationSuppressReturnFocusRef.current = shouldRestoreAnalysis;
-        const revertedRun = await resumeOptimizationFlow.revertRun();
-        if (revertedRun?.status !== 'reverted') {
-            resumeOptimizationSuppressReturnFocusRef.current = false;
-            return revertedRun;
-        }
-        await handleCloseResumeOptimization();
-        return revertedRun;
-    }, [analysisResult, handleCloseResumeOptimization, resumeOptimizationFlow.revertRun]);
-
-    const runResumeOptimizationNavigation = useCallback(async (navigate: () => void) => {
-        if (resumeOptimizationNavigationInFlightRef.current) return false;
-        resumeOptimizationNavigationInFlightRef.current = true;
-        resumeOptimizationSuppressReturnFocusRef.current = true;
-        let didClose = false;
-        try {
-            didClose = await resumeOptimizationFlow.closeWorkspace();
-            if (!didClose) {
-                resumeOptimizationSuppressReturnFocusRef.current = false;
-                return false;
-            }
-            resumeOptimizationShouldRestoreReportRef.current = false;
-            resumeOptimizationReturnFocusRef.current = null;
-            setIsAssistantSidebarMounted(false);
-            setRightSidebarSurface(null);
-            setWorkspaceLayout('list');
-            navigate();
-            return true;
-        } catch (cause) {
-            if (!didClose) resumeOptimizationSuppressReturnFocusRef.current = false;
-            throw cause;
-        } finally {
-            resumeOptimizationNavigationInFlightRef.current = false;
-        }
-    }, [resumeOptimizationFlow.closeWorkspace]);
 
     const handleResumeOptimizationViewExperience = useCallback((
         category: ExperienceCategory | undefined,
@@ -1273,37 +1143,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         });
     }, [experience.editingExpId, runResumeOptimizationNavigation, setSidebarTab, showToastInfo]);
 
-    const handleResumeOptimizationReturnToPlan = useCallback(() => {
-        resumeOptimizationShouldRestoreReportRef.current = true;
-        setWorkspaceLayout('ai');
-        setRightSidebarSurface('optimization');
-        void (async () => {
-            const reopenedRun = await resumeOptimizationFlow.reopenLatestRun();
-            if (!reopenedRun && resumeOptimizationFlow.getLatestUiState() === 'closed') {
-                setRightSidebarSurface(analysisResult ? 'analysis' : null);
-                setWorkspaceLayout(analysisResult ? 'ai' : 'list');
-            }
-        })();
-    }, [
-        analysisResult,
-        resumeOptimizationFlow.getLatestUiState,
-        resumeOptimizationFlow.reopenLatestRun,
-    ]);
-
     useEffect(() => {
         if (rightSidebarSurface === 'optimization' && workspaceLayout !== 'ai') {
             setWorkspaceLayout('ai');
         }
     }, [rightSidebarSurface, workspaceLayout]);
-
-    useEffect(() => {
-        if (
-            resumeOptimizationFlow.uiState === 'closed'
-            && rightSidebarSurface !== 'optimization'
-        ) {
-            resumeOptimizationShouldRestoreReportRef.current = false;
-        }
-    }, [resumeOptimizationFlow.uiState, rightSidebarSurface]);
 
     const commitLayoutSnapshot = useCallback((
         snapshot: LayoutSnapshot,

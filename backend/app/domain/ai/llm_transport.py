@@ -31,6 +31,15 @@ from .assistant_text_stream import (
     _find_json_field_value_start as _find_json_field_value_start,
 )
 from .public_errors import AiProviderPayloadError, AiProviderUnavailableError
+from . import responses_protocol
+from .responses_protocol import (
+    _RESPONSES_STATUS_VALUES as _RESPONSES_STATUS_VALUES,
+    _ResponsesCompatibilityError as _ResponsesCompatibilityError,
+    _convert_user_part_to_qwen_responses_content as _convert_user_part_to_qwen_responses_content,
+    _extract_qwen_responses_message_text as _extract_qwen_responses_message_text,
+    _iter_qwen_responses_summary_texts as _iter_qwen_responses_summary_texts,
+    _parse_non_sse_responses_payload as _parse_non_sse_responses_payload,
+)
 from . import runtime_budget
 from .response_normalizers import _parse_json_content, _parse_json_content_candidates
 from .response_diagnostics import response_body_log_metadata
@@ -162,12 +171,6 @@ class AIRoute:
 
 
 class ToolCallingUnsupportedError(RuntimeError):
-    pass
-
-
-class _ResponsesCompatibilityError(AiProviderPayloadError):
-    """The configured endpoint does not expose a compatible Responses stream."""
-
     pass
 
 
@@ -576,48 +579,6 @@ def _convert_user_part_to_openai_content(part: Dict[str, Any]) -> Optional[Dict[
     return None
 
 
-def _convert_user_part_to_qwen_responses_content(
-    part: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
-    if "text" in part and isinstance(part.get("text"), str):
-        return {"type": "input_text", "text": part["text"]}
-    if part.get("type") == "input_text" and isinstance(part.get("text"), str):
-        return {"type": "input_text", "text": part["text"]}
-
-    image_url = part.get("image_url")
-    if part.get("type") == "input_image" and isinstance(image_url, str):
-        response_part: Dict[str, Any] = {
-            "type": "input_image",
-            "image_url": image_url,
-        }
-        detail = part.get("detail")
-        if isinstance(detail, str) and detail.strip():
-            response_part["detail"] = detail
-        return response_part
-    if part.get("type") == "image_url" and isinstance(image_url, dict):
-        url = image_url.get("url")
-        if isinstance(url, str) and url.strip():
-            response_part = {
-                "type": "input_image",
-                "image_url": url,
-            }
-            detail = image_url.get("detail")
-            if isinstance(detail, str) and detail.strip():
-                response_part["detail"] = detail
-            return response_part
-
-    inline_data = part.get("inlineData")
-    if isinstance(inline_data, dict):
-        mime_type = str(inline_data.get("mimeType") or "").strip()
-        data = str(inline_data.get("data") or "").strip()
-        if mime_type and data:
-            return {
-                "type": "input_image",
-                "image_url": f"data:{mime_type};base64,{data}",
-            }
-    return None
-
-
 def _build_openai_messages(
     *,
     system_prompt: str,
@@ -647,23 +608,18 @@ def _build_qwen_responses_input_messages(
     system_prompt: str,
     user_parts: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    content_parts = [
-        converted
-        for converted in (
-            _convert_user_part_to_qwen_responses_content(part) for part in user_parts
-        )
-        if converted is not None
-    ]
-    if not content_parts:
-        content: Any = ""
-    elif len(content_parts) == 1 and content_parts[0]["type"] == "input_text":
-        content = content_parts[0]["text"]
-    else:
-        content = content_parts
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": content},
-    ]
+    return responses_protocol._build_qwen_responses_input_messages(
+        system_prompt=system_prompt,
+        user_parts=user_parts,
+        convert_content=_convert_user_part_to_qwen_responses_content,
+    )
+
+
+def _extract_qwen_responses_output_text(response_payload: Dict[str, Any]) -> str:
+    return responses_protocol._extract_qwen_responses_output_text(
+        response_payload,
+        extract_message_text=_extract_qwen_responses_message_text,
+    )
 
 
 def _build_qwen_responses_url() -> str:
@@ -672,85 +628,6 @@ def _build_qwen_responses_url() -> str:
         or _derive_qwen_responses_base_url(getattr(settings, "ai_base_url", ""))
     )
     return f"{base_url.rstrip('/')}/responses"
-
-
-def _extract_qwen_responses_message_text(item: Dict[str, Any]) -> str:
-    content = item.get("content")
-    if not isinstance(content, list):
-        return ""
-    text_parts = [
-        part.get("text")
-        for part in content
-        if isinstance(part, dict)
-        and part.get("type") in {"output_text", "text"}
-        and isinstance(part.get("text"), str)
-    ]
-    return "".join(text_parts)
-
-
-def _extract_qwen_responses_output_text(response_payload: Dict[str, Any]) -> str:
-    output = response_payload.get("output")
-    if not isinstance(output, list):
-        return ""
-    text_parts = [
-        _extract_qwen_responses_message_text(item)
-        for item in output
-        if isinstance(item, dict) and item.get("type") == "message"
-    ]
-    return "".join(part for part in text_parts if part)
-
-
-_RESPONSES_STATUS_VALUES = {
-    "completed",
-    "failed",
-    "in_progress",
-    "cancelled",
-    "queued",
-    "incomplete",
-}
-
-
-def _parse_non_sse_responses_payload(body: bytes) -> Dict[str, Any]:
-    """Parse a relay's non-streaming representation of a Responses result."""
-    try:
-        decoded = body.decode("utf-8")
-        payload = json.loads(decoded)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise _ResponsesCompatibilityError(
-            "Responses endpoint returned malformed non-streaming JSON."
-        ) from exc
-
-    if not isinstance(payload, dict) or payload.get("object") != "response":
-        raise _ResponsesCompatibilityError(
-            "Responses endpoint returned an incompatible non-streaming payload."
-        )
-    status = payload.get("status")
-    if (
-        not isinstance(status, str)
-        or status not in _RESPONSES_STATUS_VALUES
-        or not isinstance(payload.get("output"), list)
-    ):
-        raise _ResponsesCompatibilityError(
-            "Responses endpoint returned an invalid Response object."
-        )
-    usage = payload.get("usage")
-    if usage is not None and not isinstance(usage, dict):
-        raise _ResponsesCompatibilityError(
-            "Responses endpoint returned an invalid usage payload."
-        )
-    return payload
-
-
-def _iter_qwen_responses_summary_texts(item: Dict[str, Any]):
-    summary_items = item.get("summary")
-    if not isinstance(summary_items, list):
-        return
-    for summary_item in summary_items:
-        if not isinstance(summary_item, dict):
-            continue
-        text = summary_item.get("text")
-        if isinstance(text, str) and text.strip():
-            yield text
 
 
 def _build_headers(api_key: Optional[str] = None) -> Dict[str, str]:
@@ -2069,20 +1946,15 @@ async def _stream_gemini_json_response_legacy(
     raise AiProviderUnavailableError(error_message)
 
 
-@runtime_budget.ai_wall_clock_limited
-async def _stream_qwen_responses_json_response(
+def _build_qwen_responses_request_payload(
     *,
+    model: str,
+    url: str,
     system_prompt: str,
     user_parts: List[Dict[str, Any]],
-    error_message: str,
-    request_label: str,
-    thought_callback: ThoughtCallback = None,
-    assistant_text_callback: AssistantTextCallback = None,
-    enable_thinking: bool = True,
-    usage_callback: UsageCallback = None,
+    enable_thinking: bool,
+    is_openai_responses: bool,
 ) -> Dict[str, Any]:
-    model = settings.ai_model
-    url = _build_qwen_responses_url()
     payload: Dict[str, Any] = {
         "model": model,
         "input": _build_qwen_responses_input_messages(
@@ -2108,7 +1980,6 @@ async def _stream_qwen_responses_json_response(
         elif supports_openai_sampling_temperature(model):
             payload["temperature"] = 0.2
     responses_hostname = (urlparse(url).hostname or "").lower()
-    is_openai_responses = _route_profile() == AI_ROUTE_PROFILE_OPENAI
     is_official_openai_responses = (
         is_openai_responses
         and (
@@ -2119,243 +1990,271 @@ async def _stream_qwen_responses_json_response(
     if is_official_openai_responses:
         payload["store"] = False
 
-    answer_parts: List[str] = []
-    answer_snapshots: List[str] = []
-    assistant_text_tracker = _AssistantTextDeltaTracker(assistant_text_callback)
-    thought_buffer = ""
-    last_thought_summary = ""
-    completed_usage: Dict[str, Any] | None = None
-    terminal_event_type: str | None = None
-    usage_persistence_started = False
-    usage_persisted = False
-    http_error_metadata: tuple[str, int | str, str] | None = None
-    provider = _provider_from_base_url(
-        str(getattr(settings, "ai_base_url", "") or ""),
-        model,
+    return payload
+
+
+class _ResponsesStreamReader:
+    """Consume one Responses result while preserving callback/accounting order."""
+
+    def __init__(
+        self,
+        *,
+        usage_attempt: _UsageAttempt,
+        error_message: str,
+        thought_callback: ThoughtCallback,
+        assistant_text_callback: AssistantTextCallback,
+    ) -> None:
+        self.usage_attempt = usage_attempt
+        self.error_message = error_message
+        self.thought_callback = thought_callback
+        self.assistant_text_tracker = _AssistantTextDeltaTracker(assistant_text_callback)
+        self.answer_parts: List[str] = []
+        self.answer_snapshots: List[str] = []
+        self.thought_buffer = ""
+        self.last_thought_summary = ""
+        self.completed_usage: Dict[str, Any] | None = None
+        self.terminal_event_type: str | None = None
+        self.usage_persistence_started = False
+        self.usage_persisted = False
+
+    async def emit_summary(self, raw_text: str) -> None:
+        summary = _normalize_qwen_responses_thought_summary(raw_text)
+        if not summary or summary == self.last_thought_summary:
+            return
+        self.last_thought_summary = summary
+        await _emit_thought(
+            self.thought_callback,
+            {"type": "thought", "summary": summary},
+        )
+
+    async def flush_summary_buffer(self) -> None:
+        if not self.thought_buffer.strip():
+            return
+        await self.emit_summary(self.thought_buffer)
+        self.thought_buffer = ""
+
+    async def append_answer(self, text: str) -> None:
+        if text:
+            self.answer_parts.append(text)
+            self.answer_snapshots.append(text)
+            await self.assistant_text_tracker.emit_update(text)
+
+    async def record_terminal_usage(self, usage: Any, event_type: str) -> None:
+        if not isinstance(usage, dict):
+            return
+        # Keep the latest reported usage for the callback, but persist only once.
+        self.completed_usage = usage
+        if self.usage_persistence_started:
+            return
+        self.usage_attempt.begin_final_usage()
+        self.usage_persistence_started = True
+        await _record_final_stream_usage(
+            usage,
+            provider=self.usage_attempt.provider,
+            model=self.usage_attempt.model,
+            request_label=self.usage_attempt.request_label,
+            transport="responses_stream",
+            status=(
+                "success" if event_type == "response.completed"
+                else "failed" if event_type == "error"
+                else event_type.removeprefix("response.")
+            ),
+            terminal_event_type=event_type,
+        )
+        self.usage_persisted = True
+
+    async def consume_terminal_response(
+        self,
+        response_payload: Any,
+        event_type: str,
+    ) -> None:
+        self.terminal_event_type = event_type
+        if isinstance(response_payload, dict):
+            await self.record_terminal_usage(response_payload.get("usage"), event_type)
+        # Final usage must be recorded before any thought or answer consumer runs.
+        await self.flush_summary_buffer()
+        if event_type == "response.incomplete":
+            raise AiProviderPayloadError(
+                "OpenAI Responses returned an incomplete response."
+            )
+        if event_type in {"response.failed", "response.cancelled", "error"}:
+            raise AiProviderUnavailableError(self.error_message)
+        if event_type != "response.completed":
+            status = event_type.removeprefix("response.")
+            raise AiProviderPayloadError(
+                f"Responses returned a non-terminal {status} response."
+            )
+        if not isinstance(response_payload, dict):
+            return
+        output = response_payload.get("output")
+        if isinstance(output, list):
+            for item in output:
+                if isinstance(item, dict) and item.get("type") == "reasoning":
+                    for summary_text in _iter_qwen_responses_summary_texts(item):
+                        await self.emit_summary(summary_text)
+        if not self.answer_parts:
+            await self.append_answer(_extract_qwen_responses_output_text(response_payload))
+
+    async def consume_event(self, stream_payload: Dict[str, Any]) -> None:
+        event_type = stream_payload.get("type")
+        if event_type == "response.reasoning_summary_text.delta":
+            delta = stream_payload.get("delta")
+            if isinstance(delta, str) and delta:
+                self.thought_buffer = f"{self.thought_buffer}{delta}"
+                if _is_thought_summary_boundary(self.thought_buffer):
+                    await self.flush_summary_buffer()
+        elif event_type == "response.reasoning_summary_text.done":
+            await self.flush_summary_buffer()
+            text = stream_payload.get("text")
+            if isinstance(text, str) and text.strip():
+                await self.emit_summary(text)
+        elif event_type == "response.output_text.delta":
+            delta = stream_payload.get("delta")
+            if isinstance(delta, str):
+                await self.append_answer(delta)
+        elif event_type == "response.output_item.done":
+            item = stream_payload.get("item")
+            if not isinstance(item, dict):
+                return
+            if item.get("type") == "reasoning":
+                await self.flush_summary_buffer()
+                for summary_text in _iter_qwen_responses_summary_texts(item):
+                    await self.emit_summary(summary_text)
+            elif item.get("type") == "message" and not self.answer_parts:
+                await self.append_answer(_extract_qwen_responses_message_text(item))
+        elif event_type in {
+            "response.completed", "response.incomplete", "response.failed",
+        }:
+            await self.consume_terminal_response(stream_payload.get("response"), event_type)
+        elif event_type == "error":
+            await self.consume_terminal_response(stream_payload, event_type)
+
+    async def consume_non_sse_response(
+        self,
+        response: httpx.Response,
+        content_type: str,
+    ) -> None:
+        body = await read_bounded_response_body(response)
+        _, body_bytes, body_sha256 = response_body_log_metadata(response, body)
+        try:
+            response_payload = _parse_non_sse_responses_payload(body)
+        except _ResponsesCompatibilityError:
+            logger.error(
+                "[AI Stream] incompatible Qwen Responses non-SSE payload label=%s content_type=%s body_bytes=%s body_sha256=%s",
+                self.usage_attempt.request_label,
+                content_type,
+                body_bytes,
+                body_sha256,
+            )
+            raise
+        await self.consume_terminal_response(
+            response_payload,
+            f"response.{response_payload['status']}",
+        )
+
+    async def record_failure(self, exc: BaseException, *, error_type: str | None = None) -> None:
+        if self.completed_usage is not None and not self.usage_persistence_started:
+            self.usage_attempt.begin_final_usage()
+            await _record_known_stream_usage_best_effort(
+                self.completed_usage,
+                provider=self.usage_attempt.provider,
+                model=self.usage_attempt.model,
+                request_label=self.usage_attempt.request_label,
+                transport="responses_stream",
+            )
+        elif self.completed_usage is None:
+            await self.usage_attempt.fail_once(exc, error_type=error_type)
+
+    async def finish(self, *, is_openai_responses: bool) -> None:
+        await self.flush_summary_buffer()
+        if is_openai_responses and self.terminal_event_type != "response.completed":
+            raise AiProviderPayloadError(
+                "OpenAI Responses stream ended without response.completed."
+            )
+
+    async def result(self) -> Dict[str, Any]:
+        answer_text = "".join(self.answer_parts).strip()
+        self.usage_attempt.begin_final_usage()
+        usage_payload = _build_usage_payload(
+            self.completed_usage or {},
+            provider=self.usage_attempt.provider,
+            model=self.usage_attempt.model,
+            request_label=self.usage_attempt.request_label,
+            status="success" if self.completed_usage else "usage_missing",
+            metadata={"transport": "responses_stream"},
+        )
+        if self.usage_persisted:
+            await emit_usage_callback(self.usage_attempt.usage_callback, usage_payload)
+        else:
+            await _emit_usage_payload(self.usage_attempt.usage_callback, usage_payload)
+        if not answer_text:
+            raise AiProviderPayloadError("Qwen Responses 未返回可解析的结构化结果。")
+        parse_candidates: List[str] = [answer_text]
+        if self.answer_snapshots:
+            parse_candidates.append(self.answer_snapshots[-1])
+            parse_candidates.extend(
+                snapshot
+                for snapshot in sorted(self.answer_snapshots, key=len, reverse=True)
+                if snapshot not in parse_candidates
+            )
+        return _parse_json_content_candidates(parse_candidates)
+
+
+@runtime_budget.ai_wall_clock_limited
+async def _stream_qwen_responses_json_response(
+    *,
+    system_prompt: str,
+    user_parts: List[Dict[str, Any]],
+    error_message: str,
+    request_label: str,
+    thought_callback: ThoughtCallback = None,
+    assistant_text_callback: AssistantTextCallback = None,
+    enable_thinking: bool = True,
+    usage_callback: UsageCallback = None,
+) -> Dict[str, Any]:
+    model = settings.ai_model
+    url = _build_qwen_responses_url()
+    is_openai_responses = _route_profile() == AI_ROUTE_PROFILE_OPENAI
+    payload = _build_qwen_responses_request_payload(
+        model=model,
+        url=url,
+        system_prompt=system_prompt,
+        user_parts=user_parts,
+        enable_thinking=enable_thinking,
+        is_openai_responses=is_openai_responses,
     )
     usage_attempt = _UsageAttempt(
         usage_callback=usage_callback,
-        provider=provider,
+        provider=_provider_from_base_url(
+            str(getattr(settings, "ai_base_url", "") or ""), model,
+        ),
         model=model,
         request_label=request_label,
         transport="responses_stream",
     )
-
-    async def emit_summary(raw_text: str) -> None:
-        nonlocal last_thought_summary
-        thought_summary = _normalize_qwen_responses_thought_summary(raw_text)
-        if not thought_summary or thought_summary == last_thought_summary:
-            return
-        last_thought_summary = thought_summary
-        await _emit_thought(
-            thought_callback,
-            {"type": "thought", "summary": thought_summary},
-        )
-
-    async def flush_summary_buffer() -> None:
-        nonlocal thought_buffer
-        if not thought_buffer.strip():
-            return
-        await emit_summary(thought_buffer)
-        thought_buffer = ""
-
+    reader = _ResponsesStreamReader(
+        usage_attempt=usage_attempt,
+        error_message=error_message,
+        thought_callback=thought_callback,
+        assistant_text_callback=assistant_text_callback,
+    )
+    http_error_metadata: tuple[str, int | str, str] | None = None
     try:
         async with httpx.AsyncClient(timeout=_build_ai_timeout()) as client:
             async with client.stream(
-                "POST",
-                url,
-                headers=_build_headers(),
-                json=payload,
+                "POST", url, headers=_build_headers(), json=payload,
             ) as response:
                 http_error_metadata = await _read_http_error_log_metadata(response)
                 response.raise_for_status()
                 content_type = (response.headers.get("content-type") or "").lower()
-                if "text/event-stream" not in content_type:
-                    body = await read_bounded_response_body(response)
-                    _, body_bytes, body_sha256 = response_body_log_metadata(
-                        response,
-                        body,
-                    )
-                    try:
-                        response_payload = _parse_non_sse_responses_payload(body)
-                    except _ResponsesCompatibilityError:
-                        logger.error(
-                            "[AI Stream] incompatible Qwen Responses non-SSE payload label=%s content_type=%s body_bytes=%s body_sha256=%s",
-                            request_label,
-                            content_type,
-                            body_bytes,
-                            body_sha256,
-                        )
-                        raise
-
-                    status = response_payload["status"]
-                    terminal_event_type = f"response.{status}"
-                    usage = response_payload.get("usage")
-                    if isinstance(usage, dict):
-                        completed_usage = usage
-                        usage_attempt.begin_final_usage()
-                        usage_persistence_started = True
-                        await _record_final_stream_usage(
-                            completed_usage,
-                            provider=provider,
-                            model=model,
-                            request_label=request_label,
-                            transport="responses_stream",
-                            status="success" if status == "completed" else status,
-                            terminal_event_type=terminal_event_type,
-                        )
-                        usage_persisted = True
-                    await flush_summary_buffer()
-                    if status == "incomplete":
-                        raise AiProviderPayloadError(
-                            "OpenAI Responses returned an incomplete response."
-                        )
-                    if status in {"failed", "cancelled"}:
-                        raise AiProviderUnavailableError(error_message)
-                    if status != "completed":
-                        raise AiProviderPayloadError(
-                            f"Responses returned a non-terminal {status} response."
-                        )
-
-                    for item in response_payload["output"]:
-                        if not isinstance(item, dict):
-                            continue
-                        if item.get("type") == "reasoning":
-                            for summary_text in _iter_qwen_responses_summary_texts(item):
-                                await emit_summary(summary_text)
-                    message_text = _extract_qwen_responses_output_text(
-                        response_payload
-                    )
-                    if message_text:
-                        answer_parts.append(message_text)
-                        answer_snapshots.append(message_text)
-                        await assistant_text_tracker.emit_update(message_text)
+                is_sse = "text/event-stream" in content_type
+                if not is_sse:
+                    await reader.consume_non_sse_response(response, content_type)
                 async for stream_payload in _iter_responses_sse_json_payloads(
-                    response,
-                    enabled="text/event-stream" in content_type,
+                    response, enabled=is_sse,
                 ):
-                    event_type = stream_payload.get("type")
-                    if event_type == "response.reasoning_summary_text.delta":
-                        delta = stream_payload.get("delta")
-                        if isinstance(delta, str) and delta:
-                            thought_buffer = f"{thought_buffer}{delta}"
-                            if _is_thought_summary_boundary(thought_buffer):
-                                await flush_summary_buffer()
-                        continue
-
-                    if event_type == "response.reasoning_summary_text.done":
-                        await flush_summary_buffer()
-                        text = stream_payload.get("text")
-                        if isinstance(text, str) and text.strip():
-                            await emit_summary(text)
-                        continue
-
-                    if event_type == "response.output_text.delta":
-                        delta = stream_payload.get("delta")
-                        if isinstance(delta, str) and delta:
-                            answer_parts.append(delta)
-                            answer_snapshots.append(delta)
-                            await assistant_text_tracker.emit_update(delta)
-                        continue
-
-                    if event_type == "response.output_item.done":
-                        item = stream_payload.get("item")
-                        if not isinstance(item, dict):
-                            continue
-                        if item.get("type") == "reasoning":
-                            await flush_summary_buffer()
-                            for summary_text in _iter_qwen_responses_summary_texts(item):
-                                await emit_summary(summary_text)
-                            continue
-                        if item.get("type") == "message" and not answer_parts:
-                            message_text = _extract_qwen_responses_message_text(item)
-                            if message_text:
-                                answer_parts.append(message_text)
-                                answer_snapshots.append(message_text)
-                                await assistant_text_tracker.emit_update(message_text)
-                            continue
-
-                    if event_type in {
-                        "response.completed",
-                        "response.incomplete",
-                        "response.failed",
-                    }:
-                        terminal_event_type = event_type
-                        response_payload = stream_payload.get("response")
-                        if isinstance(response_payload, dict):
-                            usage = response_payload.get("usage")
-                            if isinstance(usage, dict):
-                                completed_usage = usage
-                                if not usage_persistence_started:
-                                    usage_attempt.begin_final_usage()
-                                    usage_persistence_started = True
-                                    await _record_final_stream_usage(
-                                        completed_usage,
-                                        provider=provider,
-                                        model=model,
-                                        request_label=request_label,
-                                        transport="responses_stream",
-                                        status=(
-                                            "success"
-                                            if event_type == "response.completed"
-                                            else event_type.removeprefix("response.")
-                                        ),
-                                        terminal_event_type=event_type,
-                                    )
-                                    usage_persisted = True
-                        await flush_summary_buffer()
-                        if event_type == "response.incomplete":
-                            raise AiProviderPayloadError(
-                                "OpenAI Responses returned an incomplete response."
-                            )
-                        if event_type == "response.failed":
-                            raise AiProviderUnavailableError(error_message)
-                        if isinstance(response_payload, dict):
-                            output = response_payload.get("output")
-                            if isinstance(output, list):
-                                for item in output:
-                                    if (
-                                        isinstance(item, dict)
-                                        and item.get("type") == "reasoning"
-                                    ):
-                                        for summary_text in _iter_qwen_responses_summary_texts(item):
-                                            await emit_summary(summary_text)
-                            if not answer_parts:
-                                message_text = _extract_qwen_responses_output_text(
-                                    response_payload
-                                )
-                                if message_text:
-                                    answer_parts.append(message_text)
-                                    answer_snapshots.append(message_text)
-                                    await assistant_text_tracker.emit_update(message_text)
-                        continue
-
-                    if event_type == "error":
-                        terminal_event_type = event_type
-                        usage = stream_payload.get("usage")
-                        if isinstance(usage, dict):
-                            completed_usage = usage
-                            if not usage_persistence_started:
-                                usage_attempt.begin_final_usage()
-                                usage_persistence_started = True
-                                await _record_final_stream_usage(
-                                    completed_usage,
-                                    provider=provider,
-                                    model=model,
-                                    request_label=request_label,
-                                    transport="responses_stream",
-                                    status="failed",
-                                    terminal_event_type=event_type,
-                                )
-                                usage_persisted = True
-                        await flush_summary_buffer()
-                        raise AiProviderUnavailableError(error_message)
-
-                await flush_summary_buffer()
-                if is_openai_responses and terminal_event_type != "response.completed":
-                    raise AiProviderPayloadError(
-                        "OpenAI Responses stream ended without response.completed."
-                    )
+                    await reader.consume_event(stream_payload)
+                await reader.finish(is_openai_responses=is_openai_responses)
     except httpx.HTTPStatusError as exc:
         content_type, body_bytes, body_sha256 = http_error_metadata or (
             response_body_log_metadata(exc.response)
@@ -2387,89 +2286,24 @@ async def _stream_qwen_responses_json_response(
         await usage_attempt.fail_once(translated_error)
         raise translated_error from exc
     except httpx.TimeoutException as exc:
-        if completed_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_stream_usage_best_effort(
-                completed_usage,
-                provider=provider,
-                model=model,
-                request_label=request_label,
-                transport="responses_stream",
-            )
-        elif completed_usage is None:
-            await usage_attempt.fail_once(exc, error_type="timeout")
+        await reader.record_failure(exc, error_type="timeout")
         raise runtime_budget.AiRuntimeTimeoutError(
             runtime_budget.AiRuntimeTimeoutError.public_message
         ) from exc
     except asyncio.CancelledError as exc:
-        if completed_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_stream_usage_best_effort(
-                completed_usage,
-                provider=provider,
-                model=model,
-                request_label=request_label,
-                transport="responses_stream",
-            )
-        elif completed_usage is None:
-            await usage_attempt.fail_once(exc, error_type="cancelled")
+        await reader.record_failure(exc, error_type="cancelled")
         raise
     except runtime_budget.TERMINAL_AI_RUNTIME_ERRORS as exc:
-        if completed_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_stream_usage_best_effort(
-                completed_usage,
-                provider=provider,
-                model=model,
-                request_label=request_label,
-                transport="responses_stream",
-            )
-        elif completed_usage is None:
-            await usage_attempt.fail_once(exc)
+        await reader.record_failure(exc)
         raise
     except _ResponsesCompatibilityError:
-        # The caller will retry this request through Chat Completions.  Do not
-        # account the unsupported Responses capability as a failed AI use.
+        # The caller retries through Chat Completions; unsupported capability
+        # is not a failed AI use and must not create a usage record here.
         raise
     except Exception as exc:
-        if completed_usage is not None and not usage_persistence_started:
-            usage_attempt.begin_final_usage()
-            await _record_known_stream_usage_best_effort(
-                completed_usage,
-                provider=provider,
-                model=model,
-                request_label=request_label,
-                transport="responses_stream",
-            )
-        elif completed_usage is None:
-            await usage_attempt.fail_once(exc)
+        await reader.record_failure(exc)
         raise
-
-    answer_text = "".join(answer_parts).strip()
-    usage_attempt.begin_final_usage()
-    usage_payload = _build_usage_payload(
-        completed_usage or {},
-        provider=provider,
-        model=model,
-        request_label=request_label,
-        status="success" if completed_usage else "usage_missing",
-        metadata={"transport": "responses_stream"},
-    )
-    if usage_persisted:
-        await emit_usage_callback(usage_callback, usage_payload)
-    else:
-        await _emit_usage_payload(usage_callback, usage_payload)
-    if not answer_text:
-        raise AiProviderPayloadError("Qwen Responses 未返回可解析的结构化结果。")
-    parse_candidates: List[str] = [answer_text]
-    if answer_snapshots:
-        parse_candidates.append(answer_snapshots[-1])
-        parse_candidates.extend(
-            snapshot
-            for snapshot in sorted(answer_snapshots, key=len, reverse=True)
-            if snapshot not in parse_candidates
-        )
-    return _parse_json_content_candidates(parse_candidates)
+    return await reader.result()
 
 
 @runtime_budget.ai_wall_clock_limited
