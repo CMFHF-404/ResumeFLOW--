@@ -12,6 +12,7 @@ import unicodedata
 from typing import Any
 
 from .normalizers import (
+    _action_html_markup_end as _html_markup_end,
     markdown_link_spans,
     markdown_link_targets,
     markdown_links_to_plain_text,
@@ -777,22 +778,6 @@ def _rich_html_attributes_hide_subtree(attrs: str) -> bool:
         ):
             return True
     return False
-
-
-def _html_markup_end(value: str, start: int) -> int | None:
-    quote: str | None = None
-    cursor = start + 1
-    while cursor < len(value):
-        char = value[cursor]
-        if quote is not None:
-            if char == quote:
-                quote = None
-        elif char in {'"', "'"}:
-            quote = char
-        elif char == ">":
-            return cursor + 1
-        cursor += 1
-    return None
 
 
 def _raw_text_element_end(
@@ -4229,7 +4214,9 @@ _PROFICIENCY_CLAUSE = re.compile(
 def _proficiency_findings(candidate: str, before: str, sources: list[str]) -> list[str]:
     # A skill label is not a proficiency claim, even if a semantic verdict says
     # supported. Require the qualified clause itself in eligible source text.
-    normalize = lambda value: re.sub(r'\s+', '', _fact_visible_text(value)).casefold()
+    def normalize(value):
+        return re.sub(r'\s+', '', _fact_visible_text(value)).casefold()
+
     evidence = [normalize(value) for value in [before, *sources]]
     for match in _PROFICIENCY_CLAUSE.finditer(_fact_visible_text(candidate)):
         claim = normalize(match.group())

@@ -130,7 +130,7 @@ test('Dashboard preview preserves explicit empty selections for every resume col
   assert.match(previewState, /const resolveFallbackSelection = \(/);
   assert.match(previewState, /config\.selection\?\.educationIds,[\s\S]*?orderedEducations\.map\(\(item\) => item\.id\),\s*true/);
   assert.match(previewState, /config\.selection\?\.certificationIds,[\s\S]*?orderedCerts\.map\(\(item\) => item\.id\),\s*true/);
-  assert.match(previewState, /config\.selection\?\.skillIds,[\s\S]*?skills\.map\(\(skill\) => skill\.id\),\s*true/);
+  assert.match(previewState, /config\.selection\?\.skillIds,[\s\S]*?skillGroups\.flatMap\(group=>group\.skills\.map\(skill=>skill\.id\)\),\s*true/);
 
   const resolveSelectionSet = (ids) => new Set((ids || []).map((value) => String(value)).filter(Boolean));
   const sharedMatch = previewState.match(/const resolveFallbackSelection = \([\s\S]*?\n\};/);

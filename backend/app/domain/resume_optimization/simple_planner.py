@@ -6,6 +6,7 @@ from copy import deepcopy
 from ..ai import runtime_budget
 from ..ai.llm_transport import _call_llm
 from ..ai.single_pass_json import parse_single_pass_json
+from .frontend_text import _frontend_plain_text
 from .normalizers import OptimizationPlanNormalizationError
 from .schemas import OptimizationChange, OptimizationPlan, OptimizationQuestion
 from . import skill_text
@@ -93,7 +94,6 @@ def candidate(row, target, *, change_id, answered=False):
     general = row.get('generalValue')
     targeted = row.get('targetedValue', general)
     if target['moduleType']=='education_notes':
-        from .apply_service import _frontend_plain_text
         general=_frontend_plain_text(general) if isinstance(general,str) else general
         targeted=_frontend_plain_text(targeted) if isinstance(targeted,str) else targeted
     before = target['beforeValue']

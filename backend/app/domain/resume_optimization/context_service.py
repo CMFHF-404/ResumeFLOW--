@@ -26,10 +26,18 @@ from ..ai.guidance_receipts import (
     load_guidance_receipt,
     validate_public_receipt_binding,
 )
-from ..ai.resume_evaluation import SCORING_VERSION, normalize_resume_evaluation
+from ..ai.resume_evaluation import (
+    SCORING_VERSION as SCORING_VERSION,
+    normalize_resume_evaluation,
+)
 from ..resume.resume_service import (
     NotFoundError as ResumeNotFoundError,
     get_resume_detail,
+)
+from . import frontend_text
+from .frontend_text import (
+    _frontend_star_value as _frontend_star_value,
+    _frontend_year_month as _frontend_year_month,
 )
 from .run_service import hash_canonical_json
 from .schemas import ResumeOptimizationStartRequest
@@ -859,7 +867,8 @@ async def _resolve_guidance_evaluation(
         raise OptimizationContextStaleError(
             "The guidance receipt no longer matches the current resume"
         )
-    receipt_input = receipt["input"]
+    # Keep the required key read outside the private-report error translation.
+    _ = receipt["input"]
     if evaluation.get("targetRole", "") != evaluation_input.get("target_role", ""):
         raise OptimizationContextStaleError(
             "The guidance receipt no longer matches the current target role"
@@ -971,40 +980,11 @@ def _parse_persisted_frontend_evaluation_signature(
 
 
 def _frontend_plain_text(value: Any) -> str:
-    from . import apply_service
-
-    return apply_service._frontend_plain_text(value)
+    return frontend_text._frontend_plain_text(value)
 
 
 def _frontend_star_text(value: Any) -> str:
     return _frontend_plain_text(_frontend_star_value(value))
-
-
-def _frontend_star_value(value: Any) -> str:
-    from . import apply_service
-
-    if isinstance(value, list):
-        def js_string(item: Any) -> str:
-            if item is None:
-                return ""
-            if isinstance(item, bool):
-                return "true" if item else "false"
-            if isinstance(item, list):
-                return ",".join(js_string(nested) for nested in item)
-            if isinstance(item, Mapping):
-                return "[object Object]"
-            return str(item)
-
-        value = "、".join(js_string(item) for item in value)
-    normalized = apply_service._frontend_decode_rich_text_entities_deep(value)
-    if (
-        apply_service._FRONTEND_RICH_TEXT_HTML_TAG_RE.search(normalized)
-        is not None
-        or apply_service._FRONTEND_MARKDOWN_TRIGGER_RE.search(normalized)
-        is not None
-    ):
-        normalized = apply_service._frontend_sanitized_html(normalized)
-    return normalized
 
 
 def _frontend_api_date(value: Any) -> str | None:
@@ -1015,21 +995,6 @@ def _frontend_api_date(value: Any) -> str | None:
     if isinstance(value, date):
         return value.isoformat()
     return str(value)
-
-
-def _frontend_year_month(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, (date, datetime)):
-        return f"{value.year:04d}.{value.month:02d}"
-    text = str(value).strip()
-    if not text:
-        return ""
-    normalized = text.replace("/", "-").replace(".", "-")
-    parts = normalized.split("-")
-    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
-        return f"{int(parts[0]):04d}.{int(parts[1]):02d}"
-    return text.replace("-", ".")
 
 
 def _ordered_by_ids(
@@ -1285,13 +1250,12 @@ def _actual_frontend_collections(
                     if isinstance(latest_star_value, Mapping)
                     else {}
                 )
-                from . import apply_service
 
                 def decorated(value: str) -> bool:
                     return (
-                        apply_service._FRONTEND_RICH_TEXT_HTML_TAG_RE.search(value)
+                        frontend_text._FRONTEND_RICH_TEXT_HTML_TAG_RE.search(value)
                         is not None
-                        or apply_service._FRONTEND_MARKDOWN_TRIGGER_RE.search(value)
+                        or frontend_text._FRONTEND_MARKDOWN_TRIGGER_RE.search(value)
                         is not None
                     )
 
@@ -2221,7 +2185,8 @@ async def build_legacy_frozen_optimization_context(
         }
 
     config = getattr(resume, "config", None)
-    analysis = config.get("jdAnalysis") if isinstance(config, Mapping) else None
+    # Preserve the legacy Mapping read and its exception behavior.
+    _ = config.get("jdAnalysis") if isinstance(config, Mapping) else None
     bank_candidates = _bank_candidates(
         parsed,
         selected_ids=set(selected_master_ids),

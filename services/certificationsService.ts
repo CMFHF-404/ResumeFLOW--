@@ -4,6 +4,7 @@ import apiClient, {
     type AuthOwnerOptions,
 } from './apiClient';
 import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
+import { createOwnerScopedListCache } from './ownerScopedListCache';
 import type {
     Certification,
     CertificationCreatePayload,
@@ -18,16 +19,6 @@ export type {
 
 const CERTIFICATIONS_CACHE_TTL_MS = 10_000;
 
-let cachedCertifications: Certification[] | null = null;
-let cachedCertificationsAt = 0;
-let inFlightCertificationsRequest: Promise<Certification[]> | null = null;
-let certificationsCacheRevision = 0;
-let certificationsCacheOwnerKey: string | null = null;
-
-const isCertificationsCacheFresh = (now: number) => {
-    return !!cachedCertifications && now - cachedCertificationsAt < CERTIFICATIONS_CACHE_TTL_MS;
-};
-
 const requestCertifications = async (expectedAuthCacheKey: string): Promise<Certification[]> => {
     const response = await apiClient.get<Certification[]>('/certifications', {
         expectedAuthCacheKey,
@@ -35,78 +26,15 @@ const requestCertifications = async (expectedAuthCacheKey: string): Promise<Cert
     return response.data;
 };
 
-const getCachedCertifications = (options?: { allowStale?: boolean }) => {
-    const now = Date.now();
-    if (!cachedCertifications) {
-        return null;
-    }
-    if (!options?.allowStale && !isCertificationsCacheFresh(now)) {
-        return null;
-    }
-    return cachedCertifications;
-};
-
-const clearCertificationsCache = () => {
-    certificationsCacheRevision += 1;
-    cachedCertifications = null;
-    cachedCertificationsAt = 0;
-    inFlightCertificationsRequest = null;
-};
-
-const ensureCertificationsCacheOwner = async (expectedAuthCacheKey?: string) => {
-    const cacheOwnerKey = await captureAuthCacheKey(expectedAuthCacheKey);
-    if (certificationsCacheOwnerKey !== cacheOwnerKey) {
-        clearCertificationsCache();
-        certificationsCacheOwnerKey = cacheOwnerKey;
-    }
-    return cacheOwnerKey;
-};
+const certificationsCache = createOwnerScopedListCache(
+    requestCertifications,
+    CERTIFICATIONS_CACHE_TTL_MS,
+);
 
 export const certificationsService = {
-    peekList(options?: { allowStale?: boolean }) {
-        return getCachedCertifications(options);
-    },
-
-    async peekListForCurrentUser(
-        options?: { allowStale?: boolean; expectedAuthCacheKey?: string }
-    ) {
-        await ensureCertificationsCacheOwner(options?.expectedAuthCacheKey);
-        return getCachedCertifications(options);
-    },
-
-    async list(options?: { force?: boolean; expectedAuthCacheKey?: string }) {
-        const requestOwnerKey = await ensureCertificationsCacheOwner(
-            options?.expectedAuthCacheKey
-        );
-        const shouldUseCache = !options?.force;
-        const now = Date.now();
-        if (shouldUseCache && isCertificationsCacheFresh(now) && cachedCertifications) {
-            return cachedCertifications;
-        }
-        if (inFlightCertificationsRequest) {
-            return inFlightCertificationsRequest;
-        }
-        const requestRevision = certificationsCacheRevision;
-        const requestPromise = requestCertifications(requestOwnerKey);
-        const guardedPromise = (async () => {
-            const data = await requestPromise;
-            await assertAuthCacheKey(requestOwnerKey);
-            if (certificationsCacheRevision === requestRevision) {
-                cachedCertifications = data;
-                cachedCertificationsAt = Date.now();
-                return data;
-            }
-            return cachedCertifications ?? data;
-        })();
-        inFlightCertificationsRequest = guardedPromise;
-        try {
-            return await guardedPromise;
-        } finally {
-            if (inFlightCertificationsRequest === guardedPromise) {
-                inFlightCertificationsRequest = null;
-            }
-        }
-    },
+    peekList: certificationsCache.peekList,
+    peekListForCurrentUser: certificationsCache.peekListForCurrentUser,
+    list: certificationsCache.list,
 
     async create(data: CertificationCreatePayload, options?: AuthOwnerOptions) {
         const requestOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
@@ -114,7 +42,7 @@ export const certificationsService = {
             expectedAuthCacheKey: requestOwnerKey,
         });
         await assertAuthCacheKey(requestOwnerKey);
-        clearCertificationsCache();
+        certificationsCache.clear();
         bumpResumePreviewDataRevision();
         return response.data;
     },
@@ -134,7 +62,7 @@ export const certificationsService = {
             expectedAuthCacheKey: requestOwnerKey,
         });
         await assertAuthCacheKey(requestOwnerKey);
-        clearCertificationsCache();
+        certificationsCache.clear();
         bumpResumePreviewDataRevision();
         return response.data;
     },
@@ -145,7 +73,7 @@ export const certificationsService = {
             expectedAuthCacheKey: requestOwnerKey,
         });
         await assertAuthCacheKey(requestOwnerKey);
-        clearCertificationsCache();
+        certificationsCache.clear();
         bumpResumePreviewDataRevision();
     },
 };

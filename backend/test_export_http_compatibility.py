@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from app import auth_middleware
 from app.database import get_session
 from app.domain.agent import agent_router
-from app.domain.export import export_router
+from app.domain.export import export_router, snapshot_download_service
 from app.domain.export.download_contract import (
     MAX_EXPORT_FILE_NAME_CHARACTERS,
     MAX_EXPORT_FILE_NAME_ENCODED_CHARACTERS,
@@ -324,7 +324,7 @@ class ExportHttpCompatibilityTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(
-                export_router,
+                snapshot_download_service,
                 "AsyncSessionFactory",
                 side_effect=lambda: _SessionContext(session),
             ),

@@ -18,6 +18,7 @@ import {
     trackAiPolishStart,
 } from '../../../utils/analyticsTracker';
 import { resolveThoughtDisplayEvent } from '../../../utils/aiThought';
+import { isAbortError } from '../../../utils/isAbortError';
 import { buildExperienceEditDraft } from '../helpers';
 import {
     buildExperiencePolishPayloadContent,
@@ -33,13 +34,6 @@ import type { FloatingExperiencePolishSessionItem } from './useFloatingExperienc
 
 type ResumePolishMode = Exclude<PolishMode, 'assistant'>;
 type UpdateToast = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => void;
-
-const isAbortError = (error: unknown) => (
-    typeof error === 'object'
-    && error !== null
-    && 'name' in error
-    && (error as { name?: unknown }).name === 'AbortError'
-);
 
 type UseFloatingExperiencePolishActionsParams = {
     authUserKey: string | null;

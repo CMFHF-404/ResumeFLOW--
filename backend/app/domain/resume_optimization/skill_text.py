@@ -2,9 +2,10 @@
 import json
 from copy import deepcopy
 
+from .frontend_text import _frontend_plain_text
+
 
 def value(raw):
-    from .apply_service import _frontend_plain_text
     if not isinstance(raw,dict) or set(raw)!={'name','category'}:
         raise ValueError('skill text requires name and category')
     result={k:_frontend_plain_text(v).strip() if isinstance(v,str) else '' for k,v in raw.items()}

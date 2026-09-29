@@ -8,6 +8,7 @@ import { GUIDANCE_AUDIT_EVALUATION_VERSION } from "../types/ai";
 import type { ResumeEvaluationSnapshot } from "../utils/resumeEvaluationSnapshot";
 import { canonicalStringify } from "./jdAnalysisSignatureUtils";
 import { resolveThoughtDisplayEvent } from "../utils/aiThought";
+import { isAbortError } from "../utils/isAbortError";
 import { JD_ANALYSIS_PROGRESS_NODE_TITLES } from "../constants/jdAnalysis";
 import { appendJDThinkingText } from "./jdAnalysisThinkingText";
 
@@ -120,11 +121,6 @@ export const reconcileJDResultEvaluation = (
       : nextJDResult) as JDAnalysisResult,
   };
 };
-
-const isAbortError = (error: unknown) => (
-  typeof error === "object" && error !== null && "name" in error
-  && (error as { name?: unknown }).name === "AbortError"
-);
 
 const RESUME_EVALUATION_PUBLIC_ERROR_MESSAGE = "本次六维评分生成失败，请重试。";
 const RESUME_EVALUATION_RETAINED_ERROR_MESSAGE =

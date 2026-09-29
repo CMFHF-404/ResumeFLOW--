@@ -8,6 +8,7 @@ import type {
   JDAnalysisItemSignatures,
 } from "../types/analysis";
 import { trackJDAnalysisComplete, trackJDAnalysisStart } from "../utils/analyticsTracker";
+import { isAbortError } from "../utils/isAbortError";
 import {
   buildEmptyDiff,
   hasDiff,
@@ -82,13 +83,6 @@ export type JDAnalysisExecutionParams = {
   shouldContinue?: () => boolean;
   canApplyAnalysisResult?: () => boolean;
 };
-
-const isAbortError = (error: unknown) => (
-  typeof error === "object"
-  && error !== null
-  && "name" in error
-  && (error as { name?: unknown }).name === "AbortError"
-);
 
 const isAuthContextChangedError = (error: unknown) => (
   typeof error === "object"

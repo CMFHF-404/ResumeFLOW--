@@ -3,6 +3,12 @@ from copy import deepcopy
 import uuid
 from ..ai.selection_actions import KINDS, courses
 from . import skill_text
+from .frontend_text import (
+    _frontend_plain_text,
+    _frontend_sanitized_html,
+    _frontend_star_value,
+    _frontend_year_month,
+)
 
 CONFIG_KINDS=set(KINDS)-{'experience_restructure'}
 LOCAL_PREFIX='resume-skill:'
@@ -20,7 +26,6 @@ def local_skills(config):
 
 
 def education(item,config):
-    from .apply_service import _frontend_plain_text
     overlay=config.get('educationOverrides',{}).get(item['id'],{})
     if not isinstance(overlay,dict) or set(overlay)-{'courses','notes'}:raise ValueError('invalid education override')
     if any(not isinstance(v,str) for v in overlay.values()):raise ValueError('education override must be text')
@@ -93,7 +98,6 @@ def application_order(changes):
 
 
 def restructured_star(original,text):
-    from .apply_service import _frontend_sanitized_html
     if not isinstance(text,str) or not text.strip():raise ValueError('body text required')
     result=deepcopy(original)
     result.update(s='',t='',a=_frontend_sanitized_html(text),r='')
@@ -122,7 +126,6 @@ def update_config(config,change,resume,run_id):
     kind=change.module_type;identity=change.module_id;value=deepcopy(change.targeted_value)
     if change.before_value!=before(kind,identity,resume):raise ValueError('frozen action value changed')
     if kind in ('education_courses','education_notes'):
-        from .apply_service import _frontend_plain_text
         field='courses' if kind=='education_courses' else 'notes'
         overlay=config.setdefault('educationOverrides',{}).setdefault(identity,{})
         # Compare the same visible text used by the frozen scoring snapshot.
@@ -157,7 +160,6 @@ def update_config(config,change,resume,run_id):
 async def check_current_sources(session,user_id,config,changes,frozen):
     from sqlmodel import select
     from ...models import MasterExperience,ExperienceVersion,Certification
-    from .context_service import _frontend_plain_text,_frontend_star_value,_frontend_year_month
     edu_ids={c.module_id for c in changes if c.module_type in ('education_courses','education_notes')}
     for identity in edu_ids:
         result=await session.execute(select(MasterExperience,ExperienceVersion).join(ExperienceVersion,MasterExperience.latest_version_id==ExperienceVersion.id).where(

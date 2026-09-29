@@ -1,18 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
-import hmac
 import json
 import logging
 import math
-import os
-import re
-import unicodedata
 import zlib
 from typing import TypeVar
-from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ValidationError
@@ -20,31 +13,45 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.status import (
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
-    HTTP_409_CONFLICT,
     HTTP_410_GONE,
     HTTP_400_BAD_REQUEST,
     HTTP_413_REQUEST_ENTITY_TOO_LARGE,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_502_BAD_GATEWAY,
-    HTTP_504_GATEWAY_TIMEOUT,
 )
 
 from ...database import AsyncSessionFactory, get_session
 from ...dependencies import get_current_user
+from . import snapshot_download_service
+from .download_http import (
+    SNAPSHOT_BEARER_PREFIX as SNAPSHOT_BEARER_PREFIX,
+    EXPORT_NO_STORE_HEADERS as EXPORT_NO_STORE_HEADERS,
+    PDF_DOWNLOAD_RESPONSES as PDF_DOWNLOAD_RESPONSES,
+    _set_no_store_headers as _set_no_store_headers,
+    _with_no_store_headers as _with_no_store_headers,
+    _snapshot_http_exception as _snapshot_http_exception,
+    _read_export_mode as _read_export_mode,
+    _read_snapshot_bearer_token as _read_snapshot_bearer_token,
+    _read_snapshot_access_token as _read_snapshot_access_token,
+    _read_legacy_download_token as _read_legacy_download_token,
+    _sanitize_download_filename as _sanitize_download_filename,
+    _decode_download_filename_header as _decode_download_filename_header,
+    _build_ascii_download_filename as _build_ascii_download_filename,
+    _build_pdf_download_response as _build_pdf_download_response,
+    _enforce_snapshot_page_constraint as _enforce_snapshot_page_constraint,
+    _get_persisted_rendered_pdf as _get_persisted_rendered_pdf,
+)
 from .browser_pdf_service import (
-    BrowserPdfRenderError,
-    BrowserPdfRenderTimeoutError,
+    BrowserPdfRenderError as BrowserPdfRenderError,
+    BrowserPdfRenderTimeoutError as BrowserPdfRenderTimeoutError,
     render_experience_bank_pdf,
     render_resume_pdf,
 )
 from .download_contract import (
     EXPORT_MODE_HEADER,
-    ExportModeError,
     MAX_EXPORT_FILE_NAME_CHARACTERS,
     MAX_EXPORT_FILE_NAME_ENCODED_CHARACTERS,
     build_versioned_download_url,
-    limit_export_file_name,
-    resolve_export_mode,
 )
 from .limits import MAX_EXPORT_SNAPSHOT_TOKEN_CHARACTERS
 from .schemas import (
@@ -56,14 +63,9 @@ from .schemas import (
     ResumePdfExportRequest,
     ResumePdfRenderSnapshot,
 )
-from .pdf_payload import (
-    RenderedPdfValidationError, validate_rendered_pdf_bytes,
-    PdfPageCountMismatchError, enforce_resume_pdf_page_limit,
-)
 from .snapshot_service import (
     DEFAULT_RENDER_CLAIM_LEASE_SECONDS,
     DEFAULT_RENDERED_PDF_RETRY_TTL_SECONDS,
-    SnapshotClaimedError,
     SnapshotCapacityExceededError,
     SnapshotConsumedError,
     SnapshotExpiredError,
@@ -89,26 +91,10 @@ ExportRequestModelT = TypeVar("ExportRequestModelT", bound=BaseModel)
 RECENT_RENDERED_PDF_TTL_SECONDS = DEFAULT_RENDERED_PDF_RETRY_TTL_SECONDS
 RENDER_CLAIM_LEASE_SECONDS = DEFAULT_RENDER_CLAIM_LEASE_SECONDS
 RENDER_CLAIM_HEARTBEAT_INTERVAL_SECONDS = 20
-SNAPSHOT_BEARER_PREFIX = "Bearer "
 # Export snapshots can contain an encoded avatar, so retain practical headroom while
 # bounding both network input and gzip expansion independently.
 MAX_EXPORT_REQUEST_BODY_BYTES = 8 * 1024 * 1024
 MAX_EXPORT_DECOMPRESSED_BODY_BYTES = 16 * 1024 * 1024
-EXPORT_NO_STORE_HEADERS = {
-    "Cache-Control": "no-store",
-    "Pragma": "no-cache",
-    "Referrer-Policy": "no-referrer",
-}
-PDF_DOWNLOAD_RESPONSES = {
-    200: {
-        "description": "PDF download",
-        "content": {
-            "application/pdf": {
-                "schema": {"type": "string", "format": "binary"},
-            }
-        },
-    }
-}
 
 
 class _ExportRequestBodyTooLargeError(Exception):
@@ -163,111 +149,6 @@ def _validate_json_structure_depth(value: object, *, maximum_depth: int = 128) -
             pending.extend((child, depth + 1) for child in item)
 
 
-def _set_no_store_headers(response: Response) -> None:
-    response.headers.update(EXPORT_NO_STORE_HEADERS)
-
-
-def _with_no_store_headers(exc: HTTPException) -> HTTPException:
-    headers = dict(exc.headers or {})
-    headers.update(EXPORT_NO_STORE_HEADERS)
-    exc.headers = headers
-    return exc
-
-
-def _snapshot_http_exception(status_code: int, detail: str) -> HTTPException:
-    headers = dict(EXPORT_NO_STORE_HEADERS)
-    if status_code == HTTP_429_TOO_MANY_REQUESTS:
-        headers["Retry-After"] = "60"
-    return HTTPException(
-        status_code=status_code,
-        detail=detail,
-        headers=headers,
-    )
-
-
-def _read_export_mode(request: Request) -> str:
-    request_headers = getattr(request, "headers", None)
-    header_values = (
-        request_headers.getlist(EXPORT_MODE_HEADER)
-        if request_headers is not None and hasattr(request_headers, "getlist")
-        else []
-    )
-    try:
-        return resolve_export_mode(header_values)
-    except ExportModeError as exc:
-        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-
-def _read_snapshot_bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.startswith(SNAPSHOT_BEARER_PREFIX):
-        raise _snapshot_http_exception(
-            HTTP_403_FORBIDDEN,
-            "导出快照令牌无效。",
-        )
-    token = authorization[len(SNAPSHOT_BEARER_PREFIX) :].strip()
-    if not token or len(token) > MAX_EXPORT_SNAPSHOT_TOKEN_CHARACTERS:
-        raise _snapshot_http_exception(
-            HTTP_403_FORBIDDEN,
-            "导出快照令牌无效。",
-        )
-    return token
-
-
-def _read_snapshot_access_token(
-    request: Request,
-    authorization: str | None,
-) -> str:
-    query_tokens = request.query_params.getlist("token")
-    if len(query_tokens) > 1:
-        raise _snapshot_http_exception(
-            HTTP_403_FORBIDDEN,
-            "导出快照令牌无效。",
-        )
-
-    query_token = query_tokens[0].strip() if query_tokens else ""
-    if len(query_token) > MAX_EXPORT_SNAPSHOT_TOKEN_CHARACTERS:
-        raise _snapshot_http_exception(
-            HTTP_403_FORBIDDEN,
-            "导出快照令牌无效。",
-        )
-    header_token = (
-        _read_snapshot_bearer_token(authorization)
-        if authorization is not None
-        else ""
-    )
-    if header_token and query_token and not hmac.compare_digest(header_token, query_token):
-        raise _snapshot_http_exception(
-            HTTP_403_FORBIDDEN,
-            "导出快照令牌冲突。",
-        )
-
-    token = header_token or query_token
-    if not token:
-        raise _snapshot_http_exception(
-            HTTP_403_FORBIDDEN,
-            "导出快照令牌无效。",
-        )
-    return token
-
-
-def _read_legacy_download_token(request: Request, token: str | None) -> str | None:
-    query_tokens = request.query_params.getlist("token")
-    if len(query_tokens) > 1:
-        raise _snapshot_http_exception(
-            HTTP_403_FORBIDDEN,
-            "导出快照令牌无效。",
-        )
-    if token is None or not token.strip():
-        return None
-    resolved_token = token.strip()
-    if len(resolved_token) > MAX_EXPORT_SNAPSHOT_TOKEN_CHARACTERS:
-        raise _snapshot_http_exception(
-            HTTP_403_FORBIDDEN,
-            "导出快照令牌无效。",
-        )
-    return resolved_token
-
-
 def _build_export_request_openapi(model_name: str) -> dict:
     return {
         "requestBody": {
@@ -291,111 +172,24 @@ def _build_sanitized_validation_errors(exc: ValidationError) -> list[dict]:
     )
 
 
-def _sanitize_download_filename(value: str | None) -> str:
-    base_name = (value or "resume-export").strip() or "resume-export"
-    forbidden_chars = '/\\:*?"<>|'
-    sanitized = "".join(
-        char
-        for char in base_name
-        if char not in forbidden_chars and ord(char) >= 32 and ord(char) != 127
-    ).strip()
-    if not sanitized:
-        sanitized = "resume-export"
-    has_pdf_extension = sanitized.lower().endswith(".pdf")
-    extension = sanitized[-4:] if has_pdf_extension else ".pdf"
-    stem = sanitized[:-4] if has_pdf_extension else sanitized
-    max_stem_length = MAX_EXPORT_FILE_NAME_CHARACTERS - len(extension)
-    bounded_stem = limit_export_file_name(stem)[:max_stem_length].rstrip()
-    if not bounded_stem:
-        bounded_stem = "resume-export"
-    return f"{bounded_stem}{extension}"
-
-
-def _decode_download_filename_header(value: str | None) -> str | None:
-    if value is None:
-        return None
-    try:
-        return unquote(value)
-    except (UnicodeDecodeError, ValueError):
-        return value
-
-
-def _build_ascii_download_filename(value: str) -> str:
-    stem, ext = os.path.splitext(value)
-    normalized_stem = unicodedata.normalize("NFKD", stem).encode("ascii", "ignore").decode(
-        "ascii"
+def _download_operations() -> snapshot_download_service.SnapshotDownloadOperations:
+    # Resolve route-local dependency names at call time to retain existing overrides.
+    return snapshot_download_service.SnapshotDownloadOperations(
+        session_factory=AsyncSessionFactory,
+        create_render_snapshot=create_render_snapshot,
+        claim_render_snapshot_by_owner=claim_render_snapshot_by_owner,
+        claim_render_snapshot_by_token=claim_render_snapshot_by_token,
+        delete_temporary_render_snapshot=delete_temporary_render_snapshot,
+        finalize_render_snapshot_claim=finalize_render_snapshot_claim,
+        get_render_snapshot_by_owner=get_render_snapshot_by_owner,
+        get_render_snapshot_by_token=get_render_snapshot_by_token,
+        release_render_snapshot_claim=release_render_snapshot_claim,
+        renew_render_snapshot_claim=renew_render_snapshot_claim,
+        build_render_snapshot_token=build_render_snapshot_token,
+        recent_rendered_pdf_ttl_seconds=RECENT_RENDERED_PDF_TTL_SECONDS,
+        render_claim_lease_seconds=RENDER_CLAIM_LEASE_SECONDS,
+        render_claim_heartbeat_interval_seconds=RENDER_CLAIM_HEARTBEAT_INTERVAL_SECONDS,
     )
-    ascii_stem = re.sub(r"[^A-Za-z0-9._ -]+", "-", normalized_stem)
-    ascii_stem = re.sub(r"[-\s]+", "-", ascii_stem).strip("-. ")
-
-    if not ascii_stem.isalpha() and not re.search(r"[A-Za-z]", ascii_stem):
-        if stem.startswith("简历"):
-            ascii_stem = f"resume-{ascii_stem}".strip("-")
-        elif stem.startswith("经历库"):
-            ascii_stem = f"experience-bank-{ascii_stem}".strip("-")
-
-    if not ascii_stem:
-        ascii_stem = "export"
-
-    ascii_ext = ext if ext else ".pdf"
-    return f"{ascii_stem}{ascii_ext}"
-
-
-def _build_pdf_download_response(pdf_bytes: bytes, file_name: str | None) -> Response:
-    try:
-        validated_pdf = validate_rendered_pdf_bytes(pdf_bytes)
-    except RenderedPdfValidationError as exc:
-        raise _snapshot_http_exception(
-            HTTP_502_BAD_GATEWAY,
-            "PDF 导出结果无效。",
-        ) from exc
-    sanitized_file_name = _sanitize_download_filename(file_name)
-    ascii_file_name = _build_ascii_download_filename(sanitized_file_name)
-    headers = {
-        "Content-Disposition": (
-            f'attachment; filename="{ascii_file_name}"; '
-            f"filename*=UTF-8''{quote(sanitized_file_name)}"
-        ),
-        **EXPORT_NO_STORE_HEADERS,
-    }
-    return Response(content=validated_pdf, media_type="application/pdf", headers=headers)
-
-
-def _enforce_snapshot_page_constraint(pdf_bytes: bytes, snapshot) -> None:
-    constraint = getattr(snapshot, "pageConstraint", None)
-    if constraint is None:
-        return
-    try:
-        enforce_resume_pdf_page_limit(pdf_bytes, constraint.maxPages)
-    except PdfPageCountMismatchError as exc:
-        raise HTTPException(status_code=422, detail={
-            "code": "PDF_PAGE_COUNT_MISMATCH",
-            "actualPages": exc.actual_pages,
-            "maxPages": exc.max_pages,
-            "message": str(exc),
-        }, headers=EXPORT_NO_STORE_HEADERS) from exc
-    except RenderedPdfValidationError as exc:
-        raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
-
-
-def _get_persisted_rendered_pdf(record) -> bytes | None:
-    pdf_bytes = getattr(record, "rendered_pdf", None)
-    expires_at = getattr(record, "rendered_pdf_expires_at", None)
-    if pdf_bytes is None or expires_at is None:
-        return None
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    else:
-        expires_at = expires_at.astimezone(timezone.utc)
-    if expires_at <= datetime.now(timezone.utc):
-        return None
-    try:
-        return validate_rendered_pdf_bytes(pdf_bytes)
-    except RenderedPdfValidationError as exc:
-        raise _snapshot_http_exception(
-            HTTP_502_BAD_GATEWAY,
-            "缓存的 PDF 导出结果无效。",
-        ) from exc
 
 
 async def _render_snapshot_pdf_response(
@@ -405,54 +199,15 @@ async def _render_snapshot_pdf_response(
     renderer: Callable[[str, str], Awaitable[bytes]],
     file_name: str | None,
 ):
-    record = None
-    claim_id = None
-    try:
-        try:
-            record, token = await create_render_snapshot(session, user_id, snapshot)
-            claim, _, claim_id = await claim_render_snapshot_by_owner(
-                session,
-                str(record.id),
-                user_id,
-                type(snapshot),
-                lease_seconds=RENDER_CLAIM_LEASE_SECONDS,
-            )
-        except SnapshotClaimedError as exc:
-            raise _snapshot_http_exception(HTTP_409_CONFLICT, str(exc)) from exc
-        except SnapshotCapacityExceededError as exc:
-            raise _snapshot_http_exception(
-                HTTP_429_TOO_MANY_REQUESTS,
-                str(exc),
-            ) from exc
-        except SnapshotConsumedError as exc:
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        except SnapshotExpiredError as exc:
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        except SnapshotPayloadError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-        except SnapshotNotFoundError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-
-        pdf_bytes = await _render_and_finalize_claimed_snapshot(
-            claim,
-            claim_id,
-            token,
-            renderer,
-            persistence_session=session,
-            snapshot=snapshot,
-        )
-        return _build_pdf_download_response(pdf_bytes, file_name)
-    finally:
-        if record is not None:
-            try:
-                await delete_temporary_render_snapshot(
-                    session,
-                    str(record.id),
-                    user_id,
-                    claim_id=claim_id,
-                )
-            except Exception:
-                logger.exception("Failed to delete temporary export render snapshot.")
+    return await snapshot_download_service._render_snapshot_pdf_response(
+        session,
+        user_id,
+        snapshot,
+        renderer,
+        file_name,
+        operations=_download_operations(),
+        render_claim=_render_and_finalize_claimed_snapshot,
+    )
 
 
 async def _release_claim_without_masking_error(
@@ -461,37 +216,23 @@ async def _release_claim_without_masking_error(
     *,
     persistence_session: AsyncSession | None = None,
 ) -> None:
-    try:
-        if persistence_session is not None:
-            await release_render_snapshot_claim(
-                persistence_session,
-                snapshot_id,
-                claim_id,
-            )
-            return
-        async with AsyncSessionFactory() as release_session:
-            await release_render_snapshot_claim(
-                release_session,
-                snapshot_id,
-                claim_id,
-            )
-    except Exception:
-        logger.exception("Failed to release export render snapshot claim.")
+    return await snapshot_download_service._release_claim_without_masking_error(
+        snapshot_id,
+        claim_id,
+        persistence_session=persistence_session,
+        operations=_download_operations(),
+    )
 
 
 async def _renew_render_claim_until_cancelled(
     snapshot_id: str,
     claim_id,
 ) -> None:
-    while True:
-        await asyncio.sleep(RENDER_CLAIM_HEARTBEAT_INTERVAL_SECONDS)
-        async with AsyncSessionFactory() as heartbeat_session:
-            await renew_render_snapshot_claim(
-                heartbeat_session,
-                snapshot_id,
-                claim_id,
-                lease_seconds=RENDER_CLAIM_LEASE_SECONDS,
-            )
+    return await snapshot_download_service._renew_render_claim_until_cancelled(
+        snapshot_id,
+        claim_id,
+        operations=_download_operations(),
+    )
 
 
 async def _render_with_claim_heartbeat(
@@ -500,24 +241,14 @@ async def _render_with_claim_heartbeat(
     token: str,
     renderer: Callable[[str, str], Awaitable[bytes]],
 ) -> bytes:
-    render_task = asyncio.create_task(renderer(str(record.id), token))
-    heartbeat_task = asyncio.create_task(
-        _renew_render_claim_until_cancelled(str(record.id), claim_id)
+    return await snapshot_download_service._render_with_claim_heartbeat(
+        record,
+        claim_id,
+        token,
+        renderer,
+        operations=_download_operations(),
+        renew_claim=_renew_render_claim_until_cancelled,
     )
-    tasks = (render_task, heartbeat_task)
-    try:
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        if heartbeat_task in done:
-            heartbeat_error = heartbeat_task.exception()
-            if heartbeat_error is None:
-                raise SnapshotClaimedError("导出快照生成权已失效，请重新导出。")
-            raise heartbeat_error
-        return await render_task
-    finally:
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _render_and_finalize_claimed_snapshot(
@@ -529,58 +260,17 @@ async def _render_and_finalize_claimed_snapshot(
     persistence_session: AsyncSession | None = None,
     snapshot=None,
 ) -> bytes:
-    try:
-        pdf_bytes = await _render_with_claim_heartbeat(
-            record,
-            claim_id,
-            token,
-            renderer,
-        )
-        _enforce_snapshot_page_constraint(pdf_bytes, snapshot)
-        if persistence_session is not None:
-            await finalize_render_snapshot_claim(
-                persistence_session,
-                str(record.id),
-                claim_id,
-                pdf_bytes,
-                retry_ttl_seconds=RECENT_RENDERED_PDF_TTL_SECONDS,
-            )
-        else:
-            async with AsyncSessionFactory() as finalize_session:
-                await finalize_render_snapshot_claim(
-                    finalize_session,
-                    str(record.id),
-                    claim_id,
-                    pdf_bytes,
-                    retry_ttl_seconds=RECENT_RENDERED_PDF_TTL_SECONDS,
-                )
-    except BaseException as exc:
-        await _release_claim_without_masking_error(
-            str(record.id),
-            claim_id,
-            persistence_session=persistence_session,
-        )
-        if isinstance(exc, BrowserPdfRenderTimeoutError):
-            raise _snapshot_http_exception(HTTP_504_GATEWAY_TIMEOUT, str(exc)) from exc
-        if isinstance(exc, BrowserPdfRenderError):
-            raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
-        if isinstance(exc, SnapshotClaimedError):
-            raise _snapshot_http_exception(HTTP_409_CONFLICT, str(exc)) from exc
-        if isinstance(exc, SnapshotCapacityExceededError):
-            raise _snapshot_http_exception(
-                HTTP_429_TOO_MANY_REQUESTS,
-                str(exc),
-            ) from exc
-        if isinstance(exc, SnapshotConsumedError):
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        if isinstance(exc, SnapshotExpiredError):
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        if isinstance(exc, SnapshotNotFoundError):
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-        if isinstance(exc, SnapshotRenderedPdfError):
-            raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
-        raise
-    return pdf_bytes
+    return await snapshot_download_service._render_and_finalize_claimed_snapshot(
+        record,
+        claim_id,
+        token,
+        renderer,
+        persistence_session=persistence_session,
+        snapshot=snapshot,
+        operations=_download_operations(),
+        render_pdf=_render_with_claim_heartbeat,
+        release_claim=_release_claim_without_masking_error,
+    )
 
 
 def _build_download_url(
@@ -637,98 +327,15 @@ async def render_owned_snapshot_pdf_download_response(
     renderer: Callable[[str, str], Awaitable[bytes]],
     file_name: str | None,
 ):
-    async with AsyncSessionFactory() as lookup_session:
-        try:
-            lookup_record, lookup_snapshot = await get_render_snapshot_by_owner(
-                lookup_session,
-                snapshot_id,
-                user_id,
-                snapshot_model,
-                allow_consumed=True,
-            )
-        except SnapshotExpiredError as exc:
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        except SnapshotRenderedPdfError as exc:
-            raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
-        except SnapshotPayloadError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-        except SnapshotNotFoundError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-
-    resolved_file_name = file_name or getattr(lookup_snapshot, "resumeName", None)
-    persisted_pdf = _get_persisted_rendered_pdf(lookup_record)
-    if persisted_pdf is not None:
-        _enforce_snapshot_page_constraint(persisted_pdf, lookup_snapshot)
-        return _build_pdf_download_response(persisted_pdf, resolved_file_name)
-    if lookup_record.consumed_at is not None:
-        raise _snapshot_http_exception(
-            HTTP_410_GONE,
-            "导出快照已失效，请重新导出。",
-        )
-
-    claim_consumed_error: SnapshotConsumedError | None = None
-    async with AsyncSessionFactory() as claim_session:
-        try:
-            record, _, claim_id = await claim_render_snapshot_by_owner(
-                claim_session,
-                snapshot_id,
-                user_id,
-                snapshot_model,
-                lease_seconds=RENDER_CLAIM_LEASE_SECONDS,
-            )
-        except SnapshotClaimedError as exc:
-            raise _snapshot_http_exception(HTTP_409_CONFLICT, str(exc)) from exc
-        except SnapshotCapacityExceededError as exc:
-            raise _snapshot_http_exception(
-                HTTP_429_TOO_MANY_REQUESTS,
-                str(exc),
-            ) from exc
-        except SnapshotConsumedError as exc:
-            claim_consumed_error = exc
-        except SnapshotExpiredError as exc:
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        except SnapshotPayloadError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-        except SnapshotNotFoundError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-
-    if claim_consumed_error is not None:
-        async with AsyncSessionFactory() as recovery_session:
-            try:
-                recovery_record, recovery_snapshot = await get_render_snapshot_by_owner(
-                    recovery_session,
-                    snapshot_id,
-                    user_id,
-                    snapshot_model,
-                    allow_consumed=True,
-                )
-            except SnapshotExpiredError as exc:
-                raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-            except SnapshotRenderedPdfError as exc:
-                raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
-            except SnapshotPayloadError as exc:
-                raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-            except SnapshotNotFoundError as exc:
-                raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-        recovered_pdf = _get_persisted_rendered_pdf(recovery_record)
-        if recovered_pdf is not None:
-            _enforce_snapshot_page_constraint(recovered_pdf, recovery_snapshot)
-            return _build_pdf_download_response(recovered_pdf, resolved_file_name)
-        raise _snapshot_http_exception(
-            HTTP_410_GONE,
-            str(claim_consumed_error),
-        ) from claim_consumed_error
-
-    token = build_render_snapshot_token(record)
-    pdf_bytes = await _render_and_finalize_claimed_snapshot(
-        record,
-        claim_id,
-        token,
+    return await snapshot_download_service.render_owned_snapshot_pdf_download_response(
+        snapshot_id,
+        user_id,
+        snapshot_model,
         renderer,
-        snapshot=lookup_snapshot,
+        file_name,
+        operations=_download_operations(),
+        render_claim=_render_and_finalize_claimed_snapshot,
     )
-
-    return _build_pdf_download_response(pdf_bytes, resolved_file_name)
 
 
 async def render_legacy_snapshot_pdf_download_response(
@@ -738,104 +345,15 @@ async def render_legacy_snapshot_pdf_download_response(
     renderer: Callable[[str, str], Awaitable[bytes]],
     file_name: str | None,
 ):
-    async with AsyncSessionFactory() as lookup_session:
-        try:
-            lookup_record, lookup_snapshot = await get_render_snapshot_by_token(
-                lookup_session,
-                snapshot_id,
-                token,
-                snapshot_model,
-                allow_consumed=True,
-            )
-        except SnapshotTokenError as exc:
-            raise _snapshot_http_exception(HTTP_403_FORBIDDEN, str(exc)) from exc
-        except SnapshotConsumedError as exc:
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        except SnapshotExpiredError as exc:
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        except SnapshotRenderedPdfError as exc:
-            raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
-        except SnapshotPayloadError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-        except SnapshotNotFoundError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-
-    resolved_file_name = file_name or getattr(lookup_snapshot, "resumeName", None)
-    persisted_pdf = _get_persisted_rendered_pdf(lookup_record)
-    if persisted_pdf is not None:
-        _enforce_snapshot_page_constraint(persisted_pdf, lookup_snapshot)
-        return _build_pdf_download_response(persisted_pdf, resolved_file_name)
-    if lookup_record.consumed_at is not None:
-        raise _snapshot_http_exception(
-            HTTP_410_GONE,
-            "导出快照已失效，请重新导出。",
-        )
-
-    claim_consumed_error: SnapshotConsumedError | None = None
-    async with AsyncSessionFactory() as claim_session:
-        try:
-            record, _, claim_id = await claim_render_snapshot_by_token(
-                claim_session,
-                snapshot_id,
-                token,
-                snapshot_model,
-                lease_seconds=RENDER_CLAIM_LEASE_SECONDS,
-            )
-        except SnapshotClaimedError as exc:
-            raise _snapshot_http_exception(HTTP_409_CONFLICT, str(exc)) from exc
-        except SnapshotCapacityExceededError as exc:
-            raise _snapshot_http_exception(
-                HTTP_429_TOO_MANY_REQUESTS,
-                str(exc),
-            ) from exc
-        except SnapshotTokenError as exc:
-            raise _snapshot_http_exception(HTTP_403_FORBIDDEN, str(exc)) from exc
-        except SnapshotConsumedError as exc:
-            claim_consumed_error = exc
-        except SnapshotExpiredError as exc:
-            raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-        except SnapshotPayloadError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-        except SnapshotNotFoundError as exc:
-            raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-
-    if claim_consumed_error is not None:
-        async with AsyncSessionFactory() as recovery_session:
-            try:
-                recovery_record, recovery_snapshot = await get_render_snapshot_by_token(
-                    recovery_session,
-                    snapshot_id,
-                    token,
-                    snapshot_model,
-                    allow_consumed=True,
-                )
-            except SnapshotTokenError as exc:
-                raise _snapshot_http_exception(HTTP_403_FORBIDDEN, str(exc)) from exc
-            except SnapshotExpiredError as exc:
-                raise _snapshot_http_exception(HTTP_410_GONE, str(exc)) from exc
-            except SnapshotRenderedPdfError as exc:
-                raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
-            except SnapshotPayloadError as exc:
-                raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-            except SnapshotNotFoundError as exc:
-                raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
-        recovered_pdf = _get_persisted_rendered_pdf(recovery_record)
-        if recovered_pdf is not None:
-            _enforce_snapshot_page_constraint(recovered_pdf, recovery_snapshot)
-            return _build_pdf_download_response(recovered_pdf, resolved_file_name)
-        raise _snapshot_http_exception(
-            HTTP_410_GONE,
-            str(claim_consumed_error),
-        ) from claim_consumed_error
-
-    pdf_bytes = await _render_and_finalize_claimed_snapshot(
-        record,
-        claim_id,
+    return await snapshot_download_service.render_legacy_snapshot_pdf_download_response(
+        snapshot_id,
         token,
+        snapshot_model,
         renderer,
-        snapshot=lookup_snapshot,
+        file_name,
+        operations=_download_operations(),
+        render_claim=_render_and_finalize_claimed_snapshot,
     )
-    return _build_pdf_download_response(pdf_bytes, resolved_file_name)
 
 
 async def _read_export_request_body(

@@ -74,7 +74,9 @@ test('report starts unselected and annotations are absent from read-only export'
     const failed = renderToStaticMarkup(React.createElement(ResumeScoreReport, {...actionProps, outdated: true, generating: false, error: '评分失败，请重试'}));
     assert.equal((failed.match(/role="alert"/g) || []).length, 1);
     assert.doesNotMatch(failed, /简历内容已变化，请重新评分后再选择优化/);
-    assert.ok(failed.indexOf('评分失败，请重试') < failed.indexOf('六维简历评估雷达图'));
+    assert.match(failed, /六维简历评估雷达图/);
+    assert.match(failed, /<\/details><p role="alert"[^>]*>评分失败，请重试<\/p>/);
+    assert.ok(failed.indexOf('评分失败，请重试') < failed.indexOf('选择需要优化的模块'));
     assert.equal((idle.match(/aria-label="重新评分"/g) || []).length, 1);
     assert.equal((scoring.match(/aria-label="停止生成"/g) || []).length, 1);
     assert.doesNotMatch(scoring, /aria-label="重新评分"|本次优化按实际/);

@@ -3,9 +3,16 @@ import { Buffer } from 'node:buffer';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 
-const importDerivedData = async () => {
+const importDerivedData = async (existingCertifications = []) => {
   const result = await build({
-    entryPoints: ['components/ResumeUploadModal/derivedData.ts'],
+    stdin: {
+      contents: `
+        export * from './components/ResumeUploadModal/derivedData';
+        export { certificationListCalls } from './services/certificationsService';
+      `,
+      resolveDir: process.cwd(),
+      loader: 'js',
+    },
     bundle: true,
     format: 'esm',
     platform: 'node',
@@ -19,18 +26,26 @@ const importDerivedData = async () => {
       {
         name: 'resume-upload-service-stubs',
         setup(build) {
-          build.onResolve({ filter: /services\/certificationsService$/ }, (args) => ({
-            path: args.path,
+          build.onResolve({ filter: /services\/certificationsService$/ }, () => ({
+            path: 'certificationsService',
             namespace: 'service-stub',
           }));
-          build.onResolve({ filter: /services\/skillsService$/ }, (args) => ({
-            path: args.path,
+          build.onResolve({ filter: /services\/skillsService$/ }, () => ({
+            path: 'skillsService',
             namespace: 'service-stub',
           }));
           build.onLoad({ filter: /.*/, namespace: 'service-stub' }, (args) => {
             if (args.path.endsWith('certificationsService')) {
               return {
-                contents: 'export const certificationsService = { list: async () => [] };',
+                contents: `
+                  export const certificationListCalls = [];
+                  export const certificationsService = {
+                    list: async (options) => {
+                      certificationListCalls.push(options);
+                      return ${JSON.stringify(existingCertifications)};
+                    },
+                  };
+                `,
                 loader: 'js',
               };
             }
@@ -134,4 +149,42 @@ test('parsed certification duplicates tolerate issuer suffix drift', async () =>
   ]);
 
   assert.deepEqual([...duplicateIds], ['cert-0-产品经理创造营结业证书']);
+});
+
+test('certification import refreshes the owner list and matches preview duplicate signatures', async () => {
+  const existing = [
+    { name: '产品证书', issuer: '腾讯集团', issue_date: '2024-08-01' },
+    { name: '无日期证书', issuer: '测试公司', issue_date: null },
+  ];
+  const {
+    buildParsedCertifications,
+    buildCertificationDuplicateIds,
+    buildCertificationImportPayloads,
+    certificationListCalls,
+  } = await importDerivedData(existing);
+  const parsed = buildParsedCertifications([
+    { name: '产品证书', issuer: '腾讯有限公司', issue_date: '2024.08' },
+    { name: '无日期证书', issuer: '测试', issue_date: '' },
+    { name: '新证书', issuer: '新机构', issue_date: '2025-06' },
+    { name: '新证书', issuer: '新机构公司', issue_date: '2025-06-01' },
+  ]);
+
+  assert.deepEqual([...buildCertificationDuplicateIds(parsed, existing)], [
+    parsed[0].id,
+    parsed[1].id,
+  ]);
+  const payloads = await buildCertificationImportPayloads(parsed, {
+    expectedAuthCacheKey: 'owner-a',
+  });
+  assert.deepEqual(certificationListCalls, [{ force: true, expectedAuthCacheKey: 'owner-a' }]);
+  assert.equal(payloads.length, 1);
+  assert.equal(payloads[0].name, '新证书');
+  assert.equal(payloads[0].issuer, '新机构');
+  assert.equal(payloads[0].issue_date, '2025-06-01');
+});
+
+test('certification import with no valid names does not fetch the existing list', async () => {
+  const { buildCertificationImportPayloads, certificationListCalls } = await importDerivedData();
+  assert.deepEqual(await buildCertificationImportPayloads([{ id: 'blank', name: '  ' }]), []);
+  assert.deepEqual(certificationListCalls, []);
 });

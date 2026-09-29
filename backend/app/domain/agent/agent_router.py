@@ -34,11 +34,13 @@ from ..export.browser_pdf_service import (
     BrowserPdfRenderTimeoutError,
     render_resume_pdf,
 )
-from ..export.export_router import (
+from ..export.download_http import (
     PDF_DOWNLOAD_RESPONSES,
     _decode_download_filename_header,
     _read_export_mode,
     _read_legacy_download_token,
+)
+from ..export.snapshot_download_service import (
     render_legacy_snapshot_pdf_download_response,
     render_owned_snapshot_pdf_download_response,
 )
@@ -72,11 +74,11 @@ from .schemas import (
     AgentApiKeyCreateResponse,
     AgentApiKeyRead,
     AgentApiKeyRevokeResponse,
-    AgentPolishOption,
+    AgentPolishOption as AgentPolishOption,
     AgentPolishOptionsResponse,
     AgentPluginConfigRead,
     AgentPluginConfigUpdate,
-    AgentResumeTemplateOption,
+    AgentResumeTemplateOption as AgentResumeTemplateOption,
     AgentResumeTemplateOptionsResponse,
     AgentSkillBundleResponse,
     AgentJobAnalysisResponse,
