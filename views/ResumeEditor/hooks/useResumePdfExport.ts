@@ -27,7 +27,6 @@ type UpdateToast = (id: string, updates: Partial<Omit<ToastConfig, 'id'>>) => vo
 type UseResumePdfExportParams = {
     waitForSmartPageIdle: () => Promise<void>;
     isSmartPageAdjusting: () => boolean;
-    isSinglePageVerified: () => boolean;
     authUserKey: string | null;
     resumeId: string | null;
     isExportingPdf: boolean;
@@ -62,7 +61,6 @@ type UseResumePdfExportParams = {
 export const useResumePdfExport = ({
     waitForSmartPageIdle,
     isSmartPageAdjusting,
-    isSinglePageVerified,
     authUserKey,
     resumeId,
     isExportingPdf,
@@ -95,7 +93,6 @@ export const useResumePdfExport = ({
 }: UseResumePdfExportParams) => {
     const buildLatestSnapshot = () => {
         const snapshot = buildResumePdfRenderSnapshot({
-                verifiedSinglePage: isSinglePageVerified(),
                 resumeName,
                 targetRole,
                 profile,

@@ -1,6 +1,7 @@
 export const A4_HEIGHT_PX = 297 * 96 / 25.4;
 export const A4_WIDTH_PX = 210 * 96 / 25.4;
-export const SINGLE_PAGE_SAFETY_INSET_PX = 2;
+// Leave room for Chromium print fragmentation and rounding after screen measurement.
+export const SINGLE_PAGE_SAFETY_INSET_PX = 24;
 export const SINGLE_PAGE_MEASUREMENT_EPSILON_PX = 0.1;
 export type SinglePageBounds = {
   capacityBottomPx: number;

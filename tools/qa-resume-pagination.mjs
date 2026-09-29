@@ -67,7 +67,7 @@ try {
     for (const scope of ['measure','pdf']) assert.equal(await page.evaluate(s=>window.paginationQA.measure(s).fits,scope),true,`${templateId} short ${scope}`);
   }
   await page.evaluate(()=>window.paginationQA.render());
-  for (const delta of [-4,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,4]) {
+  for (const delta of [-25,-24,-23.5,-4,-2,0,2,4]) {
     const readings = await page.evaluate(delta=>{
       return ['measure','pdf'].map(scope=>{
         const root=document.querySelector(`#${scope} .rf-template-content-layout`);
@@ -80,7 +80,7 @@ try {
         return window.paginationQA.measure(scope);
       });
     },delta);
-    for(const r of readings) assert.equal(r.fits,delta<=-2,`boundary ${delta}: ${JSON.stringify(r)}`);
+    for(const r of readings) assert.equal(r.fits,delta<=-24,`boundary ${delta}: ${JSON.stringify(r)}`);
     results.push({delta,readings});
   }
   await page.evaluate(()=>{for(const scope of ['measure','pdf'])document.querySelector(`#${scope} [data-rf-print-flow="probe"]`).style.height='2000px';});
@@ -159,7 +159,7 @@ try {
       const node=document.createElement('div');node.dataset.rfPrintFlow='probe';root.append(node);
       const paper=document.querySelector('#pdf .a4-preview');
       const bounds=window.paginationQA.measure('pdf');
-      node.style.height=`${bounds.printableBottom-2-(node.getBoundingClientRect().top-paper.getBoundingClientRect().top)}px`;
+      node.style.height=`${bounds.printableBottom-24-(node.getBoundingClientRect().top-paper.getBoundingClientRect().top)}px`;
     });
     assert.equal(await page.evaluate(()=>window.paginationQA.measure('pdf').fits),true);
     assert.equal((await inspectPdf('safe-boundary')).length,1);

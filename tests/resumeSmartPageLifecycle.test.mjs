@@ -130,7 +130,7 @@ test(`export waiting for layout stays bound to its resume: ${scenario}`,async()=
   }
   assert.equal(snapshots.length,1);
   assert.equal(snapshots[0].resumeName,'latest committed');
-  assert.deepEqual(snapshots[0].pageConstraint,{maxPages:1});
+  assert.equal(snapshots[0].pageConstraint,undefined);
 });
 }
 
