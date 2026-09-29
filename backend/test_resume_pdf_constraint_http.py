@@ -58,14 +58,12 @@ class ResumePdfConstraintHttpTests(unittest.IsolatedAsyncioTestCase):
                         else:
                             legacy = mode.startswith('legacy')
                             response = await self._request(app,'GET',f'/exports/download/resume-pdf/{record.id}',headers={} if legacy else {'Authorization':'Bearer token'},params={'token':token} if legacy else {})
-                        mismatch = constrained and pages > 1
-                        self.assertEqual(response.status_code,422 if mismatch else 200,response.text if mismatch else mode)
+                        self.assertEqual(response.status_code,200,response.text)
                         self.assert_no_store(response)
-                        if mismatch:
-                            self.assertEqual(response.json()['detail']['code'],'PDF_PAGE_COUNT_MISMATCH')
-                            self.assertEqual(response.json()['detail']['actualPages'],2)
-                            finalize.assert_not_awaited()
-                            if not cached and not recovery:
-                                release.assert_awaited_once()
+                        self.assertEqual(response.content,pdf)
                         if cached or recovery:
+                            finalize.assert_not_awaited()
                             render.assert_not_awaited()
+                        else:
+                            finalize.assert_awaited_once()
+                            release.assert_not_awaited()

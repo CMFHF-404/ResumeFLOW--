@@ -24,9 +24,7 @@ from .download_contract import (
 )
 from .limits import MAX_EXPORT_SNAPSHOT_TOKEN_CHARACTERS
 from .pdf_payload import (
-    PdfPageCountMismatchError,
     RenderedPdfValidationError,
-    enforce_resume_pdf_page_limit,
     validate_rendered_pdf_bytes,
 )
 
@@ -224,23 +222,6 @@ def _build_pdf_download_response(pdf_bytes: bytes, file_name: str | None) -> Res
         **EXPORT_NO_STORE_HEADERS,
     }
     return Response(content=validated_pdf, media_type="application/pdf", headers=headers)
-
-
-def _enforce_snapshot_page_constraint(pdf_bytes: bytes, snapshot) -> None:
-    constraint = getattr(snapshot, "pageConstraint", None)
-    if constraint is None:
-        return
-    try:
-        enforce_resume_pdf_page_limit(pdf_bytes, constraint.maxPages)
-    except PdfPageCountMismatchError as exc:
-        raise HTTPException(status_code=422, detail={
-            "code": "PDF_PAGE_COUNT_MISMATCH",
-            "actualPages": exc.actual_pages,
-            "maxPages": exc.max_pages,
-            "message": str(exc),
-        }, headers=EXPORT_NO_STORE_HEADERS) from exc
-    except RenderedPdfValidationError as exc:
-        raise _snapshot_http_exception(HTTP_502_BAD_GATEWAY, str(exc)) from exc
 
 
 def _get_persisted_rendered_pdf(record) -> bytes | None:

@@ -11,7 +11,6 @@ import type { ResumeTemplateId, ResumeThemeColorPresetId } from '../constants/re
 import { FONT_SIZE_DEFAULT, LINE_HEIGHT_DEFAULT } from '../constants/resumeLayout';
 
 type ResumePdfSnapshotInput = {
-  verifiedSinglePage?: boolean;
   resumeName: string;
   targetRole: string;
   profile: ResumeEditorProfile;
@@ -77,7 +76,6 @@ const normalizeFiniteNumber = (value: number, fallback: number) => (
 );
 
 export const buildResumePdfRenderSnapshot = ({
-  verifiedSinglePage = false,
   resumeName,
   targetRole,
   profile,
@@ -101,7 +99,6 @@ export const buildResumePdfRenderSnapshot = ({
   experienceListMarkerStyle,
   skillTagSeparator,
 }: ResumePdfSnapshotInput): ResumePdfRenderSnapshot => ({
-  ...(verifiedSinglePage ? {pageConstraint: {maxPages: 1 as const}} : {}),
   resumeName,
   targetRole: targetRole.trim(),
   profile: {

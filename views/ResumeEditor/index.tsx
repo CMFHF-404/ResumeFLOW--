@@ -1312,7 +1312,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         restoreDefaultLayout,
         waitForPreviewUpdate,
         waitForSmartPageIdle,
-        isSinglePageVerified,
     } = useSmartPageExecution({
         currentLayout,
         contentRevision: JSON.stringify({authUserKey,resumeId,profile,targetRole,
@@ -2005,7 +2004,6 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({
         resumeId,
         isSmartPageAdjusting: () => smartPageAdjustingRef.current,
         waitForSmartPageIdle,
-        isSinglePageVerified: () => isSinglePageVerified(currentLayout),
         authUserKey,
         isExportingPdf,
         setIsExportingPdf,

@@ -13,3 +13,10 @@ test('fixed page bounds reserve space and reject invalid measurements', async ()
   assert.equal(fitsSinglePageBounds({...common,flowBottomPx:0,measurementEpsilonPx:3}),false);
   assert.equal(fitsSinglePageBounds({...common,flowBottomPx:0,measurementEpsilonPx:-1}),false);
 });
+
+test('smart-page fit reserves print pagination headroom', async () => {
+  const result = await build({entryPoints:['utils/resumePageGeometry.ts'], bundle:true, format:'esm', write:false});
+  const {A4_HEIGHT_PX,SINGLE_PAGE_SAFETY_INSET_PX,fitsSinglePageBounds} = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}#headroom`);
+  assert.equal(SINGLE_PAGE_SAFETY_INSET_PX,24);
+  assert.equal(fitsSinglePageBounds({capacityBottomPx:A4_HEIGHT_PX,flowBottomPx:A4_HEIGHT_PX-12,safetyInsetPx:SINGLE_PAGE_SAFETY_INSET_PX,measurementEpsilonPx:0.1}),false);
+});

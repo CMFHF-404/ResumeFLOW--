@@ -21,7 +21,6 @@ from ...database import AsyncSessionFactory
 from .browser_pdf_service import BrowserPdfRenderError, BrowserPdfRenderTimeoutError
 from .download_http import (
     _build_pdf_download_response,
-    _enforce_snapshot_page_constraint,
     _get_persisted_rendered_pdf,
     _snapshot_http_exception,
 )
@@ -253,7 +252,6 @@ async def _render_and_finalize_claimed_snapshot(
             token,
             renderer,
         )
-        _enforce_snapshot_page_constraint(pdf_bytes, snapshot)
         if persistence_session is not None:
             await operations.finalize_render_snapshot_claim(
                 persistence_session,
@@ -333,7 +331,6 @@ async def render_owned_snapshot_pdf_download_response(
     resolved_file_name = file_name or getattr(lookup_snapshot, "resumeName", None)
     persisted_pdf = _get_persisted_rendered_pdf(lookup_record)
     if persisted_pdf is not None:
-        _enforce_snapshot_page_constraint(persisted_pdf, lookup_snapshot)
         return _build_pdf_download_response(persisted_pdf, resolved_file_name)
     if lookup_record.consumed_at is not None:
         raise _snapshot_http_exception(
@@ -387,7 +384,6 @@ async def render_owned_snapshot_pdf_download_response(
                 raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
         recovered_pdf = _get_persisted_rendered_pdf(recovery_record)
         if recovered_pdf is not None:
-            _enforce_snapshot_page_constraint(recovered_pdf, recovery_snapshot)
             return _build_pdf_download_response(recovered_pdf, resolved_file_name)
         raise _snapshot_http_exception(
             HTTP_410_GONE,
@@ -443,7 +439,6 @@ async def render_legacy_snapshot_pdf_download_response(
     resolved_file_name = file_name or getattr(lookup_snapshot, "resumeName", None)
     persisted_pdf = _get_persisted_rendered_pdf(lookup_record)
     if persisted_pdf is not None:
-        _enforce_snapshot_page_constraint(persisted_pdf, lookup_snapshot)
         return _build_pdf_download_response(persisted_pdf, resolved_file_name)
     if lookup_record.consumed_at is not None:
         raise _snapshot_http_exception(
@@ -501,7 +496,6 @@ async def render_legacy_snapshot_pdf_download_response(
                 raise _snapshot_http_exception(HTTP_404_NOT_FOUND, str(exc)) from exc
         recovered_pdf = _get_persisted_rendered_pdf(recovery_record)
         if recovered_pdf is not None:
-            _enforce_snapshot_page_constraint(recovered_pdf, recovery_snapshot)
             return _build_pdf_download_response(recovered_pdf, resolved_file_name)
         raise _snapshot_http_exception(
             HTTP_410_GONE,

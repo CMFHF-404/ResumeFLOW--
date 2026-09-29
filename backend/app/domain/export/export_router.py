@@ -38,7 +38,6 @@ from .download_http import (
     _decode_download_filename_header as _decode_download_filename_header,
     _build_ascii_download_filename as _build_ascii_download_filename,
     _build_pdf_download_response as _build_pdf_download_response,
-    _enforce_snapshot_page_constraint as _enforce_snapshot_page_constraint,
     _get_persisted_rendered_pdf as _get_persisted_rendered_pdf,
 )
 from .browser_pdf_service import (
