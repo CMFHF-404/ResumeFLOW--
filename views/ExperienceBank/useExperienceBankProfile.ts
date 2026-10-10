@@ -29,6 +29,7 @@ import {
 import { useExperienceBankSummaryGeneration } from './useExperienceBankSummaryGeneration';
 import { updateResumeTargetRoleWithConflictRetry } from './targetRoleUpdate';
 import { useAuthOwnerOperationGuard } from '../../hooks/useAuthOwnerOperationGuard';
+import { resolveAvatarCropSource, withAvatarCrop, withoutAvatar } from '../../services/avatarImage';
 
 const PROFILE_REQUEST_RESET_DELAY_MS = 300;
 const SUMMARY_PREVIEW_CHAR_LIMIT = 100;
@@ -179,6 +180,7 @@ export const useExperienceBankProfile = ({
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
   const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const avatarReadRequestRef = useRef(0);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const isLoadingProfileRef = useRef(false);
   const hasHydratedProfileRef = useRef(false);
@@ -210,7 +212,10 @@ export const useExperienceBankProfile = ({
 
   useLayoutEffect(() => {
     activeProfileSaveRef.current = null;
+    avatarReadRequestRef.current += 1;
     setIsSavingProfile(false);
+    setIsCropModalOpen(false);
+    setPendingImageSrc(null);
   }, [authUserKey]);
 
   const summaryText = useMemo(() => summary.trim(), [summary]);
@@ -498,6 +503,9 @@ export const useExperienceBankProfile = ({
   }, [isAuthenticated, onRequireAuth, runGenerateSummary]);
 
   const handleCancelProfile = useCallback(() => {
+    avatarReadRequestRef.current += 1;
+    setIsCropModalOpen(false);
+    setPendingImageSrc(null);
     cancelSummaryGeneration({ bumpDraftVersion: true });
     resetProfileDraftOverrides();
     setName(originalProfile.name);
@@ -534,6 +542,7 @@ export const useExperienceBankProfile = ({
         nextExtraJson.avatar_data_url = avatarDataUrl;
       } else {
         delete nextExtraJson.avatar_data_url;
+        delete nextExtraJson.avatar_original_data_url;
       }
       const updated = await profileService.updateProfile(
         {
@@ -732,10 +741,16 @@ export const useExperienceBankProfile = ({
     if (!isAvatarInteractionEnabled) {
       return;
     }
-    avatarFileInputRef.current?.click();
-  }, [isAuthenticated, isAvatarInteractionEnabled, onRequireAuth]);
+    avatarReadRequestRef.current += 1;
+    if (avatarDataUrl) {
+      setPendingImageSrc(resolveAvatarCropSource(profileExtraJson, avatarDataUrl));
+      setIsCropModalOpen(true);
+    } else {
+      avatarFileInputRef.current?.click();
+    }
+  }, [avatarDataUrl, profileExtraJson, isAuthenticated, isAvatarInteractionEnabled, onRequireAuth]);
 
-  const handleFileSelected = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!isAuthenticated) {
       event.target.value = '';
       void onRequireAuth();
@@ -745,35 +760,54 @@ export const useExperienceBankProfile = ({
     if (!file) {
       return;
     }
+    event.target.value = '';
+    // Select the winning request before the asynchronous owner check, so late
+    // authorization or file reads cannot revive a cancelled/replaced choice.
+    const requestId = ++avatarReadRequestRef.current;
+    let operation: Awaited<ReturnType<typeof ownerGuard.beginOperation>>;
+    try {
+      operation = await ownerGuard.beginOperation();
+    } catch (error) {
+      if (avatarReadRequestRef.current === requestId && !isAuthContextChangedError(error)) {
+        toastError('头像加载失败');
+      }
+      return;
+    }
+    if (avatarReadRequestRef.current !== requestId || !ownerGuard.isOperationCurrent(operation)) return;
     const reader = new FileReader();
     reader.onload = (loadEvent) => {
+      if (avatarReadRequestRef.current !== requestId || !ownerGuard.isOperationCurrent(operation)) return;
       const src = loadEvent.target?.result as string;
       setPendingImageSrc(src);
       setIsCropModalOpen(true);
     };
     reader.readAsDataURL(file);
-    event.target.value = '';
-  }, [isAuthenticated, onRequireAuth]);
+  }, [isAuthenticated, onRequireAuth, ownerGuard, toastError]);
 
   const handleCropConfirm = useCallback((cropDataUrl: string) => {
     if (!isAuthenticated) {
       void onRequireAuth();
       return;
     }
+    if (!pendingImageSrc) return;
+    avatarReadRequestRef.current += 1;
     setAvatarDataUrl(cropDataUrl);
+    setProfileExtraJson(prev => withAvatarCrop(prev, pendingImageSrc, cropDataUrl));
     setIsCropModalOpen(false);
     setPendingImageSrc(null);
     if (!isEditingProfile) {
       setIsEditingProfile(true);
     }
-  }, [isAuthenticated, isEditingProfile, onRequireAuth]);
+  }, [isAuthenticated, isEditingProfile, onRequireAuth, pendingImageSrc]);
 
   const handleAvatarDelete = useCallback(() => {
     if (!isAuthenticated) {
       void onRequireAuth();
       return;
     }
+    avatarReadRequestRef.current += 1;
     setAvatarDataUrl(null);
+    setProfileExtraJson(withoutAvatar);
     setIsCropModalOpen(false);
     setPendingImageSrc(null);
     if (!isEditingProfile) {
@@ -782,6 +816,7 @@ export const useExperienceBankProfile = ({
   }, [isAuthenticated, isEditingProfile, onRequireAuth]);
 
   const handleCropCancel = useCallback(() => {
+    avatarReadRequestRef.current += 1;
     setIsCropModalOpen(false);
     setPendingImageSrc(null);
   }, []);

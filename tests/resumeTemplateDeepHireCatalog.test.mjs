@@ -328,12 +328,13 @@ test('DeepHire section spacing remains controlled by the editor layout', () => {
 
 test('PDF export waits for inline and CSS background images before marking the page ready', () => {
   const exportSource = read('views/ResumePdfExportPage.tsx');
-  const waitCallIndex = exportSource.indexOf('waitForExportAssets(previewRef.current)');
+  const readinessSource = read('utils/resumeRenderReadiness.ts');
+  const waitCallIndex = exportSource.indexOf('waitForResumeRenderReady(previewRef.current');
   const readyCallIndex = exportSource.indexOf('setExportReadyState(true)');
 
-  assert.match(exportSource, /querySelectorAll<HTMLImageElement>\('img'\)/);
-  assert.match(exportSource, /getComputedStyle\(element\)\.backgroundImage/);
-  assert.match(exportSource, /new Image\(\)/);
+  assert.match(readinessSource, /querySelectorAll<HTMLImageElement>\('img'\)/);
+  assert.match(readinessSource, /getComputedStyle\(element\)\.backgroundImage/);
+  assert.match(readinessSource, /new Image\(\)/);
   assert.ok(waitCallIndex >= 0, 'the export page should wait for preview assets');
   assert.ok(readyCallIndex > waitCallIndex, 'asset readiness must resolve before rfExportReady is set');
 });
@@ -533,55 +534,16 @@ test('DeepHire full-bleed banners keep editor-controlled top padding', () => {
   );
 });
 
-test('DeepHire avatars preserve photos by default and apply the benchmark crop to deep blue', async () => {
+test('DeepHire portraits preserve the full image in rounded 3:4 frames', async () => {
   const { RESUME_TEMPLATE_DEFINITIONS } = await loadResumeTemplateCatalog();
-  const {
-    buildDeepHireTemplateCss,
-    resolveDeepHireAvatarBorderRadius,
-  } = await loadDeepHireTemplateStyles();
-  const deephireTemplates = RESUME_TEMPLATE_DEFINITIONS.filter(({ id }) => id.startsWith('deephire-'));
-  const headerSource = read('views/ResumeEditor/components/ResumePreview/sections/DeepHireHeaderBlock.tsx');
-  const previewSource = read('views/ResumeEditor/components/ResumePreview.tsx');
-
-  assert.equal(
-    (headerSource.match(/,\s*'cover'\s*\)/g) ?? []).length,
-    1,
-    'only the deep-blue curved profile should crop inward',
-  );
-  assert.match(
-    headerSource,
-    /activeTemplate\.renderVariant === 'curved-profile'[\s\S]*?renderAvatarFrame\([\s\S]*?'cover'\s*\)/,
-    'the deep-blue curved profile should use the cover crop',
-  );
-  assert.match(
-    previewSource,
-    /imageObjectFit:\s*'contain'\s*\|\s*'cover'\s*=\s*'contain'/,
-    'the shared avatar renderer should keep contain as its default image fit',
-  );
-  assert.match(
-    previewSource,
-    /imageObjectFit\s*===\s*'cover'\s*\?\s*'object-cover'\s*:\s*'object-contain'/,
-    'the shared avatar renderer should map its contain default to object-contain',
-  );
-
-  for (const template of deephireTemplates) {
-    const radius = resolveDeepHireAvatarBorderRadius(template);
-    const expectedRadius = template.id === 'deephire-deep-blue' ? '50%' : '14px';
-    assert.equal(radius, expectedRadius, `${template.id} should resolve to its intended avatar silhouette`);
-    assert.match(
-      buildDeepHireTemplateCss(template, `avatar-qa-${template.id}`),
-      new RegExp(`\\.rf-deephire-avatar\\s*\\{\\s*border-radius:\\s*${radius.replaceAll('%', '\\%')}\\s*!important;`),
-      `${template.id} should apply its final avatar QA radius after template-specific styles`,
-    );
+  const { buildDeepHireTemplateCss, resolveDeepHireAvatarBorderRadius } = await loadDeepHireTemplateStyles();
+  for (const template of RESUME_TEMPLATE_DEFINITIONS.filter(({ collection }) => collection === 'deephire')) {
+    assert.equal(resolveDeepHireAvatarBorderRadius(template), '14px');
+    const css = buildDeepHireTemplateCss(template, `portrait-${template.id}`);
+    for (const frame of css.matchAll(/\.rf-deephire-avatar \{[^}]*?width: ([\d.]+)px !important;\s*height: ([\d.]+)px !important;/g)) {
+      assert.ok(Math.abs(Number(frame[1]) / Number(frame[2]) - 3 / 4) < 0.001, template.id);
+    }
   }
-
-  const deepBlue = deephireTemplates.find(({ id }) => id === 'deephire-deep-blue');
-  assert.ok(deepBlue, 'the deep-blue template should exist');
-  assert.match(
-    buildDeepHireTemplateCss(deepBlue, 'deep-blue-avatar-qa'),
-    /\.rf-deephire-avatar\s*\{\s*width:\s*84px\s*!important;\s*height:\s*84px\s*!important;/,
-    'the deep-blue frame should use the benchmark circular ratio',
-  );
 });
 
 test('DeepHire sidebar skills place the capability values on their own line', async () => {

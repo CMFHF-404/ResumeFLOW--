@@ -47,7 +47,7 @@ export const resolveDeepHireAvatarBorderRadius = (
     if (!isDeepHireTemplate(activeTemplate)) {
         return undefined;
     }
-    return activeTemplate.id === 'deephire-deep-blue' ? '50%' : '14px';
+    return '14px';
 };
 
 export const usesDeepHireCertificationCards = (
@@ -329,7 +329,7 @@ ${rootSelector} .rf-deephire-header {
   margin-bottom: 24px;
 }
 ${rootSelector} .rf-deephire-name { font-size: 34px !important; letter-spacing: 0.04em !important; }
-${rootSelector} .rf-deephire-avatar { width: 106px !important; height: 106px !important; border-radius: 9px !important; }
+${rootSelector} .rf-deephire-avatar { width: 79.5px !important; height: 106px !important; border-radius: 9px !important; }
 ${rootSelector} .rf-deephire-contact-list { max-width: 560px; row-gap: 7px !important; }
 ${trailingRuleCss}`;
         case 'deephire-blue':
@@ -339,7 +339,7 @@ ${rootSelector} .rf-deephire-header {
   padding: 0 0 22px !important;
   margin-bottom: 20px;
 }
-${rootSelector} .rf-deephire-avatar { width: 88px !important; height: 88px !important; border-radius: 7px !important; }
+${rootSelector} .rf-deephire-avatar { width: 66px !important; height: 88px !important; border-radius: 7px !important; }
 ${rootSelector} .rf-template-section-heading {
   min-height: 29px;
   border: 0 !important;
@@ -361,7 +361,7 @@ ${rootSelector} .rf-deephire-header--banner {
   padding-bottom: 38px !important;
   padding-left: 68px !important;
 }
-${rootSelector} .rf-deephire-avatar { width: 110px !important; height: 110px !important; border-radius: 9px !important; }
+${rootSelector} .rf-deephire-avatar { width: 82.5px !important; height: 110px !important; border-radius: 9px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 35px !important; }
 ${trailingRuleCss}`;
         case 'deephire-simple':
@@ -374,7 +374,7 @@ ${rootSelector} .rf-template-main {
   padding: 46px 42px 36px 44px !important;
 }
 ${rootSelector} .rf-deephire-header { margin-bottom: 28px; }
-${rootSelector} .rf-deephire-avatar { width: 122px !important; height: 122px !important; border-radius: 4px !important; }
+${rootSelector} .rf-deephire-avatar { width: 91.5px !important; height: 122px !important; border-radius: 4px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 28px !important; }
 ${rootSelector} .rf-template-section-heading {
   position: relative;
@@ -407,7 +407,7 @@ ${rootSelector} .rf-deephire-curved-band {
   background: url("/resume-templates/deephire/deephire-deep-blue-band.png") center top / 100% 126px no-repeat !important;
 }
 ${rootSelector} .rf-deephire-header-inner { margin-top: -62px !important; }
-${rootSelector} .rf-deephire-avatar { width: 84px !important; height: 84px !important; }
+${rootSelector} .rf-deephire-avatar { width: 63px !important; height: 84px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 32px !important; margin-top: 18px !important; }
 ${trailingRuleCss}`;
         case 'deephire-lucky-red':
@@ -438,7 +438,7 @@ ${rootSelector} .rf-deephire-header--banner {
   background-repeat: no-repeat !important;
 }
 ${rootSelector} .rf-deephire-header-inner { flex-direction: row-reverse; justify-content: flex-end !important; gap: 34px !important; }
-${rootSelector} .rf-deephire-avatar { width: 164px !important; height: 164px !important; border-radius: 9px !important; }
+${rootSelector} .rf-deephire-avatar { width: 123px !important; height: 164px !important; border-radius: 9px !important; }
 ${rootSelector} .rf-deephire-profile-copy { padding-top: 26px; }
 ${rootSelector} .rf-deephire-name { font-size: 38px !important; }
 ${rootSelector} [data-rf-section-id]:not([data-rf-section-id="basic-info"]) {
@@ -467,7 +467,7 @@ ${rootSelector} .rf-template-split-background,
 ${rootSelector} .rf-template-content-layout { min-height: calc(100% - 41px) !important; }
 ${rootSelector} .rf-template-sidebar { padding: 28px 34px 36px !important; }
 ${rootSelector} .rf-template-main { padding: 30px 42px 36px !important; }
-${rootSelector} .rf-deephire-avatar { width: 86px !important; height: 86px !important; border-radius: 5px !important; }
+${rootSelector} .rf-deephire-avatar { width: 64.5px !important; height: 86px !important; border-radius: 5px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 26px !important; }
 ${rootSelector} .rf-template-section-heading {
   border: 0 !important;
@@ -487,7 +487,7 @@ ${rootSelector} .rf-deephire-header-inner { justify-content: center !important; 
 ${rootSelector} .rf-deephire-profile-copy { max-width: 590px; }
 ${rootSelector} .rf-deephire-name { font-size: 31px !important; letter-spacing: .08em !important; }
 ${rootSelector} .rf-deephire-contact-list { justify-content: center; }
-${rootSelector} .rf-deephire-avatar { position: absolute; right: 0; top: -6px; width: 86px !important; height: 86px !important; border-radius: 3px !important; }
+${rootSelector} .rf-deephire-avatar { position: absolute; right: 0; top: -6px; width: 64.5px !important; height: 86px !important; border-radius: 3px !important; }
 ${rootSelector} .rf-template-section-heading { color: #252525 !important; font-family: inherit; font-weight: 500 !important; font-size: 16px !important; letter-spacing: .12em !important; margin-bottom: 20px; }`;
         case 'deephire-blue-header':
             return `
@@ -498,7 +498,7 @@ ${rootSelector} .rf-deephire-header--banner {
   padding-bottom: 30px !important;
   padding-left: 40px !important;
 }
-${rootSelector} .rf-deephire-avatar { width: 88px !important; height: 88px !important; border-radius: 2px !important; }
+${rootSelector} .rf-deephire-avatar { width: 66px !important; height: 88px !important; border-radius: 2px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 31px !important; }
 ${rootSelector} .rf-template-section-heading { border: 0 !important; color: #222 !important; font-size: 16px !important; font-weight: 700 !important; letter-spacing: .04em !important; padding: 0 !important; margin-bottom: 13px; }
 ${rootSelector} [data-rf-section-id]:not([data-rf-section-id="basic-info"]) { border-bottom: 1px solid #dedede; padding-bottom: 18px; }`;
@@ -506,7 +506,7 @@ ${rootSelector} [data-rf-section-id]:not([data-rf-section-id="basic-info"]) { bo
             return `
 ${rootSelector} .rf-deephire-header { border: 0 !important; border-bottom: 1px solid #ededed !important; padding: 0 0 36px !important; margin-bottom: 24px; }
 ${rootSelector} .rf-deephire-header-inner { flex-direction: row-reverse; justify-content: flex-end !important; gap: 28px !important; }
-${rootSelector} .rf-deephire-avatar { width: 126px !important; height: 126px !important; border-radius: 8px !important; }
+${rootSelector} .rf-deephire-avatar { width: 94.5px !important; height: 126px !important; border-radius: 8px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 38px !important; }
 ${rootSelector} [data-rf-section-surface] {
   display: grid;
@@ -522,7 +522,7 @@ ${rootSelector} .rf-template-section-heading { align-self: start; border: 0 !imp
 ${fullBleedSplitCss}
 ${rootSelector} .rf-template-sidebar { padding: 38px 28px 34px 36px !important; }
 ${rootSelector} .rf-template-main { position: relative; border-left: 2px solid #ef8f8d !important; padding: 42px 38px 34px 45px !important; }
-${rootSelector} .rf-deephire-avatar { width: 122px !important; height: 122px !important; border-radius: 3px !important; }
+${rootSelector} .rf-deephire-avatar { width: 91.5px !important; height: 122px !important; border-radius: 3px !important; }
 ${rootSelector} .rf-template-section-heading { position: relative; border: 0 !important; background: transparent !important; color: #191919 !important; font-size: 16px !important; letter-spacing: 0 !important; padding: 0 0 8px !important; margin-bottom: 12px; }
 ${rootSelector} .rf-template-main .rf-heading-marker { position: absolute; left: -51px; width: 11px; height: 11px; color: #ed7774; }
 ${rootSelector} .rf-template-sidebar .rf-heading-marker { display: none; }`;
@@ -532,7 +532,7 @@ ${rootSelector} .rf-deephire-header { border: 0 !important; padding: 0 0 28px !i
 ${rootSelector} .rf-deephire-header-inner { justify-content: center !important; position: relative; }
 ${rootSelector} .rf-deephire-profile-copy { max-width: 570px; }
 ${rootSelector} .rf-deephire-contact-list { justify-content: center; }
-${rootSelector} .rf-deephire-avatar { position: absolute; right: 0; width: 70px !important; height: 70px !important; border-radius: 50% !important; }
+${rootSelector} .rf-deephire-avatar { position: absolute; right: 0; width: 52.5px !important; height: 70px !important; border-radius: 50% !important; }
 ${rootSelector} [data-rf-section-surface] { border: 1px solid #cfd3d8 !important; border-radius: 0 !important; padding: 0 !important; }
 ${rootSelector} .rf-template-section-heading { border: 0 !important; border-bottom: 1px solid #cfd3d8 !important; background: #ffffff !important; color: #111111 !important; font-size: 15px !important; letter-spacing: 0 !important; padding: 7px 10px !important; margin: 0; }
 ${rootSelector} [data-rf-item-container],
@@ -542,7 +542,7 @@ ${rootSelector} [data-rf-item-surface] { border: 0 !important; padding: 0 !impor
             return `
 ${rootSelector} .rf-deephire-header { border: 0 !important; border-bottom: 1px solid #c36d5e !important; padding: 0 0 16px !important; margin-bottom: 24px; }
 ${rootSelector} .rf-deephire-name { color: #162c55 !important; font-size: 34px !important; }
-${rootSelector} .rf-deephire-avatar { width: 74px !important; height: 74px !important; border: 2px solid #c36d5e !important; border-radius: 2px !important; }
+${rootSelector} .rf-deephire-avatar { width: 55.5px !important; height: 74px !important; border: 2px solid #c36d5e !important; border-radius: 2px !important; }
 ${rootSelector} .rf-template-section-heading {
   display: flex !important;
   gap: 9px !important;
@@ -562,14 +562,14 @@ ${rootSelector} .rf-heading-marker { color: #c36d5e; }`;
 ${fullBleedSplitCss}
 ${rootSelector} .rf-template-sidebar { padding: 34px 30px 36px !important; }
 ${rootSelector} .rf-template-main { padding: 42px 38px 36px !important; }
-${rootSelector} .rf-deephire-avatar { width: 72px !important; height: 72px !important; border-radius: 5px !important; }
+${rootSelector} .rf-deephire-avatar { width: 54px !important; height: 72px !important; border-radius: 5px !important; }
 ${rootSelector} .rf-template-section-heading { width: fit-content; border: 0 !important; border-bottom: 2px solid #be9a72 !important; background: transparent !important; color: #6b5038 !important; font-size: 15px !important; letter-spacing: .05em !important; padding: 0 0 5px !important; margin-bottom: 12px; }`;
         case 'deephire-business':
             return `
 ${fullBleedSplitCss}
 ${rootSelector} .rf-template-sidebar { padding: 38px 32px 36px !important; border-right: 3px solid #f0c42b !important; }
 ${rootSelector} .rf-template-main { padding: 42px 38px 36px !important; }
-${rootSelector} .rf-deephire-avatar { width: 80px !important; height: 80px !important; border: 4px solid #f0c42b !important; border-radius: 50% !important; }
+${rootSelector} .rf-deephire-avatar { width: 60px !important; height: 80px !important; border: 4px solid #f0c42b !important; border-radius: 50% !important; }
 ${rootSelector} .rf-template-sidebar .rf-template-section-heading { color: #f6d250 !important; border-bottom-color: rgba(255,255,255,.2) !important; }
 ${rootSelector} .rf-template-main .rf-template-section-heading { border: 0 !important; border-left: 4px solid #f0c42b !important; background: transparent !important; color: #29418f !important; font-size: 16px !important; letter-spacing: .03em !important; padding: 1px 0 1px 10px !important; margin-bottom: 12px; }`;
         case 'deephire-fashion-black':
@@ -584,7 +584,7 @@ ${rootSelector} .rf-deephire-header--banner {
   background-image: none !important;
 }
 ${rootSelector} .rf-deephire-header-inner { min-height: 120px; align-items: center !important; }
-${rootSelector} .rf-deephire-avatar { width: 120px !important; height: 120px !important; border-radius: 0 !important; margin: 0; }
+${rootSelector} .rf-deephire-avatar { width: 90px !important; height: 120px !important; border-radius: 0 !important; margin: 0; }
 ${rootSelector} .rf-deephire-name { font-size: 38px !important; }
 ${rootSelector} .rf-template-section-heading { border: 0 !important; border-bottom: 2px solid #111 !important; background: transparent !important; color: #111 !important; font-size: 18px !important; letter-spacing: .08em !important; padding: 0 0 7px !important; margin-bottom: 12px; }
 ${rootSelector} [data-rf-section-id="certifications"] [data-rf-item-surface] { display: inline-block; width: auto; background: #050505 !important; color: #fff !important; padding: 7px 10px !important; border-radius: 0 !important; }
@@ -595,7 +595,7 @@ ${fullBleedSplitCss}
 ${rootSelector} .rf-template-split-page-header { padding: 34px 48px 28px; }
 ${rootSelector} .rf-deephire-header--youth { margin: 0; }
 ${rootSelector} .rf-deephire-header-inner { flex-direction: row-reverse; justify-content: flex-end !important; gap: 54px !important; }
-${rootSelector} .rf-deephire-avatar { width: 190px !important; height: 190px !important; border-radius: 48% !important; }
+${rootSelector} .rf-deephire-avatar { width: 142.5px !important; height: 190px !important; border-radius: 48% !important; }
 ${rootSelector} .rf-deephire-profile-copy { padding-top: 14px; }
 ${rootSelector} .rf-deephire-quote { margin-left: -30px; margin-bottom: -10px; }
 ${rootSelector} .rf-youth-accent { z-index: 0; right: -38px; bottom: -10px; width: 70px; height: 112px; object-fit: contain; }
@@ -620,7 +620,7 @@ ${rootSelector} .rf-deephire-profile-copy::after {
   background: #f0bd27;
 }
 ${rootSelector} .rf-deephire-avatar {
-  width: 78px !important;
+  width: 58.5px !important;
   height: 78px !important;
   border: 3px solid #213558 !important;
   border-radius: 0 !important;
@@ -653,7 +653,7 @@ ${fullBleedSplitCss}
 ${rootSelector} .rf-template-sidebar { padding: 0 28px 36px 20px !important; }
 ${rootSelector} .rf-template-main { padding: 38px 40px 36px !important; }
 ${rootSelector} .rf-deephire-header { min-height: 480px; margin: 0 -28px 26px -20px; padding: 40px 24px 18px 48px !important; background: url("/resume-templates/deephire/deephire-soft-realm-arc.png") left top / 220px 245px no-repeat; }
-${rootSelector} .rf-deephire-avatar { width: 164px !important; height: 200px !important; border-radius: 0 0 50% 50% !important; }
+${rootSelector} .rf-deephire-avatar { width: 150px !important; height: 200px !important; border-radius: 0 0 50% 50% !important; }
 ${rootSelector} .rf-deephire-name { margin-top: 24px; font-size: 30px !important; }
 ${rootSelector} .rf-template-sidebar .rf-template-section-heading { border: 0 !important; border-bottom: 2px solid #f45bd4 !important; background: transparent !important; color: #171717 !important; font-size: 15px !important; letter-spacing: 0 !important; padding: 0 0 7px !important; margin-bottom: 14px; }
 ${rootSelector} .rf-template-main .rf-template-section-heading { border: 0 !important; border-left: 4px solid #f45bd4 !important; background: transparent !important; color: #171717 !important; font-size: 16px !important; letter-spacing: 0 !important; padding: 0 0 0 10px !important; margin-bottom: 12px; }
@@ -671,7 +671,7 @@ ${rootSelector} .rf-deephire-header--banner {
   background-size: cover !important;
 }
 ${rootSelector} .rf-deephire-header-inner { flex-direction: row-reverse; justify-content: flex-end !important; gap: 74px !important; }
-${rootSelector} .rf-deephire-avatar { width: 108px !important; height: 108px !important; border-radius: 12px !important; }
+${rootSelector} .rf-deephire-avatar { width: 81px !important; height: 108px !important; border-radius: 12px !important; }
 ${rootSelector} .rf-deephire-name { font-size: 30px !important; }
 ${rootSelector} [data-rf-section-surface] { display: grid; grid-template-columns: 142px minmax(0,1fr); column-gap: 22px; border-radius: 0 !important; padding: 0 0 16px !important; }
 ${rootSelector} .rf-template-section-heading { border: 0 !important; background: transparent !important; color: #1a1a1a !important; font-size: 16px !important; letter-spacing: 0 !important; padding: 0 !important; margin: 0; align-self: start; }`;
@@ -684,7 +684,7 @@ ${rootSelector} .rf-deephire-header {
   border: 0 !important;
   background: #f1f0ff;
 }
-${rootSelector} .rf-deephire-avatar { width: 72px !important; height: 72px !important; border-radius: 50% !important; }
+${rootSelector} .rf-deephire-avatar { width: 54px !important; height: 72px !important; border-radius: 50% !important; }
 ${rootSelector} .rf-template-content-layout { border-left: 1px solid #d7ccff; padding-left: 18px; }
 ${rootSelector} .rf-template-section-heading { position: relative; border: 0 !important; background: transparent !important; color: #271d3f !important; font-size: 16px !important; letter-spacing: 0 !important; padding: 0 0 7px !important; margin-bottom: 12px; }
 ${rootSelector} .rf-heading-marker { position: absolute; left: -24px; width: 9px; height: 9px; color: #8b6ce7; }`;
@@ -694,7 +694,7 @@ ${fullBleedSplitCss}
 ${rootSelector} { border-top: 4px solid #42c67c !important; border-bottom: 4px solid #42c67c !important; }
 ${rootSelector} .rf-template-sidebar { padding: 28px 30px 34px !important; border-right: 2px solid #42c67c !important; }
 ${rootSelector} .rf-template-main { padding: 34px 38px 34px !important; }
-${rootSelector} .rf-deephire-avatar { width: 82px !important; height: 82px !important; border-radius: 50% !important; }
+${rootSelector} .rf-deephire-avatar { width: 61.5px !important; height: 82px !important; border-radius: 50% !important; }
 ${rootSelector} .rf-template-section-heading {
   border: 0 !important;
   border-radius: 0 !important;
@@ -728,7 +728,7 @@ ${rootSelector} .rf-template-sidebar .rf-template-date { background: transparent
 ${fullBleedSplitCss}
 ${rootSelector} .rf-template-sidebar { padding: 28px 30px 34px !important; border-right: 1px dashed #9cd9b7 !important; }
 ${rootSelector} .rf-template-main { padding: 34px 38px 34px !important; }
-${rootSelector} .rf-deephire-avatar { width: 82px !important; height: 82px !important; border-radius: 50% !important; }
+${rootSelector} .rf-deephire-avatar { width: 61.5px !important; height: 82px !important; border-radius: 50% !important; }
 ${rootSelector} .rf-template-section-heading { border: 0 !important; border-left: 4px solid #55b87c !important; border-radius: 0 !important; background: transparent !important; color: #2b6c47 !important; font-size: 16px !important; letter-spacing: 0 !important; padding: 0 0 0 9px !important; margin-bottom: 12px; }
 ${rootSelector} .rf-template-sidebar .rf-template-section-heading { border-left: 0 !important; padding-left: 0 !important; }
 ${rootSelector} .rf-heading-marker { color: #55b87c; }
@@ -751,7 +751,7 @@ ${rootSelector} .rf-deephire-header {
   padding: 26px !important;
   margin-bottom: 24px;
 }
-${rootSelector} .rf-deephire-avatar { width: 80px !important; height: 80px !important; border: 2px solid #17c3d6 !important; border-radius: 0 !important; }
+${rootSelector} .rf-deephire-avatar { width: 60px !important; height: 80px !important; border: 2px solid #17c3d6 !important; border-radius: 0 !important; }
 ${rootSelector} .rf-template-avatar-placeholder { background-color: #0b2039 !important; color: #e7f7ff !important; }
 ${rootSelector} .rf-cyber-avatar-square { width: 58px; height: 58px; color: #17c3d6; }
 ${rootSelector} .rf-cyber-avatar-square--back { right: -18px; top: -16px; opacity: .42; }
@@ -795,7 +795,7 @@ ${rootSelector} .rf-deephire-header {
 }
 ${rootSelector} { background-image: url("/resume-templates/deephire/deephire-renaissance-band.png") !important; background-position: center top !important; background-size: 100% 14px !important; background-repeat: no-repeat !important; }
 ${rootSelector} .rf-deephire-name { font-size: 44px !important; color: #17243a !important; }
-${rootSelector} .rf-deephire-avatar { width: 78px !important; height: 78px !important; border: 3px solid #a2201d !important; border-radius: 0 !important; box-shadow: 0 0 0 2px #d3a423 !important; }
+${rootSelector} .rf-deephire-avatar { width: 58.5px !important; height: 78px !important; border: 3px solid #a2201d !important; border-radius: 0 !important; box-shadow: 0 0 0 2px #d3a423 !important; }
 ${rootSelector} .rf-renaissance-avatar-diamond { z-index: 0; right: -28px; top: -22px; width: 66px; height: 66px; color: #d3a423; }
 ${rootSelector} .rf-template-section-heading { width: 58% !important; justify-content: center !important; gap: 18px !important; border: 0 !important; border-bottom: 1px solid #e0c66d !important; background: transparent !important; color: #9b1117 !important; font-size: 20px !important; letter-spacing: .08em !important; padding: 0 0 10px !important; margin: 0 auto 28px; }
 ${rootSelector} .rf-heading-marker { color: #c99d19; }
@@ -897,7 +897,7 @@ ${rootSelector} .rf-deephire-header {
   background: url("/resume-templates/deephire/deephire-campus-divider.png") center bottom / 100% 5px no-repeat;
 }
 ${rootSelector} .rf-deephire-name { font-size: 38px !important; }
-${rootSelector} .rf-deephire-avatar { width: 80px !important; height: 80px !important; border: 3px solid #5e8cff !important; border-radius: 12px !important; }
+${rootSelector} .rf-deephire-avatar { width: 60px !important; height: 80px !important; border: 3px solid #5e8cff !important; border-radius: 12px !important; }
 ${rootSelector} .rf-campus-avatar-dot { z-index: 2; right: -16px; top: -14px; width: 16px; height: 16px; color: #85e7bb; }
 ${rootSelector} .rf-template-section-heading {
   position: relative;
