@@ -10,6 +10,7 @@ pnpm-debug.log*
 lerna-debug.log*
 .pnpm-store/
 .npm-cache-audit-meta/
+/.artifacts/
 
 node_modules
 dist
