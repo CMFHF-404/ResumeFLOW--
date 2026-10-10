@@ -133,6 +133,18 @@ const buildCertificationSignature = (item: {
   ].join('::');
 };
 
+const buildExistingCertificationSignatures = (
+  items: Array<Pick<Certification, 'name' | 'issuer' | 'issue_date'>>
+) => new Set(
+  items.map((cert) =>
+    buildCertificationSignature({
+      name: cert.name,
+      issuer: cert.issuer,
+      issue_date: cert.issue_date || undefined,
+    })
+  )
+);
+
 const buildSkillSignature = (item: { name: string; category?: string }) => {
   return [
     normalizeKey(normalizeSkillCategoryName(item.category)),
@@ -192,15 +204,7 @@ export const buildCertificationDuplicateIds = (
   if (!items.length || !existingCertifications.length) {
     return buildEmptySet();
   }
-  const existingSignatures = new Set(
-    existingCertifications.map((cert) =>
-      buildCertificationSignature({
-        name: cert.name,
-        issuer: cert.issuer,
-        issue_date: cert.issue_date || undefined,
-      })
-    )
-  );
+  const existingSignatures = buildExistingCertificationSignatures(existingCertifications);
   const duplicates = new Set<string>();
   items.forEach((item) => {
     if (existingSignatures.has(buildCertificationSignature(item))) {
@@ -243,15 +247,7 @@ export const buildCertificationImportPayloads = async (
     force: true,
     expectedAuthCacheKey: options?.expectedAuthCacheKey,
   });
-  const existingSignatures = new Set(
-    existing.map((cert) =>
-      buildCertificationSignature({
-        name: cert.name,
-        issuer: cert.issuer,
-        issue_date: cert.issue_date || undefined,
-      })
-    )
-  );
+  const existingSignatures = buildExistingCertificationSignatures(existing);
   return dedupeBySignature<ParsedCertificationView>(validItems, buildCertificationSignature)
     .filter((item) => !existingSignatures.has(buildCertificationSignature(item)))
     .map((item) => ({
