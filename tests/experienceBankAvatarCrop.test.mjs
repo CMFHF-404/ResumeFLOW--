@@ -50,10 +50,6 @@ const loadProfileServiceWithMocks = async () => {
             path: 'api-client-stub',
             namespace: 'stub',
           }));
-          buildContext.onResolve({ filter: /^\.\/avatarImage$/ }, () => ({
-            path: 'avatar-image-stub',
-            namespace: 'stub',
-          }));
           buildContext.onResolve({ filter: /^\.\/resumePreviewDataRevision$/ }, () => ({
             path: 'preview-revision-stub',
             namespace: 'stub',
@@ -92,14 +88,6 @@ const loadProfileServiceWithMocks = async () => {
             `,
             loader: 'js',
           }));
-          buildContext.onLoad({ filter: /^avatar-image-stub$/, namespace: 'stub' }, () => ({
-            contents: `
-              export const normalizeAvatarImageToSquare = (source) => (
-                globalThis.__normalizeProfileAvatar(source)
-              );
-            `,
-            loader: 'js',
-          }));
           buildContext.onLoad({ filter: /^preview-revision-stub$/, namespace: 'stub' }, () => ({
             contents: `
               export const bumpResumePreviewDataRevision = () => {
@@ -119,74 +107,91 @@ const loadProfileServiceWithMocks = async () => {
   );
 };
 
-test('Experience Bank avatar upload crops and stores a square image', () => {
-  const cropSource = read('components/ImageCropModal.tsx');
-  const profileSource = read('views/ExperienceBank/useExperienceBankProfile.ts');
-
-  assert.match(cropSource, /const CROP_FRAME_WIDTH = 240;/);
-  assert.match(cropSource, /const CROP_FRAME_HEIGHT = 240;/);
-  assert.match(cropSource, /const OUTPUT_WIDTH = 512;/);
-  assert.match(cropSource, /const OUTPUT_HEIGHT = 512;/);
-  assert.match(cropSource, />\s*1 : 1\s*</);
-  assert.match(cropSource, /sm: \{ width: 64, height: 64 \}/);
-  assert.match(cropSource, /md: \{ width: 96, height: 96 \}/);
-  assert.match(cropSource, /className="w-full h-full object-cover"/);
-
-  assert.match(profileSource, /setPendingImageSrc\(src\);\s*setIsCropModalOpen\(true\);/);
-  assert.match(profileSource, /handleCropConfirm[\s\S]*?setAvatarDataUrl\(cropDataUrl\);/);
+test('portrait crop backups preserve the original and unrelated profile extras', async () => {
+  const { resolveAvatarCropSource, withAvatarCrop, withoutAvatar, AVATAR_OUTPUT_WIDTH, AVATAR_OUTPUT_HEIGHT } = await loadAvatarImageUtils();
+  assert.equal(AVATAR_OUTPUT_WIDTH / AVATAR_OUTPUT_HEIGHT, 3 / 4);
+  const original = { private_note: 'keep', avatar_data_url: 'legacy-square' };
+  assert.equal(resolveAvatarCropSource(original, 'legacy-square'), 'legacy-square');
+  const firstCrop = withAvatarCrop(original, 'full-portrait', 'portrait-crop');
+  assert.equal(firstCrop.private_note, 'keep');
+  assert.equal(resolveAvatarCropSource(firstCrop, firstCrop.avatar_data_url), 'full-portrait');
+  const secondCrop = withAvatarCrop(firstCrop, resolveAvatarCropSource(firstCrop, firstCrop.avatar_data_url), 'recrop');
+  assert.equal(secondCrop.avatar_original_data_url, 'full-portrait');
+  assert.deepEqual(withoutAvatar(secondCrop), { private_note: 'keep' });
+  assert.deepEqual(original, { private_note: 'keep', avatar_data_url: 'legacy-square' });
 });
 
-test('legacy profile avatars are center-cropped once and persisted for every preview consumer', async () => {
-  const { normalizeAvatarImageToSquare, resolveSquareCropBox } = await loadAvatarImageUtils();
-  const profileServiceSource = read('services/profileService.ts');
-
-  assert.deepEqual(resolveSquareCropBox(400, 600), {
-    sourceX: 0,
-    sourceY: 100,
-    sourceSize: 400,
-  });
-  assert.deepEqual(resolveSquareCropBox(800, 400), {
-    sourceX: 200,
-    sourceY: 0,
-    sourceSize: 400,
-  });
-  assert.equal(await normalizeAvatarImageToSquare('data:image/jpeg;base64,node-no-dom'), 'data:image/jpeg;base64,node-no-dom');
-
-  assert.match(profileServiceSource, /normalizeAvatarImageToSquare\(candidateAvatarSource\)/);
-  assert.match(profileServiceSource, /avatar_data_url: normalizedAvatar/);
-  assert.match(profileServiceSource, /expected_updated_at: candidateProfile\.updated_at/);
-  assert.match(profileServiceSource, /isProfileUpdateConflict\(error\)/);
-  assert.match(profileServiceSource, /requestProfile\(ownerKeyAtStart\)/);
-  assert.match(profileServiceSource, /cacheRevision !== cacheRevisionAtStart/);
-  assert.match(profileServiceSource, /expectedAuthCacheKey: ownerKeyAtStart/);
-  assert.match(profileServiceSource, /cacheRevision === cacheRevisionAtStart/);
-  assert.match(profileServiceSource, /return normalizeAndPersistProfileAvatar\(cachedProfile\)/);
-  assert.match(profileServiceSource, /return normalizeAndPersistProfileAvatar\(await inFlightProfileRequest\)/);
-  assert.match(profileServiceSource, /return await normalizeAndPersistProfileAvatar\(await guardedPromise\)/);
-  assert.match(profileServiceSource, /bumpResumePreviewDataRevision\(\)/);
+test('bounded original backups do not need browser image processing', async () => {
+  const { prepareAvatarOriginalForSave } = await loadAvatarImageUtils();
+  const source = 'data:image/png;base64,small-existing-original';
+  assert.equal(await prepareAvatarOriginalForSave(source), source);
 });
 
-test('profile writes are rejected when the authenticated account changes before dispatch', () => {
-  const apiClientSource = read('services/apiClient.ts');
-  const profileServiceSource = read('services/profileService.ts');
-  const templateStorageSource = read('services/resumeTemplateStorage.ts');
+test('an account switch during original compression prevents the profile patch', async (t) => {
+  const imageStarted = createDeferred();
+  const previousImage = globalThis.Image;
+  const previousDocument = globalThis.document;
+  let finishImage;
+  let writes = 0;
+  class FakeImage {
+    naturalWidth = 1500;
+    naturalHeight = 2000;
+    set src(_value) {
+      finishImage = () => this.onload();
+      imageStarted.resolve();
+    }
+  }
+  globalThis.Image = FakeImage;
+  globalThis.document = {
+    createElement: () => ({
+      getContext: () => ({ fillRect() {}, drawImage() {} }),
+      toDataURL: () => 'data:image/jpeg;base64,compressed',
+    }),
+  };
+  globalThis.__profileAuthKey = 'user-a';
+  globalThis.__profilePatch = async () => { writes += 1; throw new Error('unexpected write'); };
+  t.after(() => {
+    globalThis.Image = previousImage;
+    globalThis.document = previousDocument;
+    delete globalThis.__profileAuthKey;
+    delete globalThis.__profilePatch;
+  });
+  const { profileService } = await loadProfileServiceWithMocks();
+  const input = { extra_json: { avatar_original_data_url: 'a'.repeat(1_500_000) } };
+  const saving = profileService.updateProfile(input, { expectedAuthCacheKey: 'user-a' });
+  await imageStarted.promise;
+  globalThis.__profileAuthKey = 'user-b';
+  finishImage();
+  await assert.rejects(saving, { name: 'AuthContextChangedError' });
+  assert.equal(writes, 0);
+  assert.equal(input.extra_json.avatar_original_data_url.length, 1_500_000);
+});
 
-  assert.match(apiClientSource, /config\.expectedAuthCacheKey !== activeAuthCacheKey/);
-  assert.match(apiClientSource, /Authentication context changed before request dispatch/);
-  assert.match(profileServiceSource, /const expectedOwnerKey = await captureAuthCacheKey\(options\?\.expectedAuthCacheKey\)/);
-  assert.match(profileServiceSource, /await assertAuthCacheKey\(expectedOwnerKey\)/);
-  assert.match(profileServiceSource, /expectedAuthCacheKey: expectedOwnerKey/);
-  assert.match(profileServiceSource, /const pendingAvatarNormalization = inFlightAvatarNormalization/);
-  assert.match(profileServiceSource, /ownerKeyAtStart !== activeOwnerKey/);
-  assert.match(profileServiceSource, /await pendingAvatarNormalization/);
-  assert.match(
-    templateStorageSource,
-    /getProfile\(\{\s*force: true,\s*expectedAuthCacheKey: ownerId,\s*\}\)/,
-  );
-  assert.match(
-    templateStorageSource,
-    /updateProfile\([\s\S]*?\{ expectedAuthCacheKey: ownerId \}\s*\)/,
-  );
+test('profile reads preserve legacy photos without image processing or implicit writes', async (t) => {
+  const profile = {
+    user_id: 'user-a', updated_at: '2026-10-10T10:00:00Z',
+    extra_json: { avatar_data_url: 'legacy-portrait', private_note: 'keep' },
+  };
+  const pending = createDeferred();
+  let reads = 0;
+  let writes = 0;
+  globalThis.__profileAuthKey = 'user-a';
+  globalThis.__profileGet = async () => { reads += 1; return pending.promise; };
+  globalThis.__profilePatch = async () => { writes += 1; throw new Error('unexpected write'); };
+  globalThis.__normalizeProfileAvatar = () => { throw new Error('unexpected image processing'); };
+  t.after(() => {
+    for (const key of ['__profileAuthKey', '__profileGet', '__profilePatch', '__normalizeProfileAvatar']) delete globalThis[key];
+  });
+  const { profileService } = await loadProfileServiceWithMocks();
+  const first = profileService.getProfile();
+  const concurrent = profileService.getProfile();
+  pending.resolve({ data: profile });
+  assert.deepEqual(await Promise.all([first, concurrent]), [profile, profile]);
+  assert.equal(await profileService.getProfile(), profile);
+  assert.equal(reads, 1);
+  assert.equal(await profileService.getProfile({ force: true }), profile);
+  assert.equal(reads, 2);
+  assert.equal(writes, 0);
 });
 
 test('a completed account A profile read cannot continue into an account B patch', async (t) => {
@@ -256,7 +261,7 @@ test('a completed account A profile read cannot continue into an account B patch
   assert.deepEqual(accountBProfile.extra_json, { private_note: 'account-b-only' });
 });
 
-test('a late profile response from the previous account is discarded before avatar migration', async (t) => {
+test('a late profile response from the previous account is discarded', async (t) => {
   const accountARequest = createDeferred();
   const accountBRequest = createDeferred();
   const patchCalls = [];
@@ -324,109 +329,4 @@ test('a late profile response from the previous account is discarded before avat
   });
   const accountBProfile = await accountBRead;
   assert.equal(accountBProfile.user_id, 'user-b');
-});
-
-test('avatar migration refetches and preserves newer profile extras after a 409', async (t) => {
-  const oldProfile = {
-    user_id: 'user-a',
-    extra_json: {
-      avatar_data_url: 'portrait-avatar',
-      resume_template_presets: { 'modern-slate': { theme: 'slate' } },
-    },
-    updated_at: '2026-08-01T10:00:00Z',
-  };
-  const latestProfile = {
-    ...oldProfile,
-    extra_json: {
-      avatar_data_url: 'portrait-avatar',
-      resume_template_presets: { 'modern-slate': { theme: 'emerald' } },
-    },
-    updated_at: '2026-08-01T10:01:00Z',
-  };
-  const getResponses = [oldProfile, latestProfile];
-  const patchPayloads = [];
-  globalThis.__profileAuthKey = 'user-a';
-  globalThis.__profilePreviewRevisionBumps = 0;
-  globalThis.__normalizeProfileAvatar = async () => 'square-avatar';
-  globalThis.__profileGet = async () => ({ data: getResponses.shift() });
-  globalThis.__profilePatch = async (_url, payload) => {
-    patchPayloads.push(payload);
-    if (patchPayloads.length === 1) {
-      const conflict = new Error('stale profile');
-      conflict.isAxiosError = true;
-      conflict.response = { status: 409 };
-      throw conflict;
-    }
-    return {
-      data: {
-        ...latestProfile,
-        extra_json: payload.extra_json,
-        updated_at: '2026-08-01T10:02:00Z',
-      },
-    };
-  };
-  t.after(() => {
-    for (const key of [
-      '__profileAuthKey',
-      '__profilePreviewRevisionBumps',
-      '__normalizeProfileAvatar',
-      '__profileGet',
-      '__profilePatch',
-    ]) {
-      delete globalThis[key];
-    }
-  });
-
-  const { profileService } = await loadProfileServiceWithMocks();
-  const result = await profileService.getProfile({ force: true });
-
-  assert.equal(patchPayloads.length, 2);
-  assert.equal(patchPayloads[0].expected_updated_at, oldProfile.updated_at);
-  assert.equal(patchPayloads[1].expected_updated_at, latestProfile.updated_at);
-  assert.deepEqual(patchPayloads[1].extra_json.resume_template_presets, {
-    'modern-slate': { theme: 'emerald' },
-  });
-  assert.equal(result.extra_json.avatar_data_url, 'square-avatar');
-  assert.equal(globalThis.__profilePreviewRevisionBumps, 1);
-});
-
-test('legacy portrait pixels are rendered from the centered square crop', async (t) => {
-  const { normalizeAvatarImageToSquare } = await loadAvatarImageUtils();
-  const previousImage = globalThis.Image;
-  const previousDocument = globalThis.document;
-  const drawCalls = [];
-
-  class FakeImage {
-    naturalWidth = 400;
-    naturalHeight = 600;
-
-    set src(_value) {
-      queueMicrotask(() => this.onload?.());
-    }
-  }
-
-  globalThis.Image = FakeImage;
-  globalThis.document = {
-    createElement: () => ({
-      width: 0,
-      height: 0,
-      getContext: () => ({
-        fillStyle: '',
-        fillRect: (...args) => drawCalls.push(['fillRect', ...args]),
-        drawImage: (...args) => drawCalls.push(['drawImage', ...args.slice(1)]),
-      }),
-      toDataURL: (type, quality) => `data:${type};quality=${quality}`,
-    }),
-  };
-  t.after(() => {
-    globalThis.Image = previousImage;
-    globalThis.document = previousDocument;
-  });
-
-  const result = await normalizeAvatarImageToSquare('data:image/jpeg;base64,legacy');
-  assert.equal(result, 'data:image/jpeg;quality=0.88');
-  assert.deepEqual(drawCalls, [
-    ['fillRect', 0, 0, 512, 512],
-    ['drawImage', 0, 100, 400, 400, 0, 0, 512, 512],
-  ]);
 });

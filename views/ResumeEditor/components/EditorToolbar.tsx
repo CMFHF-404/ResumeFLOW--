@@ -105,7 +105,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     const workspaceLayoutFocusRequestIdRef = useRef(0);
     const canRestoreDefault = isLayoutModified || isSmartPageApplied;
     const actionButtonBaseClass =
-        'flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border transition-colors';
+        'flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-1.5 text-xs rounded-md border transition-colors';
     const smartPageButtonClass = canRestoreDefault
         ? `${actionButtonBaseClass} font-medium border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700`
         : `${actionButtonBaseClass} font-semibold border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700 dark:border-emerald-400 dark:bg-emerald-500 dark:hover:bg-emerald-400`;
@@ -231,9 +231,9 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
     return (
         <header className="bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark px-4 py-3 shrink-0 z-20 md:px-6">
-            <div className="flex flex-col gap-3 md:h-10 md:flex-row md:items-center md:justify-between">
-                <div className="flex min-w-0 flex-wrap items-center gap-3 md:gap-4">
-                    <div className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity cursor-pointer">
+            <div className="flex min-w-0 flex-col gap-3 md:h-10 md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-3 md:flex-1 md:flex-nowrap xl:gap-4">
+                    <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-primary hover:opacity-80 transition-opacity cursor-pointer">
                         <img
                             src="/logo-mark-128.png"
                             alt="原子简历 favicon"
@@ -241,12 +241,12 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         />
                         <span className="font-bold text-lg tracking-tight text-gray-900 dark:text-white md:text-xl">原子简历</span>
                     </div>
-                    <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
-                    <div className="hidden items-center gap-2 md:flex">
+                    <div className="hidden h-6 w-px shrink-0 bg-border-light dark:bg-border-dark lg:block"></div>
+                    <div className="hidden shrink-0 items-center gap-2 lg:flex">
                         <span className="text-sm font-medium text-gray-500">简历工厂</span>
                     </div>
-                    <div className="hidden h-6 w-px bg-border-light dark:bg-border-dark md:block"></div>
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="hidden h-6 w-px shrink-0 bg-border-light dark:bg-border-dark lg:block"></div>
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                         {isEditing ? (
                             <>
                                 <input
@@ -256,11 +256,12 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                                     onKeyDown={handleKeyDown}
                                     onBlur={handleSave}
                                     autoFocus
-                                    className="w-full rounded border border-primary bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary dark:bg-gray-800 dark:text-white sm:w-auto"
+                                    aria-label="简历名称"
+                                    className="min-w-0 w-full flex-1 rounded border border-primary bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary dark:bg-gray-800 dark:text-white"
                                 />
                                 <button aria-label="保存"
                                     onClick={handleSave}
-                                    className="p-1 text-primary hover:bg-primary/10 rounded transition-colors"
+                                    className="shrink-0 p-1 text-primary hover:bg-primary/10 rounded transition-colors"
                                     title="保存"
                                 >
                                     <Check className="w-4 h-4" />
@@ -268,17 +269,17 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                             </>
                         ) : (
                             <>
-                                <span className="max-w-full truncate text-sm font-medium text-gray-900 dark:text-white">{resumeName}</span>
+                                <span title={resumeName} className="min-w-0 truncate text-sm font-medium text-gray-900 dark:text-white">{resumeName}</span>
                                 <button aria-label="编辑简历名称"
                                     onClick={handleStartEdit}
-                                    className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                                    className="shrink-0 p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors"
                                     title="编辑简历名称"
                                 >
                                     <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button aria-label={createResumeTitle}
                                     onClick={onCreateResume}
-                                    className="p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    className="shrink-0 p-1 text-gray-400 hover:text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                     title={createResumeTitle}
                                     type="button"
                                     disabled={isCreateResumeDisabled}
@@ -289,13 +290,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         )}
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">
-                    <UnAuthPrompt />
+                <div className="flex flex-wrap items-center gap-2 md:shrink-0 md:flex-nowrap md:justify-end xl:gap-4">
+                    <UnAuthPrompt compact />
                     <div
                         role="radiogroup"
                         aria-label="编辑器布局"
                         onKeyDown={handleWorkspaceLayoutKeyDown}
-                        className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-100/90 p-1 shadow-inner shadow-slate-200/40 dark:border-slate-700 dark:bg-slate-900 dark:shadow-none"
+                        className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-100/90 p-1 shadow-inner shadow-slate-200/40 dark:border-slate-700 dark:bg-slate-900 dark:shadow-none"
                     >
                         {WORKSPACE_LAYOUT_OPTIONS.map((option) => {
                             const Icon = option.icon;
@@ -365,8 +366,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         {canRestoreDefault ? '恢复默认' : '智能一页'}
                     </button>
                     {/* min-w 固定宽度：避免不同状态文字长度不同导致"智能一页"按钮位置抖动 */}
-                    <div className="order-last flex w-full items-center gap-2 text-xs md:order-none md:w-auto">
-                        <span className="text-gray-400 shrink-0">自动保存</span>
+                    <div className="order-last flex w-full shrink-0 items-center gap-2 whitespace-nowrap text-xs md:order-none md:w-auto">
+                        <span className="text-gray-400 shrink-0 md:hidden lg:inline">自动保存</span>
                         <span role="status" aria-label="保存状态" data-agent-state={saveState} className={`font-semibold min-w-[7rem] ${saveStatusClass}`}>{saveStatusText}</span>
                     </div>
                     <button
@@ -376,7 +377,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                         {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                     </button>
                     <button
-                        className="ml-auto flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-60 md:ml-0"
+                        className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-60 md:ml-0"
                         onClick={onExportPdf} data-agent-action="export-pdf" aria-busy={isExportingPdf}
                         type="button"
                         disabled={isExportingPdf}

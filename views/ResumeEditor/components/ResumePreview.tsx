@@ -1,3 +1,4 @@
+import { AVATAR_ASPECT_RATIO } from '../../../services/avatarImage';
 import { ModuleScoreNote } from './ResumeEvaluationReport/ScoreAnnotations';
 import React from 'react';
 import {
@@ -1327,22 +1328,22 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({
             isTimelineBlueTemplate
         );
     }, [activeTemplate, isOpenSourceClassicTemplate, isPhotoCardTemplate, isTimelineBlueTemplate]);
-    const renderAvatarFrame = React.useCallback((className: string, imageObjectFit: 'contain' | 'cover' = 'contain') => {
+    const renderAvatarFrame = React.useCallback((className: string) => {
         if (avatarSrc && !hasAvatarLoadError) {
             const isAvatarLayout = activeTemplate.layoutKind === 'avatar';
             return (
-                <div className={`${className} ${isAvatarLayout ? 'ring-1 ring-gray-900/10 shadow-sm' : ''}`}>
+                <div style={{ aspectRatio: AVATAR_ASPECT_RATIO, height: 'auto' }} className={`${className} rf-template-avatar ${isAvatarLayout ? 'ring-1 ring-gray-900/10 shadow-sm' : ''}`}>
                     <img
                         src={avatarSrc}
                         alt="个人头像"
-                        className={`h-full w-full ${imageObjectFit === 'cover' ? 'object-cover' : 'object-contain'}`}
+                        className="h-full w-full object-contain"
                         onError={() => setHasAvatarLoadError(true)}
                     />
                 </div>
             );
         }
         return (
-            <div className={`${className} rf-template-avatar-placeholder items-center justify-center bg-gray-100 p-0.5 text-sm font-bold text-gray-700`}>
+            <div style={{ aspectRatio: AVATAR_ASPECT_RATIO, height: 'auto' }} className={`${className} rf-template-avatar rf-template-avatar-placeholder items-center justify-center bg-gray-100 p-0.5 text-sm font-bold text-gray-700`}>
                 {profileInitials}
             </div>
         );

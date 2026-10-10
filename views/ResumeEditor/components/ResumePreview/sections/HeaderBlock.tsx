@@ -18,7 +18,7 @@ type HeaderBlockProps = {
     isPhotoSidebarTemplate: boolean;
     getSectionOverflowHighlightStyle: (sectionId: string) => React.CSSProperties | undefined;
     renderOverflowMarker: (sectionId: string) => React.ReactNode;
-    renderAvatarFrame: (className: string, imageObjectFit?: 'contain' | 'cover') => React.ReactNode;
+    renderAvatarFrame: (className: string) => React.ReactNode;
 };
 
 const HeaderBlock: React.FC<HeaderBlockProps> = ({
@@ -142,7 +142,7 @@ const HeaderBlock: React.FC<HeaderBlockProps> = ({
             >
                 {renderOverflowMarker('basic-info')}
                 <div className="flex items-start gap-5 px-1 pb-2 pt-4">
-                    {renderAvatarFrame('flex h-28 w-[88px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-white bg-white shadow-sm', 'cover')}
+                    {renderAvatarFrame('flex h-28 w-[84px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-white bg-white shadow-sm')}
                     <div className="min-w-0 flex-1">
                         <h1 className="text-[34px] font-bold tracking-[0.06em] leading-tight text-gray-950">
                             {profile.name}
@@ -192,7 +192,7 @@ const HeaderBlock: React.FC<HeaderBlockProps> = ({
                             </p>
                         ) : null}
                     </div>
-                    {renderAvatarFrame(`flex h-32 w-24 shrink-0 overflow-hidden ${isPhotoSidebarTemplate ? 'rounded-full border border-white/45 bg-white/10 p-1 shadow-sm' : 'rounded-[1.4rem] border border-white/75 bg-white p-0.5 shadow-sm'}`)}
+                    {renderAvatarFrame(`flex h-32 w-24 shrink-0 overflow-hidden ${isPhotoSidebarTemplate ? 'rounded-xl border border-white/45 bg-white/10 p-1 shadow-sm' : 'rounded-xl border border-white/75 bg-white p-0.5 shadow-sm'}`)}
                 </div>
                 {contactItems.length ? (
                     <div className={`space-y-1.5 text-[11px] font-medium ${isPhotoSidebarTemplate ? 'text-white/80' : 'text-gray-700'}`}>

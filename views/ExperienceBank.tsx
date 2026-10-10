@@ -861,6 +861,7 @@ const ExperienceBank: React.FC<ExperienceBankProps> = ({
         onConfirm={handleCropConfirm}
         onCancel={handleCropCancel}
         onDelete={handleAvatarDelete}
+        onReplace={() => avatarFileInputRef.current?.click()}
       />
 
       <ToastContainer toasts={toasts} onClose={closeToast} />

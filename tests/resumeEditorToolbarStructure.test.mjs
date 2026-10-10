@@ -7,10 +7,10 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 test('desktop editor toolbar keeps primary actions and exposes the three-mode workspace switcher', () => {
   const toolbar = read('views/ResumeEditor/components/EditorToolbar.tsx');
   const titleCluster = toolbar.match(
-    /<div className="hidden items-center gap-2 md:flex">[\s\S]*?<div className="hidden h-6 w-px/
+    /<div className="hidden shrink-0 items-center gap-2 lg:flex">[\s\S]*?<div className="hidden h-6 w-px/
   )?.[0] ?? '';
   const actionCluster = toolbar.match(
-    /<div className="flex flex-wrap items-center gap-2 md:justify-end md:gap-4">[\s\S]*?<\/div>\s*<\/div>\s*<\/header>/
+    /<div className="flex flex-wrap items-center gap-2 md:shrink-0 md:flex-nowrap md:justify-end xl:gap-4">[\s\S]*?<\/div>\s*<\/div>\s*<\/header>/
   )?.[0] ?? '';
 
   assert.match(titleCluster, /简历工厂/);

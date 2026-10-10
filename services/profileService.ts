@@ -1,12 +1,10 @@
-import axios from 'axios';
 import apiClient, {
     assertAuthCacheKey,
     AuthContextChangedError,
     captureAuthCacheKey,
-    isAuthContextChangedError,
     type AuthOwnerOptions,
 } from './apiClient';
-import { normalizeAvatarImageToSquare } from './avatarImage';
+import { prepareAvatarOriginalForSave } from './avatarImage';
 import { bumpResumePreviewDataRevision } from './resumePreviewDataRevision';
 import type { Profile, ProfileUpdate } from '../types/profile';
 
@@ -17,19 +15,6 @@ let cachedProfile: Profile | null = null;
 let inFlightProfileRequest: Promise<Profile> | null = null;
 let cacheRevision = 0;
 let profileCacheOwnerKey: string | null = null;
-let inFlightAvatarNormalization: Promise<Profile> | null = null;
-let inFlightAvatarSource: string | null = null;
-
-const readProfileAvatarSource = (profile: Profile): string => (
-    typeof profile.extra_json?.avatar_data_url === 'string'
-        ? profile.extra_json.avatar_data_url.trim()
-        : ''
-);
-
-const isProfileUpdateConflict = (error: unknown): boolean => (
-    axios.isAxiosError(error) && error.response?.status === 409
-);
-
 async function requestProfile(expectedAuthCacheKey?: string): Promise<Profile> {
     const response = await apiClient.get<Profile>('/profile', expectedAuthCacheKey
         ? { expectedAuthCacheKey }
@@ -37,100 +22,10 @@ async function requestProfile(expectedAuthCacheKey?: string): Promise<Profile> {
     return response.data;
 }
 
-const normalizeAndPersistProfileAvatar = async (profile: Profile): Promise<Profile> => {
-    const avatarSource = readProfileAvatarSource(profile);
-    if (!avatarSource) {
-        return profile;
-    }
-    if (inFlightAvatarNormalization && inFlightAvatarSource === avatarSource) {
-        return inFlightAvatarNormalization;
-    }
-
-    const ownerKeyAtStart = profileCacheOwnerKey;
-    const cacheRevisionAtStart = cacheRevision;
-    const normalizationPromise = (async () => {
-        let candidateProfile = profile;
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-            const candidateAvatarSource = readProfileAvatarSource(candidateProfile);
-            if (!candidateAvatarSource) {
-                return candidateProfile;
-            }
-            try {
-                const normalizedAvatar = await normalizeAvatarImageToSquare(candidateAvatarSource);
-                if (normalizedAvatar === candidateAvatarSource) {
-                    return candidateProfile;
-                }
-                if (
-                    !ownerKeyAtStart
-                    || profileCacheOwnerKey !== ownerKeyAtStart
-                    || cacheRevision !== cacheRevisionAtStart
-                ) {
-                    return cachedProfile ?? candidateProfile;
-                }
-                const response = await apiClient.patch<Profile>('/profile', {
-                    extra_json: {
-                        ...(candidateProfile.extra_json ?? {}),
-                        avatar_data_url: normalizedAvatar,
-                    },
-                    expected_updated_at: candidateProfile.updated_at,
-                }, {
-                    expectedAuthCacheKey: ownerKeyAtStart,
-                });
-                if (
-                    profileCacheOwnerKey === ownerKeyAtStart
-                    && cacheRevision === cacheRevisionAtStart
-                ) {
-                    cacheRevision += 1;
-                    cachedProfile = response.data;
-                    bumpResumePreviewDataRevision();
-                }
-                return response.data;
-            } catch (error) {
-                if (isAuthContextChangedError(error)) {
-                    throw error;
-                }
-                if (attempt !== 0 || !ownerKeyAtStart || !isProfileUpdateConflict(error)) {
-                    return candidateProfile;
-                }
-                try {
-                    const latestProfile = await requestProfile(ownerKeyAtStart);
-                    if (
-                        profileCacheOwnerKey !== ownerKeyAtStart
-                        || cacheRevision !== cacheRevisionAtStart
-                    ) {
-                        return cachedProfile ?? latestProfile;
-                    }
-                    cachedProfile = latestProfile;
-                    candidateProfile = latestProfile;
-                } catch (latestProfileError) {
-                    if (isAuthContextChangedError(latestProfileError)) {
-                        throw latestProfileError;
-                    }
-                    return cachedProfile ?? candidateProfile;
-                }
-            }
-        }
-        return candidateProfile;
-    })();
-
-    inFlightAvatarNormalization = normalizationPromise;
-    inFlightAvatarSource = avatarSource;
-    try {
-        return await normalizationPromise;
-    } finally {
-        if (inFlightAvatarNormalization === normalizationPromise) {
-            inFlightAvatarNormalization = null;
-            inFlightAvatarSource = null;
-        }
-    }
-};
-
 const clearProfileCache = () => {
     cacheRevision += 1;
     cachedProfile = null;
     inFlightProfileRequest = null;
-    inFlightAvatarNormalization = null;
-    inFlightAvatarSource = null;
     profileCacheOwnerKey = null;
 };
 
@@ -156,10 +51,10 @@ export const profileService = {
         }
         const shouldUseCache = !options?.force;
         if (shouldUseCache && cachedProfile) {
-            return normalizeAndPersistProfileAvatar(cachedProfile);
+            return cachedProfile;
         }
         if (inFlightProfileRequest) {
-            return normalizeAndPersistProfileAvatar(await inFlightProfileRequest);
+            return inFlightProfileRequest;
         }
         const requestRevision = cacheRevision;
         const requestPromise = requestProfile(cacheOwnerKey);
@@ -181,7 +76,7 @@ export const profileService = {
         })();
         inFlightProfileRequest = guardedPromise;
         try {
-            return await normalizeAndPersistProfileAvatar(await guardedPromise);
+            return await guardedPromise;
         } finally {
             if (inFlightProfileRequest === guardedPromise) {
                 inFlightProfileRequest = null;
@@ -195,11 +90,17 @@ export const profileService = {
     ) {
         const expectedOwnerKey = await captureAuthCacheKey(options?.expectedAuthCacheKey);
         const ownerKeyAtStart = profileCacheOwnerKey;
-        const pendingAvatarNormalization = inFlightAvatarNormalization;
         cacheRevision += 1;
-        if (pendingAvatarNormalization) {
-            await pendingAvatarNormalization;
-        }
+        const originalSource = data.extra_json?.avatar_original_data_url;
+        const preparedData = typeof originalSource === 'string'
+            ? {
+                ...data,
+                extra_json: {
+                    ...data.extra_json,
+                    avatar_original_data_url: await prepareAvatarOriginalForSave(originalSource),
+                },
+            }
+            : data;
         await assertAuthCacheKey(expectedOwnerKey);
         const activeOwnerKey = expectedOwnerKey;
         if (
@@ -213,7 +114,7 @@ export const profileService = {
             clearProfileCache();
             profileCacheOwnerKey = activeOwnerKey;
         }
-        const response = await apiClient.patch<Profile>('/profile', data, {
+        const response = await apiClient.patch<Profile>('/profile', preparedData, {
             expectedAuthCacheKey: expectedOwnerKey,
         });
         await assertAuthCacheKey(expectedOwnerKey);

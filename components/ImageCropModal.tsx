@@ -1,20 +1,21 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Upload, Trash2, ZoomIn, ZoomOut, Check, Camera } from 'lucide-react';
+import { AVATAR_ASPECT_RATIO, AVATAR_OUTPUT_WIDTH, AVATAR_OUTPUT_HEIGHT } from '../services/avatarImage';
 
-// ─── 裁剪区域常量（1:1 头像比例）──────────────────────────────────────────────
+// ─── 裁剪区域常量（3:4 头像比例）──────────────────────────────────────────────
 // 视口尺寸（裁剪交互区域）
 const VIEW_WIDTH = 300;
 const VIEW_HEIGHT = 340;
 
 // 裁剪框尺寸（居中放置，四周留 padding）
-const CROP_FRAME_WIDTH = 240;
+const CROP_FRAME_WIDTH = 180;
 const CROP_FRAME_HEIGHT = 240;
-const CROP_FRAME_X = (VIEW_WIDTH - CROP_FRAME_WIDTH) / 2;   // 30
+const CROP_FRAME_X = (VIEW_WIDTH - CROP_FRAME_WIDTH) / 2;   // 60
 const CROP_FRAME_Y = (VIEW_HEIGHT - CROP_FRAME_HEIGHT) / 2; // 50
 
-// 输出尺寸（1:1 高质量）
-const OUTPUT_WIDTH = 512;
-const OUTPUT_HEIGHT = 512;
+// 输出尺寸（3:4 高质量）
+const OUTPUT_WIDTH = AVATAR_OUTPUT_WIDTH;
+const OUTPUT_HEIGHT = AVATAR_OUTPUT_HEIGHT;
 const MODAL_HORIZONTAL_PADDING = 32; // fixed inset from the outer modal wrapper (`p-4`)
 const CROP_SURFACE_HORIZONTAL_MARGIN = 24; // `mx-3` around the crop surface
 
@@ -117,7 +118,7 @@ const CropOverlay: React.FC = () => (
       color: 'rgba(255,255,255,0.6)',
       fontFamily: 'sans-serif',
     }}>
-      1 : 1
+      3 : 4
     </div>
   </div>
 );
@@ -132,6 +133,7 @@ interface ImageCropModalProps {
   onConfirm: (dataUrl: string) => void;
   onCancel: () => void;
   onDelete: () => void;
+  onReplace?: () => void;
 }
 
 export const ImageCropModal: React.FC<ImageCropModalProps> = ({
@@ -140,6 +142,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
   onConfirm,
   onCancel,
   onDelete,
+  onReplace,
 }) => {
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const [imgPos, setImgPos] = useState({ x: 0, y: 0 });
@@ -167,12 +170,15 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
 
   // 加载图片，计算初始裁剪状态
   useEffect(() => {
+    setNaturalSize(null);
+    imgRef.current = null;
     if (!imageSrc) {
-      setNaturalSize(null);
       return;
     }
+    let cancelled = false;
     const img = new Image();
     img.onload = () => {
+      if (cancelled) return;
       imgRef.current = img;
       const { scale: initScale, x, y } = computeInitialCropState(img.naturalWidth, img.naturalHeight);
       setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
@@ -180,6 +186,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
       setImgPos({ x, y });
     };
     img.src = imageSrc;
+    return () => { cancelled = true; };
   }, [imageSrc]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -233,13 +240,18 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
       >
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">裁剪头像 · 1:1</h3>
-          <button
-            onClick={onCancel}
-            aria-label="关闭头像裁剪" className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">裁剪头像 · 3:4</h3>
+          <div className="flex items-center gap-2">
+            {onReplace && (
+              <button type="button" onClick={onReplace} className="text-xs text-primary hover:underline">更换照片</button>
+            )}
+            <button
+              onClick={onCancel}
+              aria-label="关闭头像裁剪" className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* 裁剪交互区 */}
@@ -348,8 +360,8 @@ interface ProfileAvatarZoneProps {
 }
 
 const AVATAR_SIZES = {
-  sm: { width: 64, height: 64 },
-  md: { width: 96, height: 96 },
+  sm: { width: 60, height: 80 },
+  md: { width: 90, height: 120 },
 };
 
 /**
@@ -365,7 +377,7 @@ export const ProfileAvatarZone: React.FC<ProfileAvatarZoneProps> = ({
 }) => {
   const { width, height } = AVATAR_SIZES[size];
 
-  const containerStyle: React.CSSProperties = { width, height, flexShrink: 0 };
+  const containerStyle: React.CSSProperties = { width, height, aspectRatio: AVATAR_ASPECT_RATIO, flexShrink: 0 };
 
   if (avatarDataUrl) {
     return (
@@ -373,9 +385,9 @@ export const ProfileAvatarZone: React.FC<ProfileAvatarZoneProps> = ({
         style={containerStyle}
         className={`relative rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 ${isClickable ? 'cursor-pointer' : ''}`}
         onClick={isClickable ? onUploadClick : undefined}
-        title={isClickable ? '点击更换头像（1:1）' : undefined}
+        title={isClickable ? '点击裁剪头像（3:4）' : undefined}
       >
-        <img src={avatarDataUrl} alt="个人照片" className="w-full h-full object-cover" />
+        <img src={avatarDataUrl} alt="个人照片" className="w-full h-full object-contain" />
         {isClickable && (
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
             <Camera className="text-white" style={{ width: size === 'sm' ? 16 : 22, height: size === 'sm' ? 16 : 22 }} />
@@ -395,13 +407,13 @@ export const ProfileAvatarZone: React.FC<ProfileAvatarZoneProps> = ({
           : 'border-gray-200 dark:border-gray-700'
         }`}
       onClick={isClickable ? onUploadClick : undefined}
-      title={isClickable ? '点击上传 1:1 头像' : undefined}
+      title={isClickable ? '点击上传 3:4 头像' : undefined}
     >
       {isClickable ? (
         <>
           <Upload style={{ width: size === 'sm' ? 14 : 18, height: size === 'sm' ? 14 : 18 }} className="text-primary/50" />
           <span style={{ fontSize: size === 'sm' ? 9 : 10 }} className="text-primary/50 text-center leading-tight px-1">
-            点击上传<br />1:1 头像
+            点击上传<br />3:4 头像
           </span>
         </>
       ) : (
