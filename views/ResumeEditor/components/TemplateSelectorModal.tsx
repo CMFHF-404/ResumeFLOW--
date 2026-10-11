@@ -78,7 +78,7 @@ const TEMPLATE_SECTION_META: Record<string, { label: string; hint: string }> = {
 
 const MOBILE_LONG_PRESS_DURATION_MS = 260;
 const TOUCH_DRAG_CANCEL_DISTANCE_PX = 10;
-const TEMPLATE_THUMBNAIL_REVISION = '20261010-portrait';
+const TEMPLATE_THUMBNAIL_REVISION = '20261011-portrait-3x4';
 
 const withTemplateThumbnailRevision = (source: string) => (
   `${source}${source.includes('?') ? '&' : '?'}v=${TEMPLATE_THUMBNAIL_REVISION}`

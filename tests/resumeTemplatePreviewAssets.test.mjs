@@ -84,7 +84,7 @@ test('template preview generation uses the fixed fictional fixture and a develop
   assert.equal((fixtureSource.match(/id: 'fixture-project-/g) ?? []).length, 2);
   assert.equal((fixtureSource.match(/id: 'fixture-certification-/g) ?? []).length, 2);
   assert.equal((fixtureSource.match(/name: '(?:产品能力|数据与 AI|协作工具)'/g) ?? []).length, 3);
-  assert.match(selectorSource, /TEMPLATE_THUMBNAIL_REVISION = '20261010-portrait'/);
+  assert.match(selectorSource, /TEMPLATE_THUMBNAIL_REVISION = '20261011-portrait-3x4'/);
   assert.match(selectorSource, /src=\{withTemplateThumbnailRevision\(resolvedThumbnailSrc\)\}/);
   assert.match(
     selectorSource,
